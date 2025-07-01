@@ -1,0 +1,355 @@
+{% extends 'ajaxformmodal.html' %}
+{% load sga_extras %}
+{% block extra_js %}
+    <script>
+        $(function () {
+            $('select').select2({width: '100%',});
+            cubiculoShowHidde()
+            let cubiculo=
+            $('#fieldset_libro').hide()
+            $('#id_tiporegistro').select2({width: '100%',minimumResultsForSearch:-1}).on('select2:select', function (e){
+                  $('#id_profesor').val('').trigger('change')
+                   if ($(this).val()==2){
+                       $('#id_profesor').removeAttr('required')
+                       $('#fieldset_profesor').hide()
+                       $('#fieldset_actividad').hide()
+                       if ($("#id_tiposerviciocrai").val()== 1){
+                           $('#fieldset_libro').show()
+                       }
+
+                   }else if(($(this).val()==1)){
+                        $('#id_profesor').attr('required', 'required')
+                        $('#fieldset_profesor').show()
+                        $('#fieldset_actividad').show()
+                        $('#fieldset_libro').hide()
+                   }else{
+                        $('#id_profesor').removeAttr('required')
+                       $('#fieldset_profesor').hide()
+                       $('#fieldset_actividad').show()
+                       $('#fieldset_libro').hide()
+                   }
+                });
+
+             $('#id_tiposerviciocrai').select2({width: '100%',minimumResultsForSearch:-1}).on('select2:select', function (e){
+                if ($(this).val()== 1 && $('#id_tiporegistro').val()==2){
+                   $('#fieldset_libro').show()
+                }else{
+                   $('#fieldset_libro').hide()
+                }
+                cubiculoShowHidde($(this).val())
+             });
+            $.fn.select2.defaults.set('language', 'es');
+            $('#id_persona').change(function (){
+                $(".datospersonales").empty()
+                $(".datosinstitucionales").empty()
+            })
+            const cbPersona = $('#id_persona');
+            const cbProfesor = $('#id_profesor');
+            const cbLibro = $('#id_libro');
+
+            function formatRepo(repo) {
+                if (repo.loading) {
+                    return 'Buscando..'
+                }
+                var option = '';
+                if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                    option = $(`<b>${repo.text}</b>`);
+                } else {
+                    option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-2 text-center"><img src="${repo.foto}" width="50px" height="50px" class="w-25px rounded-circle me-2"></div><div class="col-lg-10 text-left"><b>Documento:</b> ${repo.documento}<br><b>Nombres:</b> ${repo.text}</div></div></div>`);
+                }
+                return option;
+            }
+
+            ItemsDisplayPersonas = function (item) {
+                if (item.text && item.documento) {
+                    return $(`<img src="${item.foto}" width="25px" height="25px" class="w-25px rounded-circle me-2"><span>${item.text}</span>`);
+                } else if (item) {
+                    return item.text;
+                } else {
+                    return 'Consultar Personas';
+                }
+            };
+
+          function formatRepoLibro(repo) {
+            if (repo.loading) {
+                return 'Buscando..'
+            }
+            var option = '';
+            if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                option = $(`<b>${repo.text}</b>`);
+            } else {
+                option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-12 text-left"><b>Libro:</b> ${repo.text}<br><b>Codigo:</b> ${repo.codigo}</div></div></div>`);
+            }
+            return option;
+        }
+
+            ItemsDisplayLibros = function (item) {
+                if (item.text && item.documento) {
+                    return $(`<i class="fa fa-book"></i><span> ${item.text}</span>`);
+                } else if (item) {
+                    return item.text;
+                } else {
+                    return 'Consultar Libros';
+                }
+            };
+
+            cbPersona.select2({
+                width: '100%',
+                placeholder: "Buscar por cédula, apellidos o nombres",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ reques.path }}?action=buscarpersona&q=${params.term}&tipo=inscripcion`;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: formatRepo, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+            }).on('select2:select', function (e){
+                    $(".datospersonales").empty()
+                    $(".datosinstitucionales").empty()
+                    $('#id_inscripcion').empty().append('<option value=""></option>').val(0).trigger("change");
+                    bloqueointerface();
+                    $.get(window.location.pathname, {'action':'listinscripcion', 'idpersona': $(this).val()},
+                    function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok' ) {
+                           for (elemento in data.lista) {
+                                $('#id_inscripcion').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                           {#if (data.lista.length == 1){#}
+                              $('#id_inscripcion').val(data.lista[0][0]).trigger('change')
+                                DatosInscripcion($('#id_inscripcion'));
+                             {# }#}
+                           var identificacion = ''
+                           if (data.datos.cedula){
+                               identificacion = data.datos.cedula
+                           }
+                           if(data.datos.pasaporte){
+                               identificacion +=' | ' + data.datos.pasaporte
+                           }
+
+                            $(".datospersonales").append(`<h4 class="texto-blue"><i class="fa fa-address-card"></i> Información personal</h4>
+                                                          <p><b>Nombres:</b> ${data.datos.nombres} ${data.datos.apellido1} ${data.datos.apellido2}</p>
+                                                          <p><b>Identificación:</b> ${identificacion}</p>
+                                                          <p><b>Correos:</b> ${data.datos.email} | ${data.datos.emailinst}</p>
+                                                          <p><b>Telefono:</b> ${data.datos.telefono} | ${data.datos.telefono_conv}</p>
+                                                        `)
+                            $("#mensajeinfo").hide()
+                        }
+                        else{
+                            control.val(0).trigger("change");
+                            mensajeDanger(data.mensaje);
+                        }
+                    }, 'json');
+                });
+            cbProfesor.select2({
+                width: '100%',
+                placeholder: "Buscar por cédula, apellidos o nombres",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ reques.path }}?action=buscarprofesor&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: formatRepo, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+            });
+            cbLibro.select2({
+                width: '100%',
+                placeholder: "Buscar por nombre, codigo koha, codigo isbn, titulo o autor ",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ reques.path }}?action=buscarlibro&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: formatRepoLibro, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplayLibros // omitted for brevity, see the source of this page
+            });
+
+            $("#id_inscripcion").select2({width: '100%', minimumResultsForSearch: -1,'placeholder':'Seleccione una carrera'}).on('select2:select', function (e){
+                   DatosInscripcion($(this));
+                });
+
+
+
+        });
+        function DatosInscripcion(obj){
+             $(".datosinstitucionales").empty()
+                bloqueointerface();
+                $.get(window.location.pathname, {'action':'infoinscripcion', 'idinscripcion': obj.val()},
+                function(data) {
+                    $.unblockUI();
+                    if (data.result === 'ok' ) {
+                       var identificacion = ''
+                       if (data.datos.cedula){
+                           identificacion = data.datos.cedula
+                       }
+                       if(data.datos.pasaporte){
+                           identificacion +=' | ' + data.datos.pasaporte
+                       }
+
+                        $(".datosinstitucionales").append(`<hr><h4 class="texto-blue"><i class="fa fa-user-graduate"></i> Información institucional</h4>
+                                                      <p><b>Periodo:</b> ${data.datos.periodo}</p>
+                                                      <p><b>Carrera:</b> ${data.datos.carrera}</p>
+                                                      <p><b>Nivel:</b> ${data.datos.nivel}</p>
+                                                      <p><b>Matricula:</b>
+                                                        <span class="badge bg-secondary" title="Estado de matricula">${data.datos.estadomatricula}</span>
+                                                        <span class="badge bg-primary"  title="Gratuidad">${data.datos.gratuidad}</span>
+                                                        <span class="badge bg-danger" title="Mtriucla bloqueada">${data.datos.bloqueada}</span>
+                                                        <span class="badge bg-success" title="Grupo socieconomico">${data.datos.gruposocieco}</span>
+                                                        <span class="badge bg-info" title="Tipo de titulación">${data.datos.titulacion}</span>
+                                                        <span class="badge bg-warning" title="Estado de titulación">${data.datos.egresado}</span>
+                                                      </p>`).css('margin-top','7px')
+                        $("#mensajeinfo").hide()
+                    }
+                    else{
+                        obj.val(0).trigger("change");
+                        mensajeDanger(data.mensaje);
+                    }
+                }, 'json');
+        }
+        function cubiculoShowHidde(id) {
+            if (id == 8) {
+                $("#fieldset_cubiculo").show()
+                {#$("#id_cubiculo").attr('required',true)#}
+            } else {
+                $("#fieldset_cubiculo").hide()
+                $("#id_cubiculo").val('').trigger('change')
+            }
+        }
+    </script>
+{% endblock %}
+{% block block_form %}
+{#        <div class="headtitle" style="margin-left: 0px">#}
+{#            <h3 class="text-warning mb-0">Información de registro</h3>#}
+{#            <h6>Control de acceso al crai UNEMI</h6>#}
+{#        </div>#}
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body border-top border-5 rounded-3 border-dark-info py-5">
+                <div class="datospersonales">
+                </div>
+                <div class="datosinstitucionales">
+                </div>
+                <div style="height: 335px; text-align: center; align-items: center; justify-items: center; display: flex;" id="mensajeinfo">
+                    <h4 class="text-secondary">La información se completara según se vaya seleccionando los items.</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="row">
+            {% for field in form %}
+                {% if field.field.widget.attrs.separator %}
+                    {% if field.field.widget.attrs.blanklinebefore %}
+                    {% endif %}
+                    <div style="width: 100%; height: max-content">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                    <span style="padding:0 10px; background: #f5f5f5;">
+                        {% if field.field.widget.attrs.separatortitle %}
+                            {{ field.field.widget.attrs.separatortitle }}
+                        {% endif %}
+                    </span>
+                        </h6>
+                    </div>
+                {% endif %}
+                <div id="fieldset_{{ field.name }}"
+                     class="col-lg-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}"
+                     style="float: left; padding-right: 10px;">
+                    <label class="control-label pr-2" for="id_{{ field.name }}">
+                        <b>{{ field.label }}&nbsp;:</b></label>
+                    <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+                        {% if field.field.widget.attrs.number %}
+                            <div class="box-content-sum-res" style="height: 30px">
+                                <div class="rounded-start text-center box-resta">
+                                    <a style="padding: 10px 40% 10px 50%;" class="restar" id="restar_{{ field.name }}" data-id="{{ field.name }}"
+                                       href="javascript:void(0);">-</a>
+                                </div>
+                                <div class="box-content">
+                                    <input required name="{{ field.name }}" class="content" id="id_{{ field.name }}" min="1" max="32"
+                                           placeholder="0" value="{{ field.value }}"
+                                           style="width: 100%; text-align: center; border:0px; color:#22374C; font-size: 14px">
+                                </div>
+                                <div class="rounded-end text-center box-suma">
+                                    <a style="color:#22374C;padding: 10px 50% 10px 40%; " class="sumar" id="sumar_{{ field.name }}" data-id="{{ field.name }}"
+                                       href="javascript:void(0);">+</a>
+                                </div>
+                            </div>
+                        {% else %}
+                            {{ field }}
+                        {% endif %}
+                        <p class="help-text">{{ field.help_text }} </p>
+                        <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0"></p>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}

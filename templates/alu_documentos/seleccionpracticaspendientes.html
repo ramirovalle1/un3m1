@@ -1,0 +1,192 @@
+{% load sga_extras %}
+<link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+<script type="text/javascript">
+
+    var asignaturapracticas = [];
+
+    $(document).ready(function(){
+        $(".collapse").on('show.bs.collapse', function(){
+            $(".collapse.in").each(function(){
+                $(this).parent().find(".fa").removeClass("fa-chevron-up").addClass("fa-chevron-down");
+                $(this).collapse('hide')
+            });
+            $(this).parent().find(".fa").removeClass("fa-chevron-down").addClass("fa-chevron-up");
+        }).on('hide.bs.collapse', function(){
+            $(this).parent().find(".fa").removeClass("fa-chevron-up").addClass("fa-chevron-down");
+        });
+    });
+
+    adicionar = function (idg) {
+        elemento =  $("[idg="+idg+"]");
+        elemento.html('REMOVER');
+        elemento.removeClass('btn-info');
+        elemento.addClass('btn-danger');
+        elemento.attr('ids',idg);
+    };
+
+    eliminarpractica = function (idp, idg) {
+        for(var i = asignaturapracticas.length - 1; i >= 0; i--) {
+            if(asignaturapracticas[i][0] === idp && asignaturapracticas[i][1] == idg) {
+                asignaturapracticas.splice(i, 1);
+            }
+        }
+    };
+
+    cambiar = function (idd) {
+        $(".selectgrupo").each(function(){
+            var id = $(this).attr('idd');
+            if ($(this).attr('ids')){
+                if (id==idd) {
+                    $(this).removeClass('btn-danger');
+                    $(this).addClass('btn-info');
+                    $(this).html('SELECCIONAR');
+                    var ids = $(this).attr('ids');
+                    $(this).removeAttr('ids');
+                    var idp = $(this).attr('idp');
+                    eliminarpractica(idp, ids);
+                }
+            }
+        });
+    };
+
+    $(".selectgrupo").click(function() {
+        var idd = $(this).attr('idd');
+        var idp = $(this).attr('idp');
+        var idg = $(this).attr('idg');
+        if ($(this).attr('ids')) {
+            $(this).removeClass('btn-danger');
+            $(this).addClass('btn-info');
+            $(this).html('SELECCIONAR');
+            var ids = $(this).attr('ids');
+            $(this).removeAttr('ids');
+            var idp = $(this).attr('idp');
+            eliminarpractica(idp, ids);
+        }
+        else{
+            cambiar(idd);
+            asignaturapracticas.push([idp, idg, idd]);
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "/",
+                data: {'action': 'conflictohorario', 'mispracticas': JSON.stringify(asignaturapracticas)},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        adicionar(idg)
+                    } else {
+                        eliminarpractica(idp, idg);
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    eliminarpractica(idp, idg);
+                    smoke.alert("Error al generar los datos.");
+                },
+                dataType: "json"
+            });
+        }
+    });
+
+    $('#btn-practica').click(function(){
+        bloqueointerface();
+        $.ajax({
+            type: "POST",
+            url: "/",
+            data: {'action': 'matricularpracticas', 'mispracticas': JSON.stringify(asignaturapracticas)},
+            success: function(data) {
+                if (data.result == 'ok') {
+                    location.reload();
+                } else {
+                    $.unblockUI();
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                smoke.alert("Error al enviar los datos.");
+            },
+            dataType: "json"
+        });
+    });
+
+</script>
+<div class='row-fluid' style="overflow-y: auto;height: 450px;">
+    <div class='span12'>
+        {% if tieneconflicto %}
+            <div>
+                <div class="alert alert-danger" style="text-align: justify">
+                    <h4 class="alert-heading">AVISO</h4>
+                    <p>
+                        {{ tieneconflicto|upper }}<BR>
+                        <b>No podrá seleccionar la práctica si mantiene conflicto de horario. Acercarse a su facultad para la revisión.</b>
+                    </p>
+{#                    {% if inscripcionmalla.malla.perfilegreso|contarcaracter:200 %}#}
+{#                        <a href="javascript:;" class="alert-link leer" id="nleer3" descripcion="{{ inscripcionmalla.malla.perfilegreso|linebreaksbr }}" v="3" ver="1">Leer mas</a>#}
+{#                    {% endif %}#}
+                </div>
+            </div>
+        {% endif %}
+        <div class="accordion" id="accordion2">
+            {% for materiaasignada in materiasasignadas %}
+                <div class="accordion-group">
+                    <div class="accordion-heading" style="background-color:#f0f0f0">
+                        <a style="color: black" class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseOne{{ forloop.counter}}">
+                            <span class="fa {% if forloop.first %}fa-chevron-up{% else %}fa-chevron-down{% endif %}"></span> <b>Asignatura:</b> {{ materiaasignada.materia }}
+                        </a>
+                    </div>
+                    <div id="collapseOne{{ forloop.counter}}" class="panel-collapse collapse {% if forloop.first %}in{% endif %}">
+                        <div class="accordion-inner">
+                            <div class="panel-heading" >
+                                <div id="no-more-tables"><!-- inicio no more tables-->
+                                    <table class='table table-bordered table-striped'>
+                                        <thead>
+                                        <tr>
+                                            <th style="text-align: center;">Horario</th>
+                                            <th style="text-align: center;">Grupo</th>
+                                            <th style="text-align: center">Dis.</th>
+                                            <th style="text-align: center; width: 120px">Acción</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% with datospracticas=materiaasignada.materia|args:inscripcion|call:'datos_practicas_materia' %}
+                                            {% if datospracticas.matprac %}
+                                                {% if datospracticas.disponibles > 0 %}
+                                                    {% for horario in datospracticas.horarios %}
+                                                        <tr>
+                                                            <td data-title='Horario:'>
+                                                                {% for lineahorario in horario.0|splitcadena:"<br>" %}
+                                                                    {{ lineahorario }}
+                                                                    {% if not forloop.last %}
+                                                                        <br>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </td>
+                                                            <td data-title='Grupo:' style="text-align: center">
+                                                                {% if horario.4 %}
+                                                                    <span class="label label-warning">{{ horario.4 }}</span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td data-title='Dis.:' style="text-align: center">{{ horario.2 }}</td>
+                                                            <td data-title='Acción:' style="text-align: center"><a class="selectgrupo btn btn-info" idd = '{{ materiaasignada.id|encrypt }}' idg='{{ horario.3|encrypt }}' idp='{{ horario.1|encrypt }}'>SELECCIONAR</a></td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <tr>
+                                                        <td colspan="3" style="color: red"> NO HAY CUPOS DISPONIBLES</td>
+                                                    </tr>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endwith %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

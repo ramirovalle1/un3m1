@@ -1,0 +1,424 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script>
+        $(function() {
+            $("#id_fechainicio").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fechafin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fechainicio, #id_fechafin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#fecha_dep").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#detalledificiomodal_aceptar").click(function(){
+                $("#detalledificiomodal").modal("hide");
+            });
+            busqueda = function(){
+                var term = $("#searchinput").val().trim().toUpperCase();
+                if (term.length>0){
+                    location.href = "/af_activofijo?action=tareasmantenimientolimpieza&s="+term;
+                }
+                return false;
+            };
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $(".tl").tooltip({position:"center up"});
+
+            $(".detalledificio").click(function() {
+                var id = $(this).attr("ide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'detalle_mantenimientopreven', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalledificiomodal_body").html(data.html);
+                            $("#detalledificiomodal").modal({"backdrop":"static", "width": "1200px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+            $("#adicionar").click(function () {
+                var id = $(this).attr("ide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'validar_conf'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.href = '/af_activofijo?action=addedificio';
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+            $(".reporte").click(function(){
+                $('#reporte_edificio').modal({backdrop:'static', width: '470px'}).modal('show');
+            });
+            $('.btn-cerrar').click(function (){
+                $('#reporte_edificio').modal('hide');
+            });
+
+            $('#id_reporteedificio').click(function () {
+                var fechainicio = $('#id_fechainicio').val();
+                var fechafin = $('#id_fechafin').val();
+                var cuenta = 843;
+                $("#id_reporteedificio").attr({"nhref": "/reportes?action=run&n={{ reporte_0.nombre }}&id_cuentacontable="+cuenta+"&fecha_inicio="+fechainicio+"fecha_fin="+fechafin});
+                $("#itemspanelreporte").modal('hide');
+            });
+            $("#cerrarpanel_cerrar").click(function () {
+                $("#cerrarpanel").modal("hide");
+            });
+
+            $("#cerrarpanel_depreciar").click(function () {
+                empezar_depreciacion();
+                $("#fecha_dep").attr({'disabled': 'disabled'});
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").hide();
+            });
+            function terminar(){
+                $("#cerrarpanelprogresshint").html("Finalizando Depreciación");
+                $("#progressbar").css({'width': '100%'});
+                intentos = 0;
+                $("#cerrarpanel").modal("hide");
+                bloqueointerface();
+                location.href = "/af_activofijo?action=edificios";
+            }
+            function fallo(){
+                $.unblockUI();
+                $("#cerrarpanel").modal("hide");
+                smoke.alert("Fallo al depreciar");
+                $("#fecha_dep").removeAttr('disabled');
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+            }
+            function depreciacion(lista, elemento, cantidad){
+                var edificio = lista[elemento];
+                var cp = (100 / (cantidad+1)) * elemento + '%';
+                var fecha = $("#fecha_dep").val();
+                if (elemento>cantidad){
+                    $("#cerrarpanel").modal("hide");
+                    bloqueointerface();
+                    location.href = "/af_activofijo?action=edificios";
+                } else {
+                    $("#cerrarpanelprogresshint").html(edificio.descripcion);
+                    $("#progressbar").css({'width': cp});
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "depreciandoedificio", "id": edificio.id, "fecha": fecha },
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                intentos = 0;
+                                depreciacion(lista, elemento+1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos>=100){
+                                    fallo();
+                                } else {
+                                    depreciacion(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function() {
+                            intentos += 1;
+                            if (intentos>=100){
+                                fallo();
+                            } else {
+                                depreciacion(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+            empezar_depreciacion = function () {
+                var fecha = $("#fecha_dep").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'depreciaredificio', 'fecha': fecha},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            edificios = data.edificios;
+                            cantidad = edificios.length;
+                            indice = 0;
+                            depreciacion(edificios, indice, (cantidad-1));
+                        } else {
+                            smoke.alert(data.mensaje);
+                            $("#fecha_dep").removeAttr('disabled');
+                            $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                        $("#fecha_dep").removeAttr('disabled');
+                        $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                    },
+                    dataType: "json"
+                });
+            };
+            $("#depreciar").click(function() {
+                $(".paneltitle").html($(this).attr('name_tarea'));
+                $("#itempan").modal({keyboard: false, backdrop: 'static'}).modal("show");
+            });
+            {#            conectar_reporte = function () {#}
+            {#                $("#ejecutarreport").unbind();#}
+            {##}
+            {#            };#}
+
+            conectar_reporte();
+            $(document).ready(function() {
+                var table = $('#example').DataTable({
+                    "sPaginationType": "full_numbers",
+                    "sDom": 'T<"clear">lfrtip',
+                    "paging":   false,
+                    "ordering": false,
+                    "info":     false,
+                    "searching":     false,
+                    "ordering": false,
+                    "order": [[ 0, 'asc' ]],
+                    "columnDefs": [{ "visible": false,"targets": 0 }],
+                    "drawCallback": function ( settings ) {
+                        var api = this.api();
+                        var rows = api.rows( {page:'current'} ).nodes();
+                        var last=null;
+                        api.column(0, {page:'current'} ).data().each( function ( group, i ) {
+                            if ( last !== group ) {
+                                $(rows).eq( i ).before(
+                                    '<tr class="group" ><td colspan="3" height="30" class="" bgcolor="#f1f1f1"><strong>'+group+'</strong></td></tr>'
+                                );
+                                last = group
+                            }
+                        });
+                        $('[data-toggle="tooltip"]').tooltip();
+                    }
+
+                });
+            });
+            $(".act_des_tarea").click(function () {
+                var sta = $(this).attr('sta');
+                if (sta == 1){
+                    $(".paneltitle").html('Desactivar la tarea');
+                    $("#action_titulo").html('desactivar la tarea');
+                }else{
+                    $(".paneltitle").html('Activar la tarea');
+                    $("#action_titulo").html('activar la tarea');
+                }
+                $("#name_tarea").html($(this).attr('name_tarea'));
+                $("#idt").val($(this).attr('idt'));
+                $("#itemspanelact_des_tarea").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+            $("#cerrar_act_des_tarea").click(function () {
+                $("#itemspanelact_des_tarea").modal("hide");
+            });
+            $("#btn-act_des_tarea").click(function () {
+                var id = $("#idt").val();
+                bloqueointerface();
+                $.post("/af_activofijo", {'action': 'act_des_tarea_limp','id':id}, function(data){
+                    $.unblockUI();
+                    if (data.result=='ok'){
+                        if (data.valor==1){
+                            $("#tarea_"+id).html('<i class="fa fa-check" style="color: green"></i>');
+                        } else {
+                            $("#tarea_"+id).html('<i class="fa fa-remove" style="color: red"></i>');
+                        }
+                        $("#itemspanelact_des_tarea").modal("hide");
+                    }else{
+                         smoke.alert(data.mensaje);
+                    }
+                }, "json" );
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/af_activofijo?action=garantiamantenimiento{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            <a class="btn btn-success" href="/af_activofijo?action=addtareamantenimientolimpieza"><span class="fa fa-plus " ></span> Adicionar</a>
+        </div>
+        <div class='span6' style="text-align: right">
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids %}
+                    <a href="/af_activofijo?action=tareasmantenimientolimpieza" class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" id="example">
+                <thead>
+                <tr>
+                    <th style="width: 80px; text-align: center">Tipo</th>
+                    <th>Descripción </th>
+                    <th style="text-align: center; width: 80px">Tarea activa</th>
+                    <th style="width: 50px; text-align: center">Acción</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for tareas in tareasmantenimiento %}
+                    <tr>
+                        <td>{{ tareas.grupocategoria }}</td>
+                        <td>{{ tareas.descripcion }}</td>
+                        <td style="text-align: center">
+                            <a style="width: 30px;" href="javascript:;" id="tarea_{{ tareas.id }}" class="act_des_tarea" idt="{{ tareas.id }}" name_tarea="{{ tareas.descripcion }}" {% if tareas.activo %}sta="1"{% endif %}>
+                                {% if tareas.activo %}
+                                    <span ><i style="color: green" class="fa fa-check tu" title="Desactivar tarea"></i></span>
+                                {% else %}
+                                    <span><i style="color: brown" class="fa fa-close tu" title="Activar tarea"></i></span>
+                                {% endif %}
+                            </a>
+                        </td>
+                        <td style="text-align: center">
+                            {% if not tareas.en_uso %}
+                                <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                        {#                                    {% if garantia.activofijo %}#}
+                                        <li><a  href="/af_activofijo?action=edittaremantenimientolimpieza&id={{ tareas.id|encrypt }}"><i class="fa fa-edit"></i> Editar</a></li>
+                                        {#                                    {% endif %}#}
+                                        <li><a class="eliminacionmodal tu" href="javascript:;" nhref="/af_activofijo?action=deltaremantenimientolimpieza&id={{ tareas.id }}"><i class="fa fa-remove"></i> Eliminar</a></li>
+                                    </ul>
+                                </div>
+{#                                <a class="btn btn-danger btn-mini eliminacionmodal tu" title="Eliminar" href="javascript:;" nhref="/af_activofijo?action=deltaremantenimientolimpieza&id={{ tareas.id }}"><i class="fa fa-trash"></i></a>#}
+{#                                <a class="btn btn-info btn-mini tu" title="Editar" href="/af_activofijo?action=edittaremantenimientolimpieza&id={{ tareas.id }}"><i class="fa fa-edit"></i></a>#}
+                            {% else %}
+                                <span class="label label-warning">Tarea en uso</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="11" STYLE="text-align: center">
+                            NO EXISTEN MANTENIMIENTOS REGISTRADOS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/af_activofijo?action=tareasmantenimientolimpieza&page=1{% if search %}&s={{ search }}{% endif %}">1</a></li>
+                        <li><a href="/af_activofijo?action=tareasmantenimientolimpieza&page={{ paging.ellipsis_izquierda }}{% if search %}&s={{ search }}{% endif %}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=tareasmantenimiento&page={{ pagenumber }}{% if search %}&s={{ search }}{% endif %}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/af_activofijo?action=tareasmantenimientolimpieza&page={{ paging.ellipsis_derecha }}{% if search %}&s={{ search }}{% endif %}" class="active">...</a></li>
+                        <li><a href="/af_activofijo?action=tareasmantenimientolimpieza&page={{ paging.num_pages }}{% if search %}&s={{ search }}{% endif %}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=tareasmantenimientolimpieza&page={{ pagenumber }}{% if search %}&s={{ search }}{% endif %}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="modal fade static" id="detalledificiomodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalles Mantenimiento Preventivo</h3>
+        </div>
+        <div class="modal-body" id="detalledificiomodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalledificiomodal_aceptar" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="reporte_edificio" style="width: 100px; display: none">
+        <div class="modal-header" >
+            <h4>Reporte de Edificio</h4>
+        </div>
+        <div class="modal-body">
+            <div style="height: 35px">
+                <div style="width: 80px; padding-right: 5px; float: left">
+                    Fecha Inicio:
+                </div>
+                <div>
+                    <input type="text" class="selectorfecha" id="id_fechainicio" value="{{ hoy|date:'d-m-Y' }}" style="width: 80px">
+                </div>
+            </div><br>
+            <div style="height: 35px">
+                <div style="width: 80px; padding-right: 5px; float: left">
+                    Fecha Fin:
+                </div>
+                <div>
+                    <input type="text" class="selectorfecha" id="id_fechafin" value="{{ hoy|date:'d-m-Y' }}" style="width: 80px">
+                </div>
+            </div>
+        </div>
+        <div >
+            <div class="modal-footer" id="pie_calculo">
+                <a id="id_reporteedificio" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="" class="reportedirecto btn btn-success tu"> <i class='fa fa-print'></i> Imprimir</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="reportepanel_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelact_des_tarea" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle"></h3>
+        </div>
+        <div class="modal-body panelbody">
+            <input type='hidden' name='id' id="idt" value=""/>
+            <p style="margin-top: 10px;">Esta seguro(a) que desea <span id="action_titulo"></span>: <b id="name_tarea"></b></p>
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="btn-act_des_tarea" class='btn btn-danger btn-form'> Ejecutar</a>
+                <a href="javascript:;" id="cerrar_act_des_tarea" class="btn btn-info"> Cerrar</a>
+            </p>
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+
+{% endblock %}

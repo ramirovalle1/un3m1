@@ -1,0 +1,278 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script>
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+
+        $(function(){
+            $('[data-bs-toggle="tooltip"]').tooltip();
+
+            $("#tipopersona, #persona_select2").addClass("validate[required]");
+
+            let accionbuscar = "", acciondatos = "";
+            let funcion= "{{ funcion }}";
+            let idfuncion = {{ idfuncion }};
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $('#tipopersona').change(function(){
+                limpiarCampos();
+                $("#persona_select2").val(0).trigger("change");
+                if($(this).val() == ''){
+                    $("#persona_select2").attr('disabled', true);
+                }else{
+                    $("#persona_select2").attr('disabled', false);
+                    if($(this).val() == '1'){
+                        accionbuscar = "buscarprofesor";
+                        acciondatos = "datosprofesor";
+                    }
+                    else if($(this).val() == '2'){
+                        accionbuscar = "buscaralumno";
+                        acciondatos = "datosalumno";
+                    }
+                    else{
+                        accionbuscar = "buscarexterno";
+                        acciondatos = "datosexterno";
+                        $("#btn_nuevo_externo").show();
+                    }
+                }
+            });
+
+            $("#persona_select2").attr('disabled', true);
+            $("#persona_select2").val(0).trigger("change");
+            $("#filajustificacion").hide();
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#persona_select2").select2({
+                placeholder: "-------------------------------------------",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `/pro_produccioncientifica?action=${accionbuscar}&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#auxpersona_select2").attr("idp", evt.params.data.idpersona);
+                $("#auxpersona_select2").attr("nombre", evt.params.data.nombre);
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_fgrupoinvestigacion",
+                    data: {'action': acciondatos, 'id': evt.params.data.id},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#tipo").val(data.tipo);
+                            $("#idtipo").val(data.idtipo);
+                            $("#dedicacion").val(data.dedicacion);
+                            $("#iddedicacion").val(data.iddedicacion);
+                            $("#idcoordinacion").val(data.idcoordinacion);
+                            $("#coordinacion").val(data.coordinacion);
+                            $("#aliascoordinacion").val(data.aliascoordinacion);
+                            $("#idcarrera").val(data.idcarrera);
+                            $("#carrera").val(data.carrera);
+                            $("#aliascarrera").val(data.aliascarrera);
+                            $("#idfuncion").val(idfuncion);
+                            $("#funcion").val(funcion);
+                            $("#cantgruposvigentes").val(data.cantgruposvigentes);
+                            $("#trayectoria, #justificacion").val("");
+                            $("#filiacion").val("").trigger('change');
+                            habilitarCampos();
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error de conexión")
+                    },
+                    dataType: "json"
+                });
+
+            }).on("select2:unselect", function (evt) {
+                limpiarCampos();
+            });
+
+            limpiarCampos = function (){
+                $("#btn_nuevo_externo").hide();
+                $("#idtipo, #tipo, #iddedicacion, #dedicacion, #funcion").val("");
+                $("#trayectoria, #justificacion, #cantgruposvigentes").val("");
+                $("#idcoordinacion, #coordinacion, #aliascoordinacion, #idcarrera, #carrera, #aliascarrera").val("");
+                $("#filiacion").val("").trigger('change');
+                inhabilitarCampos();
+            };
+
+            habilitarCampos = function () {
+                $("#filiacion, #trayectoria, #justificacion").prop('disabled', false);
+                $("#filiacion, #trayectoria, #justificacion").addClass("validate[required]");
+                if(parseInt($("#cantgruposvigentes").val()) < 2)
+                    $("#filajustificacion").hide();
+                else
+                    $("#filajustificacion").show();
+            }
+
+            inhabilitarCampos = function () {
+                $("#filiacion, #trayectoria, #justificacion").prop('disabled', true);
+                $("#filiacion, #trayectoria, #justificacion").removeClass("validate[required]");
+            }
+
+            $(".agregarexterno").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_fgrupoinvestigacion",
+                    data: {'action': 'addpersonaexterna'},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#itemspanelpersona").modal({backdrop:'static'}).modal('hide');
+                            $(".panelbodyagregapersonaxterna").html(data.data);
+                            $(".paneltitleagregapersonaxterna").html(data.title);
+                            $("#itemspanelagregapersonaxterna").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            limpiarCampos();
+        });
+    </script>
+{% endblock %}
+<form id="frmPersona" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    <table class="table table-bordered" >
+        <tbody>
+            <tr>
+                <td><b>Tipo Persona:</b></td>
+                <td colspan="3">
+                    <select id="tipopersona" name="tipopersona" style="width: 300px">
+                        <option value="" selected="selected">---------</option>
+                        {% for tipo in tipospersona %}
+                            <option value="{{ tipo.id }}">{{ tipo.descripcion }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Persona: <a href="javascript:;" class="btn btn-mini btn-success agregarexterno" id="btn_nuevo_externo" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Nuevo Externo"><i class="fa fa-plus"></i> </a></b><input type="hidden" id="cantgruposvigentes" name="cantgruposvigentes" value=""/><span id="auxpersona_select2"></span>
+                </td>
+                <td colspan="3">
+                    <select id="persona_select2" name="persona_select2" style="width: 100%">
+                        <option value="" selected="selected">---------</option>
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    <small class="form-text text-muted">Ingrese los apellidos o número de identificación para realizar la búsqueda.</small>
+                </td>
+            </tr>
+            <tr>
+                <td style="width: 20%;"><b>Coordinación:</b><input type="hidden" id="idcoordinacion" name="idcoordinacion" value=""/><input type="hidden" id="coordinacion" name="coordinacion" value=""/></td>
+                <td style="width: 30%;">
+                    <input type="text" autocomplete="off" id="aliascoordinacion" name="aliascoordinacion" value="" style="width: 98%;" disabled>
+                </td>
+                <td style="width: 20%;"><b>Carrera:</b><input type="hidden" id="idcarrera" name="idcarrera" value=""/><input type="hidden" id="carrera" name="carrera" value=""/></td>
+                <td style="width: 30%;">
+                    <input type="text" autocomplete="off" id="aliascarrera" name="aliascarrera" value="" style="width: 98%;" disabled>
+                </td>
+            </tr>
+            <tr id="filacategoria">
+                <td style="width: 20%;"><b>Tipo:</b><input type="hidden" id="idtipo" name="idtipo" value=""/></td>
+                <td style="width: 30%;">
+                    <input type="text" maxlength="5" autocomplete="off" id="tipo" name="tipo" value="" style="width: 98%;" disabled>
+                </td>
+                <td style="width: 20%;"><b>Dedicación:</b><input type="hidden" id="iddedicacion" name="iddedicacion" value=""/></td>
+                <td style="width: 30%;">
+                    <input type="text" maxlength="5" autocomplete="off" id="dedicacion" name="dedicacion" value="" style="width: 98%;" disabled>
+                </td>
+            </tr>
+            <tr>
+                <td style="width: 20%;"><b>Función:</b><input type="hidden" id="idfuncion" name="idfuncion" value=""/></td>
+                <td style="width: 30%;">
+                    <input type="text" maxlength="100" autocomplete="off" id="funcion" name="funcion" value="" style="width: 98%;" disabled>
+                </td>
+                <td colspan="2" style="width: 20%;">&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Filiación:</b></td>
+                <td colspan="3">
+                    <select id="filiacion" name="filiacion" style="width: 100%" disabled>
+                        <option value="" selected="selected">---------</option>
+                        {% for filiacion in filiaciones %}
+                            <option value="{{ filiacion.id }}">{{ filiacion.descripcion }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Trayectoria previa en líneas de investigación:</b></td>
+                <td colspan="3">
+                    <textarea style="width: 99%; text-transform: none;" cols="40" id="trayectoria" name="trayectoria" rows="5" disabled></textarea>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr id="filajustificacion">
+                <td><b>Justificación(de pertenecer a más de 2 grupos vigentes):</b></td>
+                <td colspan="3">
+                    <textarea style="width: 99%; text-transform: none;" cols="40" id="justificacion" name="justificacion" rows="3" disabled></textarea>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</form>

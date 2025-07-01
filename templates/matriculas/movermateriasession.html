@@ -1,0 +1,199 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function() {
+
+            $(".seleccionar").click(function () {
+                var mid = $(this).attr('mid');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/matriculas",
+                    data: {'action': 'materiapractica', 'mat': mid, 'idm': {{ matricula.id }}},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            if (data.datos.matprac) {
+                                $("#panelcontentpractica").html("<h4>" + data.datos.asignatura + "</h4><br><table class='table table-bordered table-striped' cellpadding='0' cellspacing='0'><tr><th>Horario</th><th style='width:30px;'>Disp.</th><th style='width:80px;'></th></tr><tbody id='tbody'></tbody></table>");
+                                if (data.datos.disponibles > 0) {
+                                    var presencupo = true;
+                                    if (data.datos.tipomateria == 2) {
+                                        if (data.datos.notvalihorcup) {
+                                            presencupo = false;
+                                        }
+                                    }
+                                    for (var ini in data.datos.horarios) {
+                                        var horario = data.datos.horarios[ini];
+                                        var cupo = horario[2];
+                                        if (!presencupo) {
+                                            cupo = "";
+                                        }
+                                        $("#panelcontentpractica #tbody").append("<tr><td>" + horario[0] + "</td><td style='text-align: center'>" + cupo + "</td><td style='text-align: center'><a href='javascript:;' idg='" + horario[3] + "' idp='" + horario[1] + "' mat='" + mid + "' class='btn btn-mini btn-info btn-mio selectmatpract'>Seleccionar</a></td></tr>");
+                                    }
+                                    $('.selectmatpract').unbind('click.actualizarpractica');
+                                    $('.selectmatpract').bind('click.actualizarpractica', actualizarpractica);
+                                }
+                                else {
+                                    if (data.datos.abiertas > 0) {
+                                        $("#panelcontentpractica #tbody").append("<tr><td colspan='3' style='text-align: center; color:#FF0000;'>NO EXISTEN CUPOS DISPONIBLES</td></tr>");
+                                    } else {
+                                        $("#panelcontentpractica #tbody").append("<tr><td colspan='3' style='text-align: center'>NO EXISTEN PRACTICAS PROGRAMADAS</td></tr>");
+                                    }
+                                }
+                                $(".materiasseleccionpracticamodal").modal({
+                                    backdrop: 'static',
+                                    width: '600px'
+                                }).modal('show');
+                            }
+                            else {
+                                cambiar(mid, '0');
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+
+            });
+
+            conectar_controles = function () {
+                $(".selectmatpract").unbind();
+                $(".selectmatpract").click(function () {
+                    actualizarpractica()
+                });
+            };
+
+            actualizarpractica = function () {
+                $(".materiasseleccionpracticamodal").modal('hide');
+                cambiar($(this).attr('mat'), $(this).attr('idp'), $(this).attr('idg'));
+            };
+
+            cambiar = function (mid, idp, idg) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/matriculas",
+                    data: {'action': 'movermateriasession', 'maid': '{{ materiaasignada.id }}', 'mid': mid, 'idp': idp, 'idg':idg},
+                    success: function(data) {
+                        if (data.result == 'ok') {
+                            location.href = '/matriculas?action=materias&id={{ matricula.id }}';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $(".cerrarpanelpractica").click(function () {
+                $(".materiasseleccionpracticamodal").modal('hide');
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/matriculas?action=materias&id={{ matricula.id }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>Materia: {{ matricula.inscripcion }} </h4>
+            <h5>Carrera: {{ matricula.inscripcion.carrera.nombre }}</h5>
+            <h5>Nivel: {{ matricula.nivel }}</h5>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered table-striped' >
+                <thead>
+                <tr>
+                    <th>Materias</th>
+                    <th>Horarios</th>
+                    <th style="width: 70px"> </th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for materia in materias %}
+                    <tr>
+                        <td>
+                            <b>{{ materia.nombre_completo }}</b><br/>
+                            {{ materia.nivel.coordinacion.nombre }}<br>
+                            {% if materia.nivel.carrera %}
+                                {{ materia.nivel.carrera }}
+                            {% elif materia.asignaturamalla %}
+                                {{ materia.asignaturamalla.malla.carrera }}
+                            {% endif %}
+                            <br>
+                            <span class='smaller'>{% if materia.nivel.nivelmalla %}{{ materia.nivel.nivelmalla }} - {% endif %}{{ materia.nivel.paralelo }} - {{ materia.nivel.sesion }}{% if materia.nivel.sede %}, {{ materia.nivel.sede }}{% endif %}</span><br/>
+                            <span class="smaller label label-info"> {{ materia.inicio|date:'d-m-Y' }} - {{ materia.fin|date:'d-m-Y' }}</span>
+                            {% if materia.capacidad_disponible < 0 %}
+                                <span class="smaller label label-warning">{{ materia.capacidad_sobrepasada }} - SOBR. </span>
+                            {% else %}
+                                <span class="smaller label label-info">{{ materia.capacidad_disponible }} - DISP. </span>
+                            {% endif %}
+                            {% if materia.existen_cupos_con_adicional %}
+                                <span class="smaller label label-info">{{ materia.cupos_restante_adicional }} - ADIC. </span>
+                            {% endif %}
+                            <span class="smaller label label-info">{{ materia.capcidad_total }} - TOTAL </span>
+                            {% if materia.asignaturamalla.practicas %}
+                                <span class="smaller label label-warning tu" title="Teórica/Práctica">TP</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <ul>
+                                {{ materia.profesor_principal }}
+                                {% for clase in materia.horarios_sin_practica %}
+                                    <li>
+                                        {{ clase.dia_semana }} - {{ clase.turno }} del {{ clase.inicio|date:'d-m-Y' }} al {{ clase.fin|date:'d-m-Y' }} - (Aula: {{ clase.aula.nombre }})
+                                    </li>
+                                {% empty %}
+                                    <br><span class="label label-important">NO TIENE HORARIO</span>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                        <td style="text-align: center">
+                            {% if  materia.capacidad_disponible != 0%}
+                                {% if materia.horarios_sin_practica or materia.matricular_sin_horario %}
+                                    <a  href="javascript:;" mid='{{ materia.id }}' class='btn btn-mini btn-info seleccionar'><i class="fa fa-arrow-up "></i> Mover</a>
+                                {% else %}
+                                    {% if materia.tipomateria == 2 %}
+                                        <a  href="javascript:;" mid='{{ materia.id }}' class='btn btn-mini btn-info seleccionar'><i class="fa fa-arrow-up "></i> Mover</a>
+                                    {% endif %}
+                                {% endif %}
+                            {% else %}
+                                <a   class='btn btn-mini btn-warning'><i class="fa fa-times "></i> Materia sin cupo</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td COLSPAN="3" STYLE="text-align: center">NO HAY EXISTE MATERIAS PROGRAMADAS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static materiasseleccionpracticamodal" style="display: none;">
+        <div class="modal-header">
+            <h4>Seleccione horario practica</h4>
+        </div>
+        <div class="modal-body" style="overflow: scroll;">
+            <div id="panelcontentpractica">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn cerrarpanelpractica">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

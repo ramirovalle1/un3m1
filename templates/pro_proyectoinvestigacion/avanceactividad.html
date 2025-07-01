@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+{#    <link rel="stylesheet" href="/static/css/bloques.css">#}
+{#    <link rel="stylesheet" href="/static/css/stylesfc.css">#}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode === 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            busqueda = function () {
+                let desde = $("#desde").val();
+                let hasta = $("#hasta").val();
+                let estado = $("#estado").val();
+                let term = $("#searchinput").val().toUpperCase().trim();
+                let criterios = `desde=${desde}&hasta=${hasta}&estadoid=${estado}`;
+                if (term.length > 0){
+                    criterios = criterios + `&s=${term}`
+                }
+                location.href = `/adm_gestiondato?action=solicitudes&${criterios}`
+            };
+
+            $(".informacionsolicitud").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_gestiondato",
+                    data: {'action': 'informacionsolicitud', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleinformacionsolicitud").html(data.title);
+                            $(".panelbodyinformacionsolicitud").html(data.data);
+                            $("#itemspanelinformacionsolicitud").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".gestionarsolicitud").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_gestiondato",
+                    data: {'action': 'gestionarsolicitud', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitlegestionarsolicitud").html(data.title);
+                            $(".panelbodygestionarsolicitud").html(data.data);
+                            $("#itemspanelgestionarsolicitud").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            if(data.swalType === 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelgestionarsolicitud .guardar").click(function () {
+                enviarFormulario("/adm_gestiondato", "gestionarsolicitud");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action === 'gestionarsolicitud'){
+                    $("#frmGestionarSolicitud").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmGestionarSolicitud").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'firmaractareunion'){
+                    $("#frmFirmarDocumento").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFirmarDocumento").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'gestionarsolicitud')
+                        formdata = new FormData($("#frmGestionarSolicitud")[0]);
+                    else if(action === 'firmaractareunion')
+                        formdata = new FormData($("#frmFirmarDocumento")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                if(action === 'firmaractareunion')
+                                    urlDestino = `/adm_gestiondato?action=solicitudes&ida=${data.ida}`;
+                                else
+                                    urlDestino = `/adm_gestiondato?action=solicitudes`;
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".firmardocumento").click(function() {
+                let id = $(this).attr('id');
+                let idper = $(this).attr('idper');
+                let tipofirma = $(this).attr('tipofirma');
+                let accion = $(this).attr('acc');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_gestiondato",
+                    data: {'action': accion, 'id': id, 'idper': idper, 'tipofirma': tipofirma},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyfirmardocumento").html(data.data);
+                            $(".paneltitlefirmardocumento").html(data.title);
+                            $("#itemspanelfirmardocumento").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelfirmardocumento .guardar").click(function () {
+                enviarFormulario("/adm_gestiondato", "firmaractareunion");
+                return false;
+            });
+
+            {% if acuerdo %}
+                Fancybox.show([
+                    {
+                        src: "{{ acuerdo }}",
+                        width: 2048,
+                        height: 1365,
+                        caption:"{{ tipoacuerdo }}"
+                    }
+                ]);
+            {% endif %}
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?action=cronograma&id={{ proyecto.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Proyecto: {{ proyecto.titulo }} | Director: {{ proyecto.profesor.persona.nombre_completo_inverso }}</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# FILA DE MENÚ #}
+        <div class='row'>
+            <div class="col-sm-12 pb-2">
+                {% if puedeagregar %}
+                    <a href="/pro_proyectoinvestigacion?action=addavanceactividad&idp={{ proyecto.id|encrypt }}" class='btn btn-success' data-bs-toggle="tooltip" title="Agregar Avance"><span class="fa fa-plus" ></span> Agregar</a>
+                {% endif %}
+                <div class="btn-group">
+                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item" href="/pro_proyectoinvestigacion?action=cronograma&id={{ proyecto.id|encrypt }}"><i class="fa fa-tasks"></i>&nbsp;Cronograma</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# FILA DE MENÚ #}
+        {# FILA DE FILTROS #}
+{#        <div class="form-row pb-0 pt-0">#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="desde"><i class="fa fa-calendar tu" title="Solicitud recibida desde"></i> Desde:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="date" class="form-control" name="desde" id="desde" value="{% if desde %}{{ desde|date:"Y-m-d" }}{% endif %}"/>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="hasta"><i class="fa fa-calendar tu" title="Solicitud recibida hasta"></i> Hasta:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="date" class="form-control" name="hasta" id="hasta" value="{% if hasta %}{{ hasta|date:"Y-m-d" }}{% endif %}"/>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="estado"><i class="fa fa-traffic-light tu" title="Estado"></i> Estado:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <select id="estado" name="estado">#}
+{#                    <option value="0" selected>Todos</option>#}
+{#                    {% for estado in estados %}#}
+{#                        <option {% if estado.valor == estadoid %}selected{% endif %} value="{{ estado.valor }}">{{ estado.descripcion|title }}</option>#}
+{#                    {% endfor %}#}
+{#                </select>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-12 col-md-5 col-lg-6 pe-md-2">#}
+{#                <label for="searchinput"><i class="fa fa-search"></i> Criterio:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="text" class="form-control" autocomplete="off" placeholder="Apellidos del profesor" aria-label="Buscar" id='searchinput' name="searchinput" value="{{ s }}">#}
+{#                    <div class="input-group-append">#}
+{#                        <button class="btn btn-primary-old" id="search" type="button"><i class="fa fa-search tu" title="Buscar"></i></button>#}
+{#                        {% if url_vars %}#}
+{#                            {% if s or desde or hasta or estadoid %}#}
+{#                                <a title="Ver todo" href="{{ request.path }}?action=solicitudes" class="btn btn-default tr"><i class="fas fa-sync-alt"></i></a>#}
+{#                            {% endif %}#}
+{#                        {% endif %}#}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+        {# FILA DE FILTROS #}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table_primary table-striped'>
+                        <thead>
+                            <tr>
+                                <th style="width: 2%;" class="text-center">N°</th>
+                                <th style="width: 8%;" class="text-center">Año</th>
+                                <th style="width: 8%;" class="text-center">Mes</th>
+                                <th style="width: 8%;" class="text-center">Inicio</th>
+                                <th style="width: 8%;" class="text-center">Fin</th>
+                                <th style="width: 8%;" class="text-center">% Anterior</th>
+                                <th style="width: 8%;" class="text-center">E. Anterior</th>
+                                <th style="width: 8%;" class="text-center">% Actual</th>
+                                <th style="width: 8%;" class="text-center">E. Actual</th>
+                                <th style="width: 37%;" class="text-center">Observaciones</th>
+                                <th style="width: 5%;" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for avanceactividad in avances %}
+                                <tr>
+                                    <td class="text-center align-middle">{% contador_lista page forloop.counter %}</td>
+                                    <td class="text-center">{{ avanceactividad.inicio.year }}</td>
+                                    <td class="text-center">{{ avanceactividad.inicio.month|nombremes|title }}</td>
+                                    <td class="text-center">
+                                        <p>{{ avanceactividad.inicio|date:"d-m-Y" }}</p>
+                                    </td>
+                                    <td class="text-center">
+                                        <p>{{ avanceactividad.fin|date:"d-m-Y" }}</p>
+                                    </td>
+                                    <td class="text-center">
+                                        <p>{{ avanceactividad.avanceanterior|floatformat:2 }}</p>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="text-{{ avanceactividad.color_estado_anterior }}">{{ avanceactividad.get_estadoanterior_display|title }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <p>{{ avanceactividad.avanceactual|floatformat:2 }}</p>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="text-{{ avanceactividad.color_estado_actual }}">{{ avanceactividad.get_estadoactual_display|title }}</span>
+                                    </td>
+                                    <td class="text-justify">
+                                        <p>{{ avanceactividad.observacion }}</p>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <div class="dropbottom" style="text-align: left">
+                                            <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                            <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                <li class="dropdown-item"><a href="/pro_proyectoinvestigacion?action=editavanceactividad&id={{ avanceactividad.id|encrypt }}"><i class="fa fa-edit"></i> Editar</a></li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr><td style="text-align: center" colspan="10">No existen registros de avances de actividades del proyecto</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelinformacionsolicitud" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-list-alt"></i>&nbsp;<span class="paneltitleinformacionsolicitud">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyinformacionsolicitud">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelgestionarsolicitud" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-check-square-o"></i>&nbsp;<span class="paneltitlegestionarsolicitud">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodygestionarsolicitud">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelfirmardocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-signature"></i>&nbsp;<span class="paneltitlefirmardocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyfirmardocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Firmar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{#    <div class="modal fade static"  id="itemspaneladdsolicitud" style="display: none;">#}
+{#        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">#}
+{#            <div class="modal-content">#}
+{#                <div class="modal-header">#}
+{#                    <h4><i class="fa fa-plus"></i>&nbsp;<span class="paneltitleaddsolicitud">Mostrar Recorrido de la Convocatoria</span></h4>#}
+{#                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">#}
+{#                    </button>#}
+{#                </div>#}
+{#                <div class="modal-body panelbodyaddsolicitud">#}
+{##}
+{#                </div>#}
+{#                <div class="modal-footer" id="footermodal">#}
+{#                    <button type="button" class="btn btn-success guardar"> Guardar</button>#}
+{#                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+{#    </div>#}
+
+{% endblock %}

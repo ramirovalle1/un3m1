@@ -1,0 +1,281 @@
+{% extends "ajaxform.html" %}
+{% block extraheading %}
+    <style>
+        #contenido .table thead th {
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        hr {
+            margin: 3px 0px 3px 0px;
+            color: #F0F0F0;
+        }
+
+        .title {
+            border-radius: 0.25rem;
+            border-left: 4px solid #e9ecef;
+            line-height: 21px;
+            font-size: 20px;
+            margin-bottom: 10px;
+            margin-left: 12px;
+            border-left-color: #1c3247;
+        }
+
+    </style>
+    <script type="text/javascript">
+
+        // Función para insertar un registro en el backend y mostrar la respuesta
+        function insertarEnBackend(registro) {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    type: 'POST',
+                    url: '/niveles',
+                    data: registro,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: function(data) {
+                        let id = registro.get('asignaturamalla');
+                        let template = $('#template-to-render').html();
+                        template = template.replace('${data.asignatura}', data.asignatura).replace('${data.mensaje}', data.mensaje);
+
+                        if (data.result === 'ok') {
+                            if (data.error) {
+                                template = template.replace('${data.icon}', 'fa-exclamation-triangle text-danger').replace('${data.color}', 'text-warning');
+                            } else{
+                                template = template.replace('${data.icon}', 'fa-check text-success').replace('${data.color}', 'text-black-50');
+                            }
+
+                            $('#template-to-response').append(template);
+                            $('#template-to-response .title').show('slow');
+
+                            debugger;
+
+                            data.count && $('#subject-created-'+id).html(data.count);
+                        } else {
+                            $('#template-to-response-message').append(data.mensaje);
+                            if (data.form) {
+                                data.form.forEach(function (val, indx) {
+                                    var keys = Object.keys(val);
+                                    keys.forEach(function (val1, indx1) {
+                                        $("#id_" + val1).addClass("is-invalid");
+                                        $("#errorMessage" + val1).html(val[val1]);
+                                        console.log(val[val1])
+                                    });
+                                });
+                            }
+                        }
+
+                        console.log('Respuesta del backend para el registro', registro, ':', data);
+                        resolve();
+                    },
+                    error: function(error) {
+                        console.error('Error al enviar el registro', registro, ':', error);
+                        reject();
+                    }
+                });
+            });
+        }
+
+        // Función para insertar los registros en el backend con un lapso de espera entre cada inserción
+        function insertarRegistros() {
+            let registros = $("#seleccionados").val().split(',');
+            var promesa = Promise.resolve(); // Promesa inicial resuelta
+            registros.forEach(function(registro, indice) {
+                let formdata = new FormData($("#formulario")[0]);
+                formdata.append('asignaturamalla', registro);
+                promesa = promesa.then(function() {
+                  return new Promise(function(resolve) {
+                    setTimeout(function() {
+                        resolve();
+                    }, 200);
+                  });
+                }).then(function() {
+                    progress(((indice + 1) / registros.length) * 100);
+                    return insertarEnBackend(formdata);
+                });
+            });
+
+          // Al finalizar todas las inserciones
+            promesa.then(function() {
+                console.log('Inserciones completadas');
+            }).catch(function() {
+                console.error('Error en una o más inserciones');
+            });
+        }
+
+        const progress = (p) => {
+            $('#progressbar').attr({'aria-valuenow': p, 'style': `width: ${p}%;`});
+            $('#progressbar-value').html(p + '%');
+        }
+
+        $(function() {
+            $('#formbutton').unbind();
+
+            $('#formbutton').click(function () {
+                $.unblockUI();
+                $('.is-invalid').removeClass('is-invalid')
+                var valid = $("form").validationEngine('validate');
+                if (valid){
+                    $("#itemspanel").modal({backdrop: 'static', width: '90%'}).modal('show').on('hidden.bs.modal', function (e) {
+                        $('#template-to-response').empty();
+                        {#bloqueointerface();#}
+                        {#location.reload();#}
+                    });
+                    progress(0);
+                    insertarRegistros();
+                }else{
+                    setTimeout(function () {
+                        $('.help-text').each(function () {
+                            var field = $(this);
+                            if (field.attr('alert')) {
+                                field.html(field.attr('alert'));
+                            } else {
+                                field.html('');
+                            }
+                        });
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            $('.headtitle').addClass('ms-0');
+
+            $("#id_modelo, #id_paralelo").addClass("validate[required]");
+
+            verificar=function(){
+                var x = $("#seleccionados").val();
+                if ( x == 0){
+                    $("#formbutton").hide();
+                }else{
+                    $("#formbutton").show();
+                }
+            };
+
+            actualizar_lista = function(){
+                var selected = [];
+                $('.selector').each(function() {
+                    if  ($(this).is(":checked")) {
+                        selected.push($(this).attr('id'));
+                    }
+                });
+                $("#seleccionados").val(selected);
+                verificar();
+            };
+
+            todos = function(){
+                if ($('#todos').is(":checked")){
+                    $(".selector").prop('checked', true);
+                } else{
+                    $(".selector").removeAttr('checked');
+                }
+                actualizar_lista();
+            };
+
+            materias = function(){
+                var id = $("#id_malla").val();
+                if (id==0){
+                    $("#contenido").html('');
+                    actualizar_lista();
+                } else {
+                    {#bloqueointerface();#}
+                    $.get("/niveles", {'action': 'materiasmalla', 'mid': id, 'nmid': '{{ nivelmallaid }}'}, function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#contenido").html(data.segmento);
+                            $(".selector").click(function () {
+                                actualizar_lista();
+                            });
+                            $("#todos").click(function () {
+                                todos();
+                            });
+                            actualizar_lista();
+                        } else {
+                            $("#contenido").html('');
+                            $("#id_malla").val(0).trigger("change");
+                            smoke.alert(data.mensaje);
+                        }
+                    }, "json");
+                }
+            };
+
+            $("#id_malla").change(function() {
+                materias();
+            });
+
+            verificar();
+            materias();
+        });
+
+        {% block validaciones %}
+
+        {% endblock %}
+
+    </script>
+{% endblock %}
+{% block atras %}/niveles?action=materias&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formwidth %}{% endblock %}
+{% block form-type %}form-horizontal{% endblock %}
+{% block formdestination %}/niveles?action=materias&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block formaction %}/niveles{% endblock %}
+{% block antesguardar %}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addmateriamalla'/>
+    <input type='hidden' name='nid' id='nid' value='{{ nivel.id }}'/>
+    <input type='hidden' name='seleccionados' id="seleccionados" value='0'/>
+    <input type='hidden' name='mallaid' id="mallaid" value='{{ mallaid }}'/>
+{% endblock %}
+{% block formsuffix %}
+    <div id="contenido"></div>
+
+    <div class="modal fade static" id="itemspanel" style="">
+            <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content" style="border-radius: 20px!important;">
+                    <div class="modal-header border-0">
+                        <h4 class="ps-2">DISTRIBUTIVO DE MODULOS Y PARALELOS</h4>
+                        <button type="button" class="btn btn-icon btn-md btn-cian-secondary rounded-circle mt-1 me-1" data-bs-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div>
+                                    <div class="ps-2 pe-3">
+                                        <div class="progress progress-tooltip" style="height: 8px;">
+                                            <div id="progressbar" class="progress-bar bg-success" role="progressbar" style="width: 1%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                                <i id="progressbar-value" style="font-size: 8px;">0%</i>
+                                            </div>
+                                        </div>
+                                        <br>
+                                    </div>
+                                    <div id="template-to-render" style="display: none">
+                                        <div class="title ps-1" style="display: none">
+                                            <h6 class="texto-blue" style="padding-bottom: 0;margin-bottom: 0;">
+                                                <div class="d-flex justify-content-between">
+                                                    <span>${data.asignatura}</span>
+                                                    <span class="pe-3"><i class="fa ${data.icon}"></i></span>
+                                                </div>
+                                                <span class="${data.color}"  style="font-size: 10px">${data.mensaje} <i class="fa fa-commenting-o" aria-hidden="true"></i></span>
+                                            </h6>
+                                        </div>
+                                    </div>
+                                    <div id="template-to-response"></div>
+                                    <div id="template-to-response-message" class="px-2" style="color:red"></div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer border-0" id="footermodal">
+                        <div style="float: right">
+{#                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">&times; Cerrar </button>#}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+{% block formback %}/niveles?action=materias&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

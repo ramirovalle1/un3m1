@@ -1,0 +1,208 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block atras %}/adm_laboratorioscomputacion?action=viewcronograma{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_laboratorioscomputacion{% endblock %}
+{% block formdestination %}/adm_laboratorioscomputacion?action=viewcronograma{% endblock %}
+{% block formback %}/adm_laboratorioscomputacion?action=viewcronograma{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formextra %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type='hidden' name='id' value="{{ filtro.id|encrypt }}"/>
+{% endblock %}
+{% block formpreffix %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                No ha seleccionado ninguno, por favor elija uno.
+            </div>
+            <div class="alert alert-danger" id="alertasalida" style="display: none;">
+                Este registro ya se encuentra en la lista
+            </div>
+            <div class="table-responsive">
+                <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                    <thead class="table-head table-light">
+                    <th style="text-align: center;">Aula/Bloque</th>
+                    <th style="text-align: center;">Reservado por</th>
+                    <th style="text-align: center;">Fecha de Inicio</th>
+                    <th style="text-align: center;">Fecha de Fin</th>
+                    <th style="text-align: center;">Día</th>
+                    <th style="text-align: center;">Hora Inicio</th>
+                    <th style="text-align: center;">Hora Fin</th>
+                    <th style="text-align: center;">¿Inactivar?
+                        <input class="activo" type="checkbox">
+                    </th>
+                    </thead>
+                    <tbody id="itemsbody" class="datatable">
+                    <tr>
+                        {% for dt in det %}
+                            <tr id='fila_{{ det.id|encrypt }}'>
+                                    <td style='text-transform: uppercase;text-align: center'> {{ dt.horario.aula.nombre }} - {{ dt.horario.aula.bloque }}</td>
+                                    <td style='text-transform: uppercase;text-align: center'> {{ dt.inicio|date:'d/m/Y' }}</td>
+                                    <td style='text-align: center'>{{ dt.fin|date:'d/m/Y' }}</td>
+                                    <td style='text-align: center'>{{ dt.get_dia_display }}</td>
+                                    <td style='text-align: center'>{{ dt.comienza|date:'H:i' }}</td>
+                                    <td style='text-align: center'>{{ dt.termina|date:'H:i' }}</td>
+                                    {% if dt.inactivo %}
+                                        <td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-success eliminaritem' title='Sí' idd='{{ dt.id|encrypt }}' idceck=true ><i class='fa fa-check'></i></a></td>
+                                    {% else %}
+                                        <td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem' title='No' idd='{{ dt.id|encrypt }}' idceck=false ><i class='fa fa-remove'></i></a></td>
+                                    {% endif %}
+                            </tr>
+                        {% empty %}
+                        <td colspan="6">No hay registros.</td>
+                        {% endfor %}
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function () {
+
+            {# Activa o desactiva el check seleccionado #}
+            $('.eliminaritem').click(function () {
+                var id = $(this).attr("idd");
+                var check = $(this).attr("idceck");
+                if (check == "true") {
+                    check = false
+                    $("#fila_" + id);
+                    $(this).attr('class', 'btn btn-tini btn-danger eliminaritem')
+                    $(this).attr('idceck', check)
+                    $(this).removeAttr("title");
+                    $(this).attr('title', 'No')
+                    var ihijo = $(this).parent().find('i')
+                    ihijo.attr('class', 'fa fa-remove');
+                } else {
+                    check = true
+                    $("#fila_" + id);
+                    $(this).attr('class', 'btn btn-tini btn-success eliminaritem')
+                    $(this).attr('idceck', check)
+                    $(this).removeAttr("title");
+                    $(this).attr('title', 'Sí')
+                    var ihijo = $(this).parent().find('i')
+                    ihijo.attr('class', 'fa fa-check');
+                }
+                actualizar_lista();
+            });
+
+            {# Activa todos los check #}
+            $('.activo').click(function () {
+                var check = $(this).is(':checked');
+                if (check == true) {
+                    $(".eliminaritem").attr('class', 'btn btn-tini btn-success eliminaritem').empty().append("<i class='fa fa-check'></i>").attr('idceck', 'true');
+                    $(".eliminaritem").attr('idceck', true);
+                    $(this).attr('title', 'Sí')
+                } else {
+                    $(".eliminaritem").attr('class', 'btn btn-tini btn-danger eliminaritem').empty().append("<i class='fa fa-remove'></i>").attr('idceck', 'false');
+                    $(".eliminaritem").attr('idceck', false);
+                    $(this).attr('title', 'No')
+                }
+                actualizar_lista();
+            });
+        });
+
+        $(document).ready(function () {
+            $('#id_fini,#id_ffin').change(function () {
+                var fini = $('#id_fini').val();
+                var ffin = $('#id_ffin').val();
+                if(ffin<fini){
+                    NotificationJG.warning('La fecha fin debe ser mayor que la fecha de inicio!');
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: 'GET',
+                    url: '{{ request.path }}',
+                    data: {
+                        action: 'verificarreservaciones',
+                        fini: fini,
+                        ffin: ffin
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result) {
+                            var tdbor = ""
+                            $("#itemsbody").empty();
+                            for (da of data.data) {
+                                if((da[6] === 'true')){
+                                    tdbor = "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-success eliminaritem ' title='Sí' idd='" + da[0] + "' idceck=true ><i class='fa fa-check'></i></a></td>"
+                                } else {
+                                    tdbor = "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem ' title='No' idd='" + da[0] + "' idceck=false ><i class='fa fa-remove'></i></a></td>"
+                                }
+                                $("#itemsbody").append("<tr id='fila_" + da[0] + "' >" +
+                                    "<td style='text-transform: uppercase;text-align: center'>" + da[7] + "</td>" +
+                                    "<td style='text-transform: uppercase;text-align: center'>" + da[8] + "</td>" +
+                                    "<td style='text-transform: uppercase;text-align: center'>" + da[1] + "</td>" +
+                                    "<td style='text-align: center'>" + da[2] + "</td>" +
+                                    "<td style='text-align: center'>" + da[3] + "</td>" +
+                                    "<td style='text-align: center'>" + da[4] + "</td>" +
+                                    "<td style='text-align: center'>" + da[5] + "</td>" +
+                                    tdbor+
+                                    "</tr>");
+                                $(".eliminaritem").unbind("click.eliminarItem");
+                                $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+
+                                actualizar_lista();
+                            }
+                        } else {
+                            actualizar_lista();
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        actualizar_lista();
+                        $.unblockUI();
+                        NotificationJG.error('Error de con');
+                    },
+                    dataType: 'json'
+                });
+            });
+            eliminarItem = function () {
+                var id = $(this).attr("idd");
+                var check = $(this).attr("idceck");
+                if (check == "true") {
+                    check = false
+                    $("#fila_" + id);
+                    $(this).attr('class', 'btn btn-tini btn-danger eliminaritem ')
+                    $(this).attr('idceck', check)
+                    $(this).removeAttr("title");
+                    $(this).attr('title', 'No')
+                    var ihijo = $(this).parent().find('i')
+                    ihijo.attr('class', 'fa fa-remove');
+                } else {
+                    check = true
+                    $("#fila_" + id);
+                    $(this).attr('class', 'btn btn-tini btn-success eliminaritem ')
+                    $(this).attr('idceck', check)
+                    $(this).removeAttr("title");
+                    $(this).attr('title', 'Sí')
+                    var ihijo = $(this).parent().find('i')
+                    ihijo.attr('class', 'fa fa-check');
+                }
+
+                actualizar_lista();
+            };
+
+            actualizar_lista = function () {
+                lista_items1 = [];
+                $(".eliminaritem").each(function () {
+                    var item = {
+                        id: $(this).attr("idd"),
+                        check: $(this).attr("idceck")
+                    };
+                    lista_items1.push(item);
+                });
+            };
+            actualizar_lista();
+            if('{{ action }}' == 'editcronograma'){
+                $('#id_fini').trigger('change');
+            }
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript" src="/static/js/bootstrap-filestyle.min.js?v=1.0.0"> </script>
+    <link type='text/css' rel='stylesheet' href="/static/chosen/chosen.css?v=1.3.0"/>
+    <link type='text/css' rel='stylesheet' href="/static/chosen/ImageSelect.css?v=1.0.0"/>
+    <script type="text/javascript" src="/static/chosen/chosen.jquery.js?v=1.0.0"> </script>
+    <script type="text/javascript" src="/static/chosen/ImageSelect.jquery.js?v=1.0.0"> </script>
+    <script type="text/javascript">
+
+        function recalculapromediodesempeno (){
+            var sumadesempeno = 0
+            var vecesdesempeno = 0
+            $(".promediodesempeno").each(function(){
+                vecesdesempeno ++;
+                var codindicador = $(this).attr("codindicador")
+                var vecesacti = $(this).attr("vecesacti")
+
+                var numeronocalcula = 0
+                $(".cumplimiento"+codindicador).each(function(){
+                    idrubri = $(this).attr("idrubri")
+                    if (idrubri ==3 || idrubri ==2){
+                        numeronocalcula ++;
+                    }
+                });
+                if (vecesacti==numeronocalcula){
+                    vecesdesempeno --;
+                }else{
+                    valordesempeno = $("#id_desempeno"+codindicador).val()
+                    sumadesempeno = sumadesempeno + parseFloat(valordesempeno)
+                }
+
+            });
+            id_totaldesempeno = Math.round((sumadesempeno / vecesdesempeno) * 100) / 100;
+            if(isNaN(id_totaldesempeno)){
+                $("#id_totaldesempeno").html('-')
+            }else{
+                $("#id_totaldesempeno").html(id_totaldesempeno)
+            }
+            {#INICIO CALCULA CUMPLIMIENTO OBJETIVO OPERATIVO#}
+            var sumacumplimiento = 0
+            var vecesobjetivo = 0
+            var listamatrizpendiente = ''
+            $(".recorridoobjetivo").each(function(){
+                var codigoobjetivo = $(this).attr("codigoobjetivo")
+                var sumaaplica = 0;
+                $(".recorridoporindicador"+codigoobjetivo).each(function(){
+                    var numeroactividad = $(this).attr("numeroactividad")
+                    var codiindi = $(this).attr("codiindi")
+                    var sumapendiente = 0;
+                    {#alert(codiindi)#}
+                    $(".cumplimiento"+codiindi).each(function(){
+                        idrubri = $(this).attr("idrubri")
+                        if (idrubri == 3){
+                            sumapendiente ++;
+                        }
+                    });
+                    if(numeroactividad == sumapendiente){
+                        listamatrizpendiente += codiindi + ','
+                    }
+                    var codigocalculofinal = $("#idcalculofinal"+codiindi).val()
+                    if (codigocalculofinal==1){
+                        sumaaplica ++;
+                    }
+                });
+                $("#id_indicadores").val(listamatrizpendiente)
+                if (sumaaplica>0){
+                    vecesobjetivo ++;
+                    $("#id_noaplica"+codigoobjetivo).val(0)
+                    sumacumplimiento = sumacumplimiento +  parseFloat($("#id_cumplimientoobjoperativo"+codigoobjetivo).val())
+                }else{
+                    $("#id_noaplica"+codigoobjetivo).val(1)
+                }
+            });
+            listamatrizpendiente = listamatrizpendiente.substring(0, listamatrizpendiente.length-1);
+            {#alert(listamatrizpendiente)#}
+            id_cumplimientoobjoperativo = Math.round((sumacumplimiento / vecesobjetivo) * 100) / 100;
+            if(isNaN(id_cumplimientoobjoperativo)){
+                $("#id_totalobjetivo").html('-')
+            }else{
+                $("#id_totalobjetivo").html(id_cumplimientoobjoperativo)
+            }
+            {#FIN CALCULA CUMPLIMIENTO OBJETIVO OPERATIVO#}
+        }
+
+        function saveresultados(codigoindi,codigooperativo) {
+            bloqueointerface();
+            $(".recorrido"+codigooperativo).each(function(){
+                var cod_indi = $(this).attr("codindi")
+                var coddetmatrizvaloracion = $(this).attr("coddetmatriz")
+                var id_observacion = $("#id_observacion"+cod_indi).val()
+                var id_recomendacion = $("#id_recomendacion"+cod_indi).val()
+                $.ajax({
+                    type: "POST",
+                    url: "/poa_revisaevidencia",
+                    data: {'action': 'actualizaresultadosevaluacion', 'iddetmatrizvaloracion': coddetmatrizvaloracion,'cod_observacion':id_observacion,'cod_recomendacion':id_recomendacion },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            {#location.href = "/poa_revisaevidencia?action=matrizvaloracionpoa&evaluacionperiodo={{ evaluacionperiodo.id }}&idd={{ departamento.id }}&idp={{ evaluacionperiodo.periodopoa.id }}";#}
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        }
+
+        function imprimirinforme(){
+            totalpromediodesempeno = $("#id_totaldesempeno").html()
+            id_totalobjetivo = $("#id_totalobjetivo").html()
+            var listamatriz = ''
+            var listamatrizdesem = $("#id_indicadores").val()
+            $(".listanoaplica").each(function(){
+                var validanoaplica = $(this).val()
+                var codiobje = $(this).attr("codiobje")
+                if (validanoaplica==1){
+                    listamatriz += codiobje + ','
+                }
+            });
+            listamatriz = listamatriz.substring(0, listamatriz.length-1);
+            openwindow('POST' ,'/poa_revisaevidencia', {action:'informematrizevaluacion_pdf',idd:{{ departamento.id }},idevaluacionperiodo:{{ evaluacionperiodo.id }},totalpromediodesempeno: totalpromediodesempeno,id_totalobjetivo: id_totalobjetivo,listamatriz: listamatriz,listamatrizdesem: listamatrizdesem }, '_blank');
+        }
+        function updateinforme(){
+            bloqueointerface();
+            totalpromediodesempeno = $("#id_totaldesempeno").html()
+            id_totalobjetivo = $("#id_totalobjetivo").html()
+            location.href = "/poa_revisaevidencia?action=actualizarmatrizarchivo&idmatriz={{ matriz.id }}&totalpromediodesempeno="+totalpromediodesempeno+"&id_totalobjetivo="+id_totalobjetivo;
+        }
+        $(function() {
+            $(".generarinforme").click(function() {
+                $("#itemspanelgenerainforme").modal({backdrop:'static', width: '600px'}).modal('show');
+
+            });
+            $("#informe_generar").click(function () {
+                bloqueointerface();
+                $.post("/poa_revisaevidencia", {'action':'generarinforme', 'idmatrizpoa': {{ matriz.id }}}, function(data) {
+                    if (data.result == 'ok') {
+                        {#$.unblockUI();#}
+                        location.reload();
+                        $("#itemspanelgenerainforme").modal("hide");
+                    }else{
+                        mensajeWarning(data.mensaje);
+                    }
+                }, 'json');
+            });
+            $("#informe_cancel").click(function () {
+                $("#itemspanelgenerainforme").modal("hide");
+            });
+            {#$(".listaindicador").each(function(){#}
+            {#    var codiindicador = $(this).attr("codiindicador")#}
+            {#    alert(codiindicador)#}
+            {# });#}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/poa_revisaevidencia?action=periodosevaluacion&idd={{ departamento.id }}&idc=0&idp={{ periodopoa.id }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h4>{{ title }}</h4>
+                <h6>{{ departamento }}</h6>
+                <h6>Periodo: {{ periodopoa.descripcion }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            {% if generarinforme %}
+                <div class='alert alert-danger' style="text-align: justify">
+                    Para imprimir el informe con su código correspondiente, deberá dar clic en "Generar código informe", caso contrario el archivo pdf se vizualizará solo como ejemplo.
+                </div>
+            {% endif %}
+            <div class="col-12 pb-2">
+                {% if generarinforme %}
+                    <a href="javascript:;" onclick="imprimirinforme()" class='btn btn-mini btn-warning'><span class="fa fa-file-pdf-o " ></span> Ver informe vista previa</a>
+                {% else %}
+                    {% if not matrizarchivo.archivo %}
+                        <a href="javascript:;" onclick="imprimirinforme()" class='btn btn-mini btn-info'><span class="fa fa-file-pdf-o " ></span> Ver informe</a>
+                    {% endif %}
+                {% endif %}
+                {% if mostrargenerar %}
+                    {% if generarinforme %}
+                        <a href="javascript:;" id="itemsadicionarobj" class="btn btn-success btn-mini generarinforme" ide="q"><i class="fa fa-retweet"></i> Generar código informe</a>
+                    {% endif %}
+                {% endif %}
+                {% if not generarinforme %}
+                    {% if not matrizarchivo.archivo %}
+                        <a href='#' onclick="updateinforme()" class="btn btn-success btn-mini" ide="q"><i class="fa fa-upload"></i> Actualizar o subir informe</a>
+                    {% else %}
+                        {% if matrizarchivo.archivo %}
+                            <a href="{{ matrizarchivo.download_link }}" target="_blank" class='btn btn-success btn-mini'><i class="fa fa-check"></i> Informe firmado</a>
+                        {% endif %}
+                    {% endif %}
+                    <strong>INFORME #</strong> {{ matrizarchivo.numeroinforme }} <strong>FECHA DE INFORME</strong> {{ matrizarchivo.fecha|date:"Y-m-d" }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <input type="hidden" id="id_indicadores" name="id_indicadores" value="0">
+                <table class='table table-bordered'>
+                    {% for doc in documento %}
+                        <thead class="table-light">
+                        <tr>
+                            <th colspan="8" style="text-align: left; font-weight: bold;width: 400px">
+                                EJE ESTRATÉGICO: {{ doc.programa.nombre }}<br>
+                                OBJETIVO ESTRATÉGICO: {{ doc.descripcion }}
+                            </th>
+                        </tr>
+                        {#                <tr>#}
+                        {#                    <th colspan="8" style="text-align: center; font-weight: bold;"></th>#}
+                        {#                </tr>#}
+                        <tr>
+                            <th style="text-align: center; font-weight: bold;">Objetivo Operativo</th>
+                            <th style="text-align: center; font-weight: bold;">Indicador</th>
+                            <th style="text-align: center; font-weight: bold;">Actividad</th>
+                            <th style="vertical-align: middle;text-align: center; font-weight: bold;">Aplica</th>
+                            <th style="vertical-align: middle;text-align: center; font-weight: bold;">Desempeño</th>
+                            <th style="vertical-align: middle;text-align: center; font-weight: bold;">Cumplimiento Operativo</th>
+                            <th style="vertical-align: middle;text-align: center; font-weight: bold;">Observación</th>
+                            <th style="vertical-align: middle;text-align: center; font-weight: bold;">Recomendación</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% with itemindicadores=doc|args:evaluacionperiodo.id|args:departamento.id|call:'listadosemestrematriz' %}
+                            {% for eval in itemindicadores %}
+                                <tr>
+                                    {% if eval.7 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: justify" rowspan="{{ eval.6 }}">
+                                            {{ eval.5 }} {{ eval.14.numero }}
+                                            <div id="recorridoobjetivo" class="recorridoobjetivo" codigoobjetivo="{{ eval.13 }}" ></div>
+                                        </td>
+                                    {% endif %}
+                                    {% if eval.4 == eval.0  %}
+                                        {#                                <td class="indicadoresporobjetivo{{ eval.13 }}" codiindicador="{{ eval.12 }}" style="vertical-align: middle;text-align: justify" rowspan="{{ eval.3 }}">{{ eval.2 }}</td>#}
+                                        <td class="listaindicador" codiindicador="{{ eval.12 }}" style="vertical-align: middle;text-align: justify" rowspan="{{ eval.3 }}">{{ eval.2 }}</td>
+                                    {% endif %}
+                                    <td style="vertical-align: middle;text-align: justify">
+                                        <div id="id_cumplimiento{{ eval.0 }}" class="cumplimiento{{ eval.12 }}" coddetmatriz="{{ eval.16 }}" codacti="{{ eval.0 }}" idrubri="{{ eval.8 }}" idcum='{{ eval.9 }}'></div>
+                                        {{ eval.1 }}
+                                        <div id="id_recorrido{{ eval.0 }}" class="recorrido{{ eval.13 }}" coddetmatriz="{{ eval.16 }}" codindi="{{ eval.12 }}"></div>
+                                    </td>
+                                    {% if eval.4 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: center;background-color: #afd9ee" rowspan="{{ eval.3 }}" class="promediodesempeno" codindicador="{{ eval.12 }}" vecesacti="{{ eval.3 }}">
+                                            <div class="recorridoporindicador{{ eval.13 }}" codiindi="{{ eval.12 }}" numeroactividad="{{ eval.3 }}"></div>
+                                            <input type="hidden" id="idcalculofinal{{ eval.12 }}" name="idcalculofinal{{ eval.12 }}" {% if eval.33 %}value="1"{% else %}value="0"{% endif %}>
+                                            {% if eval.33 %}
+                                                <i class="fa fa-check" style="color: green"></i>
+                                            {% else %}
+                                                <i class="fa fa-remove" style="color: red"></i>
+                                            {% endif %}
+                                        </td>
+                                    {% endif %}
+                                    {% if eval.4 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: center;background-color: #afd9ee" rowspan="{{ eval.3 }}" class="promediodesempeno" codindicador="{{ eval.12 }}" vecesacti="{{ eval.3 }}">
+                                            <input id="id_desempeno{{ eval.12 }}" name="id_desempeno{{ eval.12 }}" type="text" style="width:75px;" readonly value="{{ eval.25 }}">
+                                        </td>
+                                    {% endif %}
+                                    {% if eval.7 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: center;background-color: #afd9ee" rowspan="{{ eval.6 }}" class="promedioobjoperativo">
+                                            <input id="id_noaplica{{ eval.13 }}" name="id_noaplica{{ eval.13 }}" codiobje="{{ eval.13 }}" class="listanoaplica" type="hidden" style="width:75px;" readonly value="0">
+                                            <input id="id_cumplimientoobjoperativo{{ eval.13 }}" name="id_cumplimientoobjoperativo{{ eval.13 }}" type="text" style="width:75px;" readonly value="{{ eval.32 }}">
+                                        </td>
+                                    {% endif %}
+                                    {% if eval.4 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: center;" rowspan="{{ eval.3 }}">
+                                            <textarea {% if matrizarchivo.archivo %}disabled{% endif %} id="id_observacion{{ eval.12 }}" name="id_observacion{{ eval.12 }}" onchange="saveresultados({{ eval.12 }},{{ eval.13 }})" rows=5 style="width: 300px">{{ eval.28|default_if_none:"" }}</textarea>
+                                        </td>
+                                    {% endif %}
+                                    {% if eval.4 == eval.0  %}
+                                        <td style="vertical-align: middle;text-align: center;" rowspan="{{ eval.3 }}" >
+                                            <textarea {% if matrizarchivo.archivo %}disabled{% endif %} id="id_recomendacion{{ eval.12 }}" name="id_recomendacion{{ eval.12 }}" onchange="saveresultados({{ eval.12 }},{{ eval.13 }})" rows=5 style="width: 300px">{{ eval.29|default_if_none:"" }}</textarea>
+                                        </td>
+                                    {% endif %}
+                                </tr>
+                            {% endfor %}
+                        {% endwith %}
+                        </tbody>
+                    {% endfor %}
+                    <tr>
+                        <td colspan="4" style="text-align: center"><strong>Desempeño POA {{ evaluacionperiodo.periodopoa.anio }}</strong></td>
+                        <td><div id="id_totaldesempeno" style="text-align: center"></div></td>
+                        <td ><div id="id_totalobjetivo" style="text-align: center"></div></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        recalculapromediodesempeno();
+    </script>
+    <div class="modal fade static" id="itemspanelgenerainforme" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header"><h4>Generar informe</h4></div>
+                <div class="modal-body" style="min-height: 60px">
+                    <form id="formulario" style="margin-bottom: 0; margin-top: 0; background-color: white">
+                        <input type='hidden' id="iddel" name='id' value=""/>
+                        <p style="margin-top: 10px;">Esta seguro(a) que desea generar informe: <b class="tiponame">{{ departamento.nombre }} {{ evaluacionperiodo.descripcion }} {{ evaluacionperiodo.fechafin|date:"Y" }}</b></p>
+                        <p style="margin-top: 10px;"><b>NOTA:</b> Al dar clic en "Generar" se genera un codigo de informe automático y con fecha de informe actual, la fecha será modificable. </p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="informe_generar" class='btn btn-success btn-form'><i class="fa fa-save"></i> Generar</a>
+                        <a href="javascript:;" id="informe_cancel" class="btn btn-danger"><i class="fa fa-close"></i> Cancelar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

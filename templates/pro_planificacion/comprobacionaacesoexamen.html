@@ -1,0 +1,208 @@
+{% extends "basebs.html" %}
+{%  load sga_extras %}
+{% block atras %}/pro_planificacion{% endblock %}
+{% block heading %}
+    <script>
+
+        $(function() {
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/adm_proveedores?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $(".detalle").click(function() {
+                var maid = $(this).attr("maid");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_planificacion",
+                    data: {'action':'detalle_ip', 'maid': maid},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalle_ip .modal-body").html(data.data);
+                            $("#detalle_ip").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".btn-aceptar").click(function (){
+                $("#detalle_ip").modal("hide");
+            });
+            $(".verdetalleppl").click(function() {
+                var idmatricula = $(this).attr('idmat');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_planificacion",
+                    data: {'action': 'verdetalleppl', 'idmatricula':idmatricula },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            $(".panelbodydetalleppl" ).empty();
+                            $(".panelbodydetalleppl" ).html(data.data);
+                            $("#itemspanelverdetalleppl").modal({backdrop:'static', width: '900px'}).modal('show');
+
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+
+            $(".cerrardetalleppl").click(function(){
+                $('#itemspanelverdetalleppl').modal('hide');
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            {{ materia }}<br>
+            {{ horario.detallemodelo }} - {{ horario.fecha|date:'d-m-Y' }}<br>
+            {% for detallehora in horario.detallehoraexamen %}
+                <strong>{{ detallehora.get_tipogrupo_display }}</strong> | {{ detallehora.horainicio|time:"H:i" }} - {{ detallehora.horafin|time:"H:i" }}<br>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 50px">No.</th>
+                    <th style="width: 400px">Estudiante</th>
+                    <th style="width: 200px">Zoom</th>
+                    <th style="width: 200px">Examen (Moodle)</th>
+                    <th style="width: 50px">Detalle de clases</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for materiaasignada in materia.asignados_a_esta_materia_sinretirados %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ materiaasignada.matricula.inscripcion }}
+                            {#                            ({{ materiaasignada.matricula.inscripcion.persona.idusermoodle }})#}
+                            {#                            ({{ materiaasignada.materia.idcursomoodle }})#}
+
+                            {% if materiaasignada.matricula.inscripcion.persona.ppl %}
+                                <br><a class="btn btn-warning btn-mini verdetalleppl" idmat="{{ materiaasignada.matricula.id|encrypt }}" href="javascript:;">
+                                <i class="fa fa-user"></i> PPL
+                            </a>
+                            {% endif %}
+
+                        </td>
+                        <td>
+                            {% with asistencias=materiaasignada|args:horario.fecha|call:"asistenciazoom_fecha" %}
+                                {%  for asis in asistencias %}
+                                    {{ asis.get_modulo_display }}<br>
+                                    {{ asis.fecha|date:'d-m-Y' }}<br>
+                                    <b>Inicio:</b>{{ asis.hora|time:'h:i a' }}<br>
+                                    {%  if asis.horaultima %}
+                                        <b>Último acceso:</b>{{ asis.horaultima|time:'h:i a' }}
+                                    {% endif %}
+                                    {% for det in asis.detalledesionzoom.all %}
+                                        <br><p style="background: #ffff00">  <b>Ip:</b> {{ det.ip_public }}</p>
+                                    {% endfor %}
+                                {% endfor %}
+                            {% endwith %}
+                        </td>
+                        <td>
+                            {% with accesos=materiaasignada|args:horario|call:"acceso_examen_moodle" %}
+                                {%  if accesos %}
+                                    {%  for acceso in accesos %}
+                                        <b>Inicio:</b>
+                                        {%  if acceso.2 == 1 %}
+                                            {{ acceso.0|date:'d-m-Y' }} {{ acceso.0|time:'h:i a' }} <br>
+                                        {% else %}
+                                            Aún no inicia
+                                        {% endif %}
+                                        {%  if acceso.3 == 1 %}
+                                            <b>Finaliza:</b>  {{ acceso.1|date:'d-m-Y' }} {{ acceso.1|time:'h:i a' }}
+                                        {% else %}
+                                            Aún no finaliza
+                                        {% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    <b>No ejecutó el examen el alumno o no esta categorizado el examen</b>
+                                {% endif %}
+                            {% endwith %}
+                            {% with ip_publica=materiaasignada|args:horario|call:"ip_log_rango_examen" %}
+                                {% for ipp in ip_publica %}
+                                    <p style="background: #ffff00">
+                                        <b>Ip:</b> {{ ipp.0 }}<br>
+                                        <b>Fecha:</b> {{ ipp.1|date:'d-m-Y' }} {{ ipp.1|time:'h:i a' }}<br>
+                                    </p>
+                                {% endfor %}
+                            {% endwith %}
+                        </td>
+                        <td style="text-align: center">
+                            <a class="btn btn-warning btn-mini detalle tu" title="Detalles" href='javascript:;' maid="{{ materiaasignada.id }}"> <i class='fa fa-list'></i> </a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10">
+                            NO EXISTEN REGISTROS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="detalle_ip" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle de Ip </h3>
+        </div>
+        <div class="modal-body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelverdetalleppl" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle de PPL</h3>
+        </div>
+        <div class="modal-body panelbodydetalleppl">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info cerrardetalleppl">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+{% endblock %}

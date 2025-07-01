@@ -1,0 +1,609 @@
+{% extends "adm_solicitudpago/revisionpago/base.html" %}
+{% load sga_extras %}
+{% block extraJSHead %}
+    <script type="text/javascript">
+        $(document).ready(function () {
+            // Desmarcar todos los checkboxes con la clase .seleccionindividual
+            $('.seleccionindividual').prop('checked', false);
+            $('#id_seleccionmasivo').prop('checked', false);
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+        });
+
+        let pk_contratos = []
+
+         function busqueda() {
+            var term = $("#searchinput").val();
+            location.href = `/adm_solicitudpago?action=facturas_a_pagar&search=${term}`
+
+        }
+
+        function formModal(id, text, action, footer = true) {
+            $('.panelbody').empty();
+            $('.panelbodyproceso').empty();
+            $('.panelbodyform').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: width}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalHis(id, text, action, footer = true) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result) {
+                        if (footer === true) {
+                            $('#footermodalformmodal').hide();
+                        }
+                        $('.panelbodyformmodal').html(data.data);
+                        $('#itemspanelformmodal .paneltitle').html(text);
+                        $("#itemspanelformmodal").modal({backdrop: 'static', width: 1500}).modal('show');
+                    } else {
+                        NotificationJG.error(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    NotificationJG.error("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function (e) {
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("select").select2({width: '100%'});
+            $('#id_seleccionmasivo').click(function (e) {
+                if (this.checked) {
+                    $('.seleccionindividual:not([disabled])').prop('checked', true);
+                    $('.seleccionindividual:checked').each(function () {
+                        let pk = this.attributes.pk_contrato.value;
+                        if (this.checked && !pk_contratos.includes(pk)) {
+                            pk_contratos.push(pk);
+                        }
+                    });
+                } else {
+                    $('.seleccionindividual:not([disabled])').prop('checked', false);
+                    pk_contratos = [];
+                }
+
+            });
+            $('.seleccionindividual').change(function () {
+
+                pk_contratos = [];
+                $('.seleccionindividual:checked').each(function () {
+                    let pk = this.attributes.pk_contrato.value;
+                    if (this.checked && !pk_contratos.includes(pk)) {
+                        pk_contratos.push(pk);
+                    }
+                });
+
+            });
+        });
+
+        const descarga_individual= (pk) => {
+            Swal.fire({
+                title: "Descargar documentos ",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonText: 'Descargar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    openwindow('GET', '{{ request.path }}', {
+                        action: 'descarga_individual_documentos',
+                        id: pk,
+                    }, '_blank');
+                }
+            })
+        }
+
+        const aprobar_factura= (pk) => {
+                    Swal.fire({
+                        title: "Usted va a aprobar la factura para proceder con el pago ",
+                        type: 'info',
+                        showCancelButton: true,
+                        allowOutsideClick: false,
+                        confirmButtonText: 'Aprobar',
+                        cancelButtonText: 'Cancelar'
+                    }).then((result) => {
+                        if (result.value) {
+                            $.post("{{ request.path }}", {
+                                'action': 'aprobar_factura_para_realizar_el_pago_epunemi',
+                                'id': pk
+                            }, function (data) {
+                                if (data.result == true) {
+                                    location.reload()
+                                } else {
+                                    smoke.alert(data.mensaje);
+                                }
+                            }, 'json').fail(function () {
+                                $.unblockUI();
+                                mensajeDanger('Error de conexión, intentelo más tarde');
+                    });
+                        }
+                    })
+                }
+
+        const rechazar_factura = (pk) => {
+             let mensaje = {
+                title: 'Notificación',
+                html:
+                    '<p>Esta acción es irreversible, se notificará al colaborador que debe actualizar su factura.</p>',
+                icon: 'warning',
+                input: 'textarea',
+                inputPlaceholder: 'Ingrese una observación',
+                showCloseButton: true,
+                showCancelButton: true,
+                confirmButtonText: 'Rechazar',
+                allowOutsideClick: false,
+                focusConfirm: false,
+                inputValidator: (value) => {
+                    return new Promise((resolve) => {
+                        if (value) {
+                            resolve()
+                        } else {
+                            resolve('El campo es obligatorio')
+                        }
+                    })
+                },
+            }
+            Swal.fire(mensaje).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    const comentario = result.value;
+                    $.ajax({
+                        type: "POST",
+                        url: '{{ reques.path }}',
+                        data: {
+                            action: 'rechazar_factura_para_realizar_el_pago_epunemi',
+                            id: pk,
+                            obs: comentario
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result) {
+                                location.reload();
+                            } else {
+                                NotificationJG.error(data.mensaje)
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            NotificationJG.error('Error de conexión')
+                        },
+                        dataType: "json"
+                    })
+                }
+            });
+
+        }
+
+        const notificar_subir_factura_epunemi= (pk) => {
+            Swal.fire({
+                title: "A continuación va a notificar que el colaborador debe subir la factura! ",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonText: 'Notificar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    $.post("{{ request.path }}", {'action': 'notificar_subir_facturas_epunemi', 'id': pk}, function (data) {
+                        if (data.result == true) {
+                            location.reload()
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json').fail(function () {
+                        $.unblockUI();
+                        mensajeDanger('Error de conexión, intentelo más tarde');
+                    });
+                }
+            })
+        }
+
+        const notificar_pago_realizado_epunemi= (pk) => {
+            Swal.fire({
+                title: "A continuación va a notificar que el pago del colaborador ya fue realizado! ",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonText: 'Notificar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    $.post("{{ request.path }}", {'action': 'notificar_pago_realizado_epunemi', 'id': pk}, function (data) {
+                        if (data.result == true) {
+                            location.reload()
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json').fail(function () {
+                        $.unblockUI();
+                        mensajeDanger('Error de conexión, intentelo más tarde');
+                    });
+                }
+            })
+        }
+
+
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block contenido %}
+    <div class="modal fade static" id="itemspanelformmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div class="" style="padding: 5px 5px">
+                        <button style="float: right;" type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbodyformmodal">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalformmodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static modal-xl" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body">
+            <form autocomplete="off" method="post"
+                  enctype="multipart/form-data" action="{{ request.path }}">
+                {% csrf_token %}
+                <div class="row-fluid panelbody">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="footermodal">
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                    class="fa fa-window-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+
+
+    <div class="row mt-0 mb-2">
+        <div class="col-6 d-flex justify-content-start">
+            <div class="btn-group ">
+
+            </div>
+
+        </div>
+        <div class="col-6 d-flex justify-content-end">
+            <div class="btn-group">
+                <div class="btn-group">
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div class="row">
+    <div class="col-lg-12 col-md-12 col-12">
+    <div class="card mb-4">
+        <!-- Card Header -->
+        <div class="card-header border-bottom-0">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12">
+                      <div class='card my-1 p-1'>
+
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12">
+                    <form class="form-search" method="GET" action="{{ request.path }}">
+                        <input type="hidden" name="action" value="{{ action }}">
+                        <div class="row">
+                            <div class="input-group-append mb-2 col-4">
+                            <i class="fa fa-traffic-light"></i> Estado factura: <br>
+                            <select class="form-select" name="estsolicitud" id="estsolicitud">
+                                <option value="">--TODAS--</option>
+                                {% for tp in estado_solicitud %}
+                                    <option value="{{ tp.0 }}"
+                                            {% if estsolicitud == tp.0 %}selected{% endif %}>{{ tp.1 }}</option>
+                                {% endfor %}
+                            </select>
+
+                        </div>
+                            <div class="input-group-append mb-2 col-4">
+                                <!-- heading -->
+                                <i class="fa fa-calendar tu" title="Desde"></i> Desde:<br>
+                                <input class='form-control' type='date' id='desde' value='{{ desde }}'
+                                       autocomplete="off"
+                                       style="width: 100%" name="desde"/>
+
+                            </div>
+                            <div class="input-group-append mb-2 col-4">
+                                <!-- heading -->
+                                <i class="fa fa-calendar tu" title="Hasta"></i> Hasta:<br>
+                                <input class='form-control' type='date' id='hasta' value='{{ hasta }}'
+                                       autocomplete="off"
+                                       style="width: 100%" name="hasta"/>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-12">
+                                <div class="input-group mb-2">
+                                    <input class='searchinput form-control' type='text' id='searchinput'
+                                           value='{{ search }}' autocomplete="off" name="search"
+                                           placeholder=" Apellidos, Cedula"/>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-primary" type="submit" id="button-addon2"><i
+                                                class="fa fa-search"></i></button>
+                                        {% if url_vars %}
+                                            <a href="{{ request.path }}?action=facturas_a_pagar" id='allresults'
+                                               class='btn btn-default'><span class="fa fa-refresh "></span> </a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+                      </div>
+
+                </div>
+            </div>
+        </div>
+    <div class="row container">
+        total: {{ total }}
+    </div>
+        <!-- Table  -->
+        <div class="border-0">
+            <table class="table mb-0" style="position: relative!important;z-index: 1!important;">
+                <thead class="table-light">
+                <tr>
+                    <th style="width: 5%;" scope="col" class="border-0 text-center"><input type="checkbox"  id="id_seleccionmasivo"></th>
+                    <th style="width: 25%;" scope="col" class="border-0">Solicitud</th>
+                    <th style="width: 25%;" scope="col" class="border-0 text-center">Fecha inicio -Fecha Fin</th>
+                    <th style="width: 10%;" scope="col" class="border-0 text-center">ESTADO PAGO FACTURA</th>
+                    <th style="width: 10%;" scope="col" class="border-0 text-center">Factura</th>
+                    <th style="width: 20%;" scope="col" class="border-0 text-center">Valor a pagar</th>
+                    <th style="width: 20%;" scope="col" class="border-0 text-center"></th>
+
+                    <th scope="col" class="border-0"></th>
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for eDetalleActaPago in eDetalleActaPagos %}
+                    <tr>
+                        <td class="text-center">
+                            <input type="checkbox"   class="seleccionindividual" pk_contrato="{{ eDetalleActaPago.0.solicitudpago.pk }}">
+                        </td>
+
+                        <td style="text-align:left ">
+                            <div class="mb-3" style="max-width: 540px;">
+                                <div class="row g-0">
+                                    <div class="col-md-3 text-center">
+                                        <img data-fancybox src="{{ eDetalleActaPago.0.solicitudpago.contrato.persona.get_foto }}" alt=""
+                                             class="img-fluid rounded-circle" width="40px">
+                                    </div>
+                                    <div class="col-md-9">
+                                        <div class="">
+                                            <small class="card-text"><i
+                                                    class="fa fa-user"></i> [<span class="tu" title="DetalleActaPago">{{ eDetalleActaPago.0.pk }}</span>]{{ eDetalleActaPago.0.solicitudpago.contrato.persona.nombre_completo_minus }}
+                                            </small><br>
+                                            <small class="card-text"><i
+                                                    class="fa fa-address-card"></i> {{ eDetalleActaPago.0.solicitudpago.contrato.persona.cedula }}
+                                            </small><br>
+                                            <small class="card-text">
+                                                {% if eDetalleActaPago.0.solicitudpago.contrato.persona.telefono %}
+                                                    <i class="fa fa-phone"></i>
+                                                    {{ eDetalleActaPago.0.solicitudpago.contrato.persona.telefono }}
+                                                    <a href='https://web.whatsapp.com/send?l=en&phone=+593{{eDetalleActaPago.0.solicitudpago.contrato.persona.telefono }}&text=Hola {{ eDetalleActaPago.0.solicitudpago.contrato.persona }}'
+                                                       target="_blank" class="btn btn-mini btn-success tu"
+                                                       title="Enviar mensaje por whatsapp">
+                                                        <i class="fa fa-whatsapp"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </small><br>
+                                            <small class="card-text">
+                                                <i class="fa fa-envelope"></i>
+                                                {% if eDetalleActaPago.0.solicitudpago.contrato.persona.emailinst %}
+                                                    {{ eDetalleActaPago.0.solicitudpago.contrato.persona.emailinst }}
+                                                {% else %}
+                                                    {{ eDetalleActaPago.0.solicitudpago.contrato.persona.email }}
+                                                {% endif %}
+                                            </small>
+
+                                            <br>
+
+                                            <small class="card-text">
+                                                RMU:
+                                                <spam class="tu" title="tipo pago">
+                                                    <b>${{ eDetalleActaPago.0.solicitudpago.contrato.valortotal }}</b>
+                                                </spam>
+                                            </small>
+                                             <small class="card-text"> <BR>
+                                                FECHA SUBIDA FACTURA:
+                                                <spam class="tu" title="tipo pago">
+                                                    <b>{{ eDetalleActaPago.0.solicitudpago.fechasubidafactura | date:'Y-m-d h:i a' }}</b>
+                                                </spam>
+                                            </small>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td style="text-align: center">
+                            <b>Inicio pago:</b> {{ eDetalleActaPago.0.solicitudpago.fechainicio |date:"Y-m-d" }} <br>  <b>Fin pago: </b>{{ eDetalleActaPago.0.solicitudpago.fechaifin|date:"Y-m-d" }}
+                            <br>
+                            <b>Días transcurridos:</b>  <b>{{ eDetalleActaPago.1.3}}</b><br>
+                            <b>Subtotal:</b> ${{eDetalleActaPago.1.0 }}<br>
+                            <b>Iva 15%:</b> ${{eDetalleActaPago.1.1 }} <br>
+
+
+
+                        </td>
+                        <td style="text-align: center">
+                            <label class="{{ eDetalleActaPago.0.solicitudpago.color_estadotramitepago|safe }}">{{ eDetalleActaPago.0.solicitudpago.get_estadotramitepago_display }}</label>
+                        </td>
+
+
+
+                        <td style="text-align: center">
+                            {% if eDetalleActaPago.2  %}
+                                    <a title="Visualizar archivo"
+                                       data-bs-toggle="tooltip"
+                                       data-width="2048" data-height="1380"
+                                       data-fancybox="archivo_last_{{ eDetalleActaPago.2}}"
+                                       data-caption="Documento : {{eDetalleActaPago.2  }}"
+                                       href="/media/{{eDetalleActaPago.2 }}"
+                                       class=""><i class="fa fa-file-pdf-o fs-4 text-danger"></i></a>
+                             {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            ${{eDetalleActaPago.1.2}}<br>
+                           <b> {{ eDetalleActaPago.0.solicitudpago.get_str_meses_entre_fechas_inicio_fin |title2 }}</b>
+                        </td>
+
+                        <td style="text-align: center">
+                                <div class="dropdown dropstart">
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140"
+                                       aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </a>
+                                    <ul class="dropdown-menu" x-placement="right-start">
+                                        {% if  perms.pdip.puede_aprobar_factura_epunemi or request.user.is_superuser %}
+                                            {% if  eDetalleActaPago.0.solicitudpago.tramite_factura_subida or eDetalleActaPago.0.solicitudpago.tramite_factura_actualizada_subida %}
+
+                                                <li class="dropdown-item ">
+                                                    <a href="javascript:;"
+                                                       onclick="aprobar_factura('{{ eDetalleActaPago.0.solicitudpago.pk }}')"><i
+                                                            class="bi bi-check dropdown-item-icon"></i>Aprobar factura</a>
+
+                                                </li>
+                                            {% endif %}
+                                        {% endif %}
+                                     {% if  perms.pdip.puede_rechazar_factura_epunemi or request.user.is_superuser %}
+                                            {% if  eDetalleActaPago.0.solicitudpago.tramite_factura_subida or eDetalleActaPago.0.solicitudpago.tramite_factura_actualizada_subida%}
+                                                <li class="dropdown-item ">
+                                                    <a href="javascript:;"
+                                                       onclick="rechazar_factura('{{ eDetalleActaPago.0.solicitudpago.get_requisitosolicitudpago_factura.pk }}')"><i
+                                                            class="bi bi-send-plus-fill dropdown-item-icon"></i>Rechazar factura</a>
+                                                </li>
+                                            {% endif %}
+                                        {% endif %}
+
+                                        <li class="dropdown-item ">
+                                            <a href="javascript:;"
+                                               onclick="descarga_individual('{{ eDetalleActaPago.0.solicitudpago.pk }}')"><i
+                                                    class="bi bi-download dropdown-item-icon"></i>&nbsp;Descargar
+                                                documentación validada</a>
+                                        </li>
+                                         {% if  eDetalleActaPago.0.solicitudpago.estadotramitepago == 0 or eDetalleActaPago.0.solicitudpago.estadotramitepago == 1%}
+                                                 <li class="dropdown-item ">
+                                                     <a href="javascript:;"
+                                                        onclick="notificar_subir_factura_epunemi('{{ eDetalleActaPago.0.solicitudpago.pk }}')"><i class="bi bi-messenger dropdown-item-icon"></i> Notificar subir factura</a>
+                                                 </li>
+                                         {% endif %}
+                                       {% if not eDetalleActaPago.0.solicitudpago.pago_realizado and eDetalleActaPago.0.solicitudpago.epunemi_aprobo_factura  %}
+                                           {% if perms.pdip.puede_adicionar_pago_solicitud_pago_realizado_epunemi or request.user.is_superuser  %}
+                                               <li class="dropdown-item ">
+                                                   <a href="javascript:;"
+                                                      onclick="notificar_pago_realizado_epunemi('{{ eDetalleActaPago.0.pk }}')"><i
+                                                           class="bi bi-archive dropdown-item-icon"></i>Notificar pago
+                                                       realizado</a>
+                                               </li>
+                                           {% endif %}
+                                      {% endif %}
+                                        <li class="dropdown-item ">
+                                            <a target="_blank" href="/guest_solicitudpagoguest?action=view_requisitos_pagos_link&id={{ eDetalleActaPago.0.solicitudpago.pk }}"
+                                               onclick="Javascript:void(0);"><i
+                                                    class="bi bi-archive dropdown-item-icon"></i>Ver documentación validada</a>
+                                        </li>
+
+
+                                    </ul>
+                                </div>
+                            </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4">No existen solicitudes de pagos pendientes de realizar pagos</td> </tr>
+                {% endfor %}
+
+
+                </tbody>
+
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+{% endblock %}

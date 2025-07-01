@@ -1,0 +1,839 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <style>
+        .estilotabla1 {
+            border-collapse: collapse;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .estilocabdeta1 {
+            display: block;
+        }
+
+        th, td {
+            box-sizing: border-box;
+        }
+
+        .tbody1 {
+            height: 472px;
+            overflow-y: scroll
+        }
+
+        .modal-body {
+            position: initial;
+        !important;
+        }
+    </style>
+    <script type="text/javascript">
+
+
+        function eliminarconfirmacion(pk) {
+            smoke.confirm("¿Está seguro que desea eliminar este registro?", function (e) {
+                if (e) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'deletetutoriaagendada',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        smoke.alert('Error en el servidor');
+                    }).always(function () {
+                    });
+                }
+            }, {
+                ok: "SI, DESEO CONTINUAR",
+                cancel: "NO,CANCELAR",
+                classname: "custom-class",
+                reverseButtons: true
+            });
+
+        }
+
+        function notificarCorreo(pk, totalestudiantes) {
+            Swal.fire({
+                title: `¿Está seguro que desea notificar a los ${totalestudiantes} estudiantes por correo?`,
+                text: `AGENDA`,
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'notificaremailagenda',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        smoke.alert('Error en el servidor');
+                    }).always(function () {
+                    });
+                }
+            })
+
+        }
+
+        function formModal(id, text, action, footer) {
+            bloqueointerface()
+            $('.panelbody').empty()
+            $('#modalfooter').prop("hidden", false);
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer) {
+                            $('#modalfooter').attr("hidden", true);
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalEditTutoria(id, text, action) {
+            bloqueointerface()
+            $('.panelbody').empty()
+            $('#modalfooter').prop("hidden", false);
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '85%', height: '1200px'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formFinalizarModal(id, text, action) {
+            bloqueointerface()
+            $('#modalfooter').prop("hidden", false);
+            $('.panelbody').empty()
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '85%', height: '900px'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+            $("select:not(.noselect2)").select2({
+                width: '100%',
+            });
+
+        });
+
+        $(function () {
+
+
+            actualizar_lista = function () {
+                lista_items1 = [];
+                $('input[name=practicaseleccionadas]:checked').each(function () {
+                    var idp = $(this).attr('idp');
+                    var ido = $('.obser_' + idp).val();
+                    var idsu = $('.suge_' + idp).val();
+                    var idoc = $('.doc_' + idp).val();
+                    var idurl = $('.url_' + idp).val();
+                    {#var ida = $('.doc_'+idp).val();#}
+                    var elemento = {
+                        idp: idp,
+                        obser: ido,
+                        sug: idsu,
+                        {#arch: ida#}
+                    };
+                    lista_items1.push(elemento);
+                });
+            };
+
+            $('.guardatutoria_run').click(function () {
+                bloqueointerface();
+                var dia = $(this).attr('dia');
+                var mes = $(this).attr('mes');
+                var anio = $(this).attr('anio');
+                actualizar_lista();
+                if (lista_items1.length == 0) {
+                    smoke.alert("Selecciones al menos una practica.");
+                    return false;
+                }
+
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_laboratoriocronograma",
+                    data: {
+                        'action': 'addguardartutoria',
+                        'dia': dia,
+                        'mes': mes,
+                        'anio': anio,
+                        "lista_items1": JSON.stringify(lista_items1)
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $('#visitamodal').modal('hide');
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            $('.edittutoria').click(function () {
+                bloqueointerface()
+                {#showWaiting("Buscando datos de practicas y tutorias", "Espere unos segundos por favor...");#}
+                $(".guardatutoria").css({"display": "inline-block"});
+                var idv = $(this).attr('idv');
+                $.ajax({
+                    type: "POST",
+                    url: "pro_practicastutoria",
+                    data: {'action': 'edittutoriasupervisor', 'id': idv},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#paneltitle").html(data.titulo);
+                            $("#listapracticas").html(data.data);
+                            $('.guardatutoria').attr({'idv': idv});
+                            {#hideWaiting();#}
+                            $('#tutoriamodal').modal({backdrop: 'static', width: '800px'}).modal('show');
+                            tooltips();
+                        } else {
+                            {#hideWaiting();#}
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        {#hideWaiting();#}
+                        smoke.alert("Error al enviar la solicitud.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            {#guardatutoria#}
+
+
+            $('.addtutoria').click(function () {
+                bloqueointerface()
+                {#showWaiting("Buscando datos de Tutorias", "Espere unos segundos por favor...");#}
+                var idv = $(this).attr('idv');
+                var dia = $(this).attr('dia');
+                var mes = $(this).attr('mes');
+                var anio = $(this).attr('anio');
+                $.ajax({
+                    type: "POST",
+                    url: "pro_laboratoriocronograma",
+                    data: {'action': 'addtutoria', 'id': idv, 'dia': dia, 'mes': mes, 'anio': anio},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#aniomod').val(anio);
+                            $('#mesmod').val(mes);
+                            $('#diamod').val(dia);
+                            $("#paneltitle").html(data.titulo);
+                            $("#listapracticas").html(data.data);
+                            $('.guardatutoria_run').attr({'idv': idv, 'dia': dia, 'mes': mes, 'anio': anio});
+                            {#hideWaiting();#}
+                            $('#tutoriamodal').modal({backdrop: 'static', width: '1000px'}).modal('show');
+                            tooltips();
+                        } else {
+                            {#hideWaiting();#}
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        {#hideWaiting();#}
+                        smoke.alert("Error al enviar la solicitud.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $('.edittutoriarun').click(function () {
+                bloqueointerface()
+                {#showWaiting("Buscando datos de Tutorias", "Espere unos segundos por favor...");#}
+                var idv = $(this).attr('idv');
+                var dia = $(this).attr('dia');
+                var mes = $(this).attr('mes');
+                var anio = $(this).attr('anio');
+                $.ajax({
+                    type: "POST",
+                    url: "pro_laboratoriocronograma",
+                    data: {'action': 'edittutoria', 'id': idv, 'dia': dia, 'mes': mes, 'anio': anio},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#editaniomod').val(anio);
+                            $('#editmesmod').val(mes);
+                            $('#editdiamod').val(dia);
+                            $("#paneltitleedit").html('Editar tutorias');
+                            $("#editlistapracticas").html(data.data);
+                            {#hideWaiting();#}
+                            $('#edittutoriamodal').modal({
+                                backdrop: 'static',
+                                width: '1500px',
+                                height: '900px'
+                            }).modal('show');
+                            tooltips();
+                        } else {
+                            {#hideWaiting();#}
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        {#hideWaiting();#}
+                        smoke.alert("Error al enviar la solicitud.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+
+
+    </script>
+    <style>
+        .estilocabdeta2 {
+            display: block;
+            height: 500px;
+            overflow-y: scroll;
+            width: 100%;
+        }
+
+        th, td {
+            box-sizing: border-box;
+        }
+
+        .modal-scrollable {
+            position: inherit;
+        !important;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            overflow: auto;
+        }
+
+        {##}
+        {#table thead tr th {#}
+        {#    background: #1C3247 ;#}
+        {#!important;#}
+        {#    color: #ffffff;#}
+        {#    font-size: 12px;#}
+        {# }#}
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript" src='/static/js/fontawesomev3.js?v=1.0.0'></script>
+{% endblock %}
+{% block atras %}/pro_laboratoriocronograma?action=listatutorias{% endblock %}
+{% block canvas %}
+
+
+    <div class="modal fade static" id="edittutoriamodal" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitleedit"></h4>
+        </div>
+        <form autocomplete="off" method="post"
+              enctype="multipart/form-data" action="{{ request.path }}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="editguardartutoria2">
+            <input type="hidden" name="dia" id="editdiamod" value="">
+            <input type="hidden" name="mes" id="editmesmod" value="">
+            <input type="hidden" name="anio" id="editaniomod" value="">
+            <div class="modal-body editlistapracticas" id="editlistapracticas">
+            </div>
+            <div class="modal-footer">
+                <button type="submit" id="submit"
+                        class="btn btn-success">
+                    <i class="fa fa-check-circle"></i> Guardar
+                </button>
+                <a href="javascript:;" class="btn btn-danger" data-dismiss="modal"><i
+                        class="fa fa-window-close"></i>
+                    Cerrar</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h4><i class="fa fa-list-alt"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <form autocomplete="off" method="post"
+              enctype="multipart/form-data" action="{{ request.path }}">
+            {% csrf_token %}
+            <div class="modal-body">
+                <div class="row-fluid panelbody">
+                </div>
+            </div>
+            <div class="modal-footer" id="modalfooter">
+                <button type="submit" id="submit"
+                        class="btn btn-success">
+                    <i class="fa fa-check-circle"></i> Guardar
+                </button>
+                <a href="javascript:;" class="btn btn-danger" data-dismiss="modal"><i class="fa fa-window-close"></i>
+                    Cerrar</a>
+            </div>
+        </form>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h3><img src="/static/images/iconosmini/calendar2.png" style="width: 50px"> {{ title }}</h3>
+        </div>
+    </div>
+
+    {#    <div class='row-fluid'>#}
+    {#        <div class='span12'>#}
+    {#            <label class="label label-success" style="font-size: 13px"><i class="fa fa-lightbulb-o"></i> Tutorías#}
+    {#                Registradas</label>#}
+    {#            <label class="label label-warning" style="font-size: 13px"><i class="fa fa-calendar"></i> Tutorías Agendadas</label>#}
+    {#        </div>#}
+    {#    </div>#}
+{#{% if tiene_planificacion or periodo.id == 119 %}#}
+<div class='row-fluid'>
+        <div class='span8'>
+            {% if tutoriasdehoy != 0 %}
+                <div class="alert alert-warning" role="alert" style="font-size: 14px;">
+                    <img class="blinkimg" src="/static/images/iconos/notificacion.png"
+                         width="30px;"> <b>Recordatorio:</b> Tiene <b>{{ tutoriasdehoy }}</b> tutorías
+                    agendadas para el dia de hoy.
+                </div>
+            {% endif %}
+            {% if tutpendientesfin != 0 %}
+                <div class="alert alert-danger" role="alert" style="font-size: 14px;">
+                    <img class="blinkimg" src="/static/images/iconosmini/alert.png"
+                         width="25px;"> <b>Recordatorio:</b> Tiene <b>{{ tutpendientesfin }}</b> tutorías atrasadas por
+                    finalizar.
+                </div>
+            {% endif %}
+            <table class="table table-striped table-bordered">
+                <thead>
+                <tr>
+                    <th style="height: 20px; text-align: center;vertical-align: middle;">
+                        <a
+                                href="pro_laboratoriocronograma?action=tutoriapractica&anterior=true&mes={{ s_mes }}&anio={{ s_anio }}"><<</a>
+                    </th>
+                    <th colspan="5"
+                        style="height: 20px; text-align: center;vertical-align: middle;">
+                        <b>{{ mes.1|upper }} - {{ s_anio }}</b></th>
+                    <th style="height: 20px; text-align: center;vertical-align: middle;">
+                        <a  href="pro_laboratoriocronograma?action=tutoriapractica&proximo=true&mes={{ s_mes }}&anio={{ s_anio }}">>></a>
+                    </th>
+                </tr>
+                <tr>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Lunes
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Martes
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Miercoles
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Jueves
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Viernes
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Sabado
+                    </th>
+                    <th class="celdacalendarioheader"
+                        style="text-align: center;vertical-align: middle">Domingo
+                    </th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for w in ws %}
+                    <tr>
+                        {% for dw in dwn %}
+                            {% with dia=w|add:dw %}
+                                {% with box=lista|calendarbox:dia %}
+                                    <td style="padding: 0; height: 100px;{% if box == dia_actual and mostrar_dia_actual %}background-color:#E8F8F5{% endif %}">
+                                        {% if box != "no" %}
+                                            {% with infobox=listafichas|calendarboxdetailspracticas:dia mostrar=listaadicionarficha|calendarboxdetailsmostrar:dia %}
+                                                <div style="width: 100%; height: 15px;">
+                                                    <b style="font-size: 12px">{{ box }}</b>
+                                                    {% if infobox.0.1 %}
+                                                        <span class="label label-success tu pull-right"
+                                                              title="Total tutorias"
+                                                              style="margin-left: 1px"><i
+                                                                class="fa fa-list-ul"></i> {% ver_total_tutorias mes.0 box s_anio profesor %}</span>
+                                                    {% endif %}
+                                                    {% if infobox.0.6 %}
+                                                        <span class="label label-warning tu pull-right"
+                                                              title="Tutorías Programadas"><i
+                                                                class="fa fa-bell"></i> {% ver_total_tutorias_agendadas mes.0 box s_anio profesor %}</span>
+                                                    {% endif %}
+                                                </div>
+                                                <div style="padding-top: 5px; text-align: center">
+                                                    <div style="min-width: 10px; float: inherit">
+                                                     {% if dw in habiles %}
+                                                        <div class="btn-group btn-mini">
+                                                            <a class="btn btn-primary dropdown-toggle"
+                                                               data-toggle="dropdown"
+                                                               href="javascript:;"><i class="fa fa-cog"></i> Acción<span
+                                                                    class="caret"></span></a>
+                                                            <ul class="dropdown-menu pull-left"
+                                                                style="text-align: left">
+                                                                <li>
+                                                                    <a href="javascript:;"
+                                                                       onclick="formModal('{{ s_anio }}-{{ mes.0 }}-{{ box }}', 'Adicionar Tutoría', 'addtutoriacalendario')">
+                                                                        <i class="fa fa-calendar"></i> Programar Tutoría
+                                                                    </a>
+                                                                </li>
+                                                                {#                                                                <li>#}
+                                                                {#                                                                    <a href="javascript:;" }#}
+                                                                {#                                                                       class="addtutoria"#}
+                                                                {#                                                                       dia="{{ box|encrypt }}" mes="{{ mes.0|encrypt }}"#}
+                                                                {#                                                                       anio="{{ s_anio|encrypt }}">#}
+                                                                {#                                                                        <i class="fa fa-plus-circle"></i> Adicionar#}
+                                                                {#                                                                        Tutoría#}
+                                                                {#                                                                    </a>#}
+                                                                {#                                                                </li>#}
+                                                                {% if infobox.0.1 %}
+                                                                    <li>
+                                                                        <a href="javascript:void(0)"
+                                                                           class="edittutoriarun"
+                                                                           dia="{{ box|encrypt }}"
+                                                                           mes="{{ mes.0|encrypt }}"
+                                                                           anio="{{ s_anio|encrypt }}"><i
+                                                                                class="fa fa-edit"></i> Editar
+                                                                            Tutoría</a>
+                                                                    </li>
+                                                                {% endif %}
+                                                            </ul>
+                                                        </div>
+                                                    {% endif %}
+                                                        {#                                                        <a href="javascript:;" class="addtutoria" idv="{{ infobox.0.3.id|encrypt }}"><i class="fa fa-eye"></i> Culminar</a>#}
+                                                    </div>
+                                                </div>
+                                            {% endwith %}
+                                        {% else %}
+                                            {#                                            <div style="width: 100%; height: 100%;background-color: lightgray;"></div>#}
+                                            <div style="width: 100%; height: 100%;background-color: #EAECEE;"></div>
+                                        {% endif %}
+                                    </td>
+                                {% endwith %}
+                            {% endwith %}
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="span4">
+            <table class="table" cellpadding="0" cellspacing="0" style="border: 1px solid #ddd;">
+                <thead>
+                <tr>
+                    <th colspan="7">
+                        <i class="fa fa-chalkboard-teacher"></i> AGENDA PARA HOY
+                    </th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td style="text-align: center; width: 30%;"><b>Fecha/Hora</b></td>
+                    <td style="text-align: center;"><b>Detalle</b></td>
+                    <td style="text-align: center;"><b>Acción</b></td>
+                </tr>
+                {% for l in tutoriashoy %}
+                    <tr style="background-color: #FEF5E7;">
+                        <td style="text-align: left; width: 220px;">
+                            <b>F. Tutoría:</b><br><i class="fa fa-calendar"></i> {{ l.fecha|date:"d-m-Y" }}<br>
+                            <b>Hora Atención:</b><br>
+                            <label class="label label-info">I</label> {{ l.hora_inicio|time:"h:i a" }} <br>
+                            <label class="label label-important">F</label> {{ l.hora_fin|time:"h:i a" }}
+                        </td>
+                        <td style="text-align: left;">
+                            <b>Asunto:</b> {{ l.asunto }}<br>
+                            <b>Obs.:</b> {{ l.observacion }}<br>
+                            <label class="label label-inverse tr" title="Total Inscritos"><i
+                                    class="fa fa-users"></i> {{ l.inscritos.count }} Inscritos</label><br>
+                            {% if l.estados_agenda == 0 %}
+                                <label class="label label-warning">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 1 %}
+                                <label class="label label-success">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 2 %}
+                                <label class="label label-info">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 3 %}
+                                <label class="label label-important">{{ l.get_estados_agenda_display }}</label>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if l.url_reunion and hoy_str == l.fecha and l.estados_agenda == 0 %}
+                                <a class="btn btn-success btn-mini" href="{{ l.url_reunion }}" target="_blank"><i
+                                        class="fa fa-video"></i> Ir a reunión</a><br>
+                            {% endif %}
+                            <div class="btn-group btn-mini">
+                                <a class="btn btn-primary dropdown-toggle" data-toggle="dropdown"
+                                   href="javascript:;"><i class="fa fa-cog"></i> Acción<span
+                                        class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right"
+                                    style="text-align: left">
+                                    {% if l.estados_agenda == 0 %}
+                                        <li>
+                                            <a onclick="formFinalizarModal('{{ l.id }}','Finalizar Tutoría','finagenda')"
+                                               href="javascript:void(0);" title="Finalizar/Detalle Tutoría">
+                                                <i class="fa fa-check-circle"></i> Finalizar Tutoría
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="javascript:;"
+                                               onclick="notificarCorreo('{{ l.id }}', '{{ l.inscritos.count }}')"><i
+                                                    class="fa fa-envelope"></i> Notificar Tutoría
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a onclick="formModal('{{ l.id }}','Editar Agenda','editagenda')"
+                                               href="javascript:void(0);">
+                                                <i class="fa fa-pencil"></i> Editar Tutoría
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a onclick="formModal('{{ l.id }}','Agenda Tutoría','anularagenda')"
+                                               href="javascript:void(0);" title="Anular Tutoría">
+                                                <i class="fa fa-clock-o"></i> Anular Tutoría
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="javascript:;" onclick="eliminarconfirmacion('{{ l.id }}')">
+                                                <i class="fa fa-trash"></i> Eliminar Tutoría</a>
+                                        </li>
+                                    {% endif %}
+                                    <li>
+                                        <a onclick="formModal('{{ l.id }}','Ver Agenda','veragenda', true)"
+                                           href="javascript:void(0);">
+                                            <i class="fa fa-eye"></i> Ver Detalle
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <td colspan="3" style="text-align: center; background-color: #EBF5FB;">
+                        <b><i class="fa fa-info-circle"></i> NO EXISTEN TUTORÍAS PARA HOY</b></td>
+                {% endfor %}
+                </tbody>
+            </table>
+            <table class="table" cellpadding="0" cellspacing="0" style="border: 1px solid #ddd;">
+                <thead>
+                <tr>
+                    <th colspan="7">
+                        <i class="fa fa-chalkboard-teacher"></i> TUTORÍAS PROGRAMADAS DEL MES
+                    </th>
+                </tr>
+                </thead>
+                <tbody class="estilocabdeta2">
+                <tr>
+                    <td style="text-align: center; width: 30%;"><b>Fecha/Hora</b></td>
+                    <td style="text-align: center;"><b>Detalle</b></td>
+                    <td style="text-align: center;"><b>Acción</b></td>
+                </tr>
+                {% for l in tutoriasagendadas %}
+                    <tr style="{% if l.pendiente_finalizar %}background-color: #FDEDEC{% endif %}">
+                        <td style="text-align: left; width: 220px;">
+                            <b>F. Tutoría:</b><br><i class="fa fa-calendar"></i> {{ l.fecha|date:"d-m-Y" }}<br>
+                            <b>Hora Atención:</b><br>
+                            <label class="label label-info">I</label> {{ l.hora_inicio|time:"h:i a" }} <br>
+                            <label class="label label-important">F</label> {{ l.hora_fin|time:"h:i a" }}
+                            {% if l.url_reunion and hoy_str == l.fecha %}<br>
+                                <a class="btn btn-success btn-mini" href="{{ l.url_reunion }}" target="_blank"><i
+                                        class="fa fa-video"></i> Ir a reunión</a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: left;">
+                            <b>Asunto:</b> {{ l.asunto }}<br>
+                            <b>Obs.:</b> {{ l.observacion }}<br>
+                            <label class="label label-inverse tr" title="Total Inscritos"><i
+                                    class="fa fa-users"></i> {{ l.inscritos.count }} Inscritos</label><br>
+                            {% if l.estados_agenda == 0 %}
+                                <label class="label label-warning">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 1 %}
+                                <label class="label label-success">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 2 %}
+                                <label class="label label-info">{{ l.get_estados_agenda_display }}</label>
+                            {% elif l.estados_agenda == 3 %}
+                                <label class="label label-important">{{ l.get_estados_agenda_display }}</label>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            <div class="btn-group btn-mini">
+                                <a class="btn btn-primary dropdown-toggle" data-toggle="dropdown"
+                                   href="javascript:;"><i class="fa fa-cog"></i> Acción<span
+                                        class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right"
+                                    style="text-align: left">
+                                    {% if l.estados_agenda == 0 %}
+                                        <li>
+                                            <a onclick="formFinalizarModal('{{ l.id }}','Finalizar Tutoría','finagenda')"
+                                               href="javascript:void(0);" title="Finalizar/Detalle Tutoría">
+                                                <i class="fa fa-check-circle"></i> Finalizar Tutoría
+                                            </a>
+                                        </li>
+                                        {% if not l.pendiente_finalizar %}
+                                            <li>
+                                                <a href="javascript:;"
+                                                   onclick="notificarCorreo('{{ l.id }}', '{{ l.inscritos.count }}')"><i
+                                                        class="fa fa-envelope"></i> Notificar Tutoría
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a onclick="formModal('{{ l.id }}','Editar Agenda','editagenda')"
+                                                   href="javascript:void(0);">
+                                                    <i class="fa fa-pencil"></i> Editar Tutoría
+                                                </a>
+                                            </li>
+                                        {% endif %}
+                                        <li>
+                                            <a onclick="formModal('{{ l.id }}','Anular Tutoría','anularagenda')"
+                                               href="javascript:void(0);" title="Anular Tutoría">
+                                                <i class="fa fa-clock-o"></i> Anular Tutoría
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="javascript:;" onclick="eliminarconfirmacion('{{ l.id }}')">
+                                                <i class="fa fa-trash"></i> Eliminar Tutoría</a>
+                                        </li>
+                                    {% endif %}
+                                    <li>
+                                        <a onclick="formModal('{{ l.id }}','Ver Agenda','veragenda', true)"
+                                           href="javascript:void(0);"><i
+                                                class="fa fa-eye"></i> Ver Detalle</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <td colspan="3" style="text-align: center; background-color: #EBF5FB;" width="1500px"><b><i
+                            class="fa fa-info-circle"></i> NO EXISTEN TUTORÍAS REGISTRADAS</b></td>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{#{% else %}#}
+{#    <div class="row-fluid">#}
+{#    <div class="span12">#}
+{#        <h1>NO HA REGISTRADO SU PLANIFICACION DE TUTORIAS DE PRACTICAS PREPROFESIONALES</h1>#}
+{#    </div>#}
+{#    </div>#}
+{#{% endif %}#}
+
+
+    <div class="modal fade static" id="tutoriamodal" style="display: none;">
+        <form autocomplete="off" method="post"
+              enctype="multipart/form-data" action="{{ request.path }}">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h4 id="paneltitle"></h4>
+            </div>
+            <input type="hidden" name="action" value="addguardartutoria2">
+            <input type="hidden" name="dia" id="diamod" value="">
+            <input type="hidden" name="mes" id="mesmod" value="">
+            <input type="hidden" name="anio" id="aniomod" value="">
+            <div class="modal-body listapracticas" id="listapracticas">
+            </div>
+            <div class="modal-footer">
+                <button type="submit" id="submit"
+                        class="btn btn-success">
+                    <i class="fa fa-check-circle"></i> Guardar
+                </button>
+                <a href="javascript:;" id="cerrartutoriamodal" class="btn btn-danger">Cerrar</a>
+            </div>
+        </form>
+    </div>
+
+{% endblock %}

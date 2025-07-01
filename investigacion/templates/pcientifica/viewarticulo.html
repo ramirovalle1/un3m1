@@ -1,0 +1,376 @@
+{% extends 'pcientifica/basemenu.html' %}
+{% load sga_extras %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#buscarpor").change(function (){
+                if($(this).val() == '3')
+                    $("#btnintegrantes").show();
+                else
+                    $("#btnintegrantes").hide();
+            });
+
+            $(".consultaestado").click(function (){
+                location.href = `{{ request.path }}?estado=${$(this).attr('estado')}`;
+            });
+
+            $(".integrantes").click(function() {
+                $(".aceptar").attr("tiporep", "p");
+                $("#s").val("");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_produccioncientifica",
+                    data: {'action': 'integrantes'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".paneltitlemodalreg").html(data.title);
+                            $(".panelbodymodalreg").html(data.data);
+                            $("#nombresseleccionados").html("");
+                            $("#itemspanelmodalreg").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".aceptar").click(function() {
+                aplicarFiltro();
+            });
+
+            aplicarFiltro = function (){
+                if(datosCompletosFiltro()){
+                    let idparticipantes = "";
+
+                    $(".grupoparticipante").each(function() {
+                        idpart = $(this).attr('idpart');
+
+                        if(idparticipantes == "")
+                            idparticipantes = idpart;
+                        else
+                            idparticipantes = idparticipantes + "," + idpart;
+                    });
+                    $('#itemspanelmodalreg').modal('hide');
+
+                    if($(".aceptar").attr("tiporep") == 'p'){
+                        location.href = "/adm_produccioncientifica?buscarpor=3&idsp="+idparticipantes;
+                    }
+                    else{
+                        generarReporteExcel("part", idparticipantes);
+                    }
+                }
+            };
+
+            datosCompletosFiltro = function (){
+                let c1e = true;
+                let marcados = $('.grupoparticipante').length;
+
+                if(marcados == 0){
+                    mensajeWarningSwal("Atención!!!", "Seleccione al menos un participante para aplicar el filtro");
+                    c1e = false;
+                    return false;
+                }
+
+                return c1e;
+            };
+
+            $(".reportegeneral").click(function() {
+                generarReporteExcel("gen", "");
+            });
+
+            $(".reporteparticipante").click(function() {
+                $(".aceptar").attr("tiporep", "e");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_produccioncientifica",
+                    data: {'action': 'integrantes'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".paneltitlemodalreg").html(data.title);
+                            $(".panelbodymodalreg").html(data.data);
+                            $("#nombresseleccionados").html("");
+                            $("#itemspanelmodalreg").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            generarReporteExcel = function (tipo, participantes){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_produccioncientifica",
+                    data: {"action": "reportegeneralarticulos", "tipo": tipo, "participantes": participantes},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.href = data.archivo;
+                        } else {
+                            $.unblockUI();
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $(".aprobararticulo").click(function() {
+                let id = $(this).attr('id');
+                let titulo = $(this).attr('titulo');
+                let url = "/adm_produccioncientifica";
+                let action = "aprobararticulo";
+                let urlDestino = "/adm_produccioncientifica?estado=2";
+
+                mensajeConfirmSwal("Aprobar Artículo", "¿Confirma aprobar el artículo con título: <b>"+titulo+"</b>?", true, url, action, id, urlDestino);
+            });
+
+            vistaFicha = function (idarticulo){
+                openwindow('POST' ,'/articulosinvestigacion', {action:'pdffichacatalograficas_articulo',id:idarticulo}, '_blank');
+            };
+
+            $("#buscarpor").trigger("change");
+        });
+    </script>
+{% endblock %}
+{% block subtitle %}Listado de Artículos{% endblock %}
+{% block buttons_action %}
+    <a href="javascript:;" class="consultaestado" estado="" data-bs-toggle="tooltip" title="Mostrar todos los artículos"><i class="fa fa-sort-numeric-asc"></i> Total: <span class="badge bg-primary">{{ totalarticulos }}</span></a> |
+    <a href="javascript:;" class="consultaestado" estado="1" data-bs-toggle="tooltip" title="Mostrar artículos aprobados"><i class="fa fa-sort-numeric-asc"></i> Aprobados: <span class="badge bg-success">{{ totalaprobados }}</span></a> |
+    <a href="javascript:;" class="consultaestado" estado="2" data-bs-toggle="tooltip" title="Mostrar artículos por aprobar"><i class="fa fa-sort-numeric-asc"></i> Por aprobar: <span class="badge bg-warning">{{ totalporaprobar }}</span></a> |
+    <a href="/articulosinvestigacion?action=addarticulo" class="btn btn-success" data-bs-toggle="tooltip" title="Adicionar Artículo"><i class="fa fa-plus"></i> Adicionar</a>
+    <div class="btn-group">
+        <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Procesos <i class="fa fa-angle-down"></i></button>
+        <div class="dropdown-menu">
+            <a class="dropdown-item" href="javascript:;" onclick="formModal('', '', 'Descargar Evidencias', 'evidenciasarticulo', 'modal-sm', true)"><i class="fa fa-download"></i>&nbsp;Descargar Evidencias por Año</a>
+            <a class="dropdown-item" href="javascript:;" onclick="formModal('', '', 'Descargar Evidencias por Código', 'evidenciasarticulocodigo', 'modal-lg')"><i class="fa fa-download"></i>&nbsp;Descargar Evidencias por Código</a>
+        </div>
+    </div>
+    <div class="btn-group">
+        <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+        <div class="dropdown-menu">
+            <a class="dropdown-item reportegeneral" href="javascript:;"><i class="fa fa-file-text"></i>&nbsp;Listado General</a>
+            <a class="dropdown-item reporteparticipante" href="javascript:;"><i class="fa fa-file-text"></i>&nbsp;Listado por Participantes</a>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    <form method="GET" class="form-row justify-content-end py-0">
+        <div class="col-5 col-md-4 col-lg-3 pe-md-2 pb-2">
+            <select name="buscarpor" id="buscarpor">
+                {% for tipo in tiposbusqueda %}
+                    <option value="{{ tipo.id }}" {% if tipo.id == buscarpor %}selected{% endif %}>{{ tipo.descripcion }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-1 col-md-4 col-lg-3 pe-md-2 pb-2">
+            <a href="javascript:;" class="btn btn-cian-opacity integrantes" id="btnintegrantes" data-bs-toggle="tooltip" title="Seleccionar Participantes"><i class="fa fa-users"></i> </a>
+        </div>
+        <div class="col-6">
+            <div class="input-group mb-2">
+                <input type="text" class="form-control" placeholder="Ingrese el criterio de consulta..."
+                       autocomplete="off"
+                       aria-label="Buscar"
+                       aria-describedby="button-addon2" id="s" name="s" value="{{ s }}">
+                <div class="input-group-append">
+                    <button class="btn btn-primary-old" type="submit" id="button-addon2"><i
+                            class="fa fa-search"></i></button>
+                    {% if url_vars %}
+                        <a title="Ver todo" href="{{ request.path }}" class="btn btn-default tr">
+                            <i class="fas fa-sync-alt"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </form>
+    <table class='tabla_responsive table table_primary'>
+        <thead class="table-light">
+            <tr>
+                <th class="w-3">N°</th>
+                <th class="w-35 text-center">Código/Artículo</th>
+                <th class="w-19 text-center">Autores/Coautores</th>
+                <th class="w-15 text-center">Detalles</th>
+                <th class="w-10 text-center">Base/Categ</th>
+                <th class="w-5 text-center">Publicación</th>
+                <th class="w-10 text-center">Núm.Revista</th>
+                <th class="text-center w-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for articulo in articulos %}
+            <tr>
+                <td class="text-center align-middle">{% contador_lista page forloop.counter %}</td>
+                <td class="align-middle" data-title="Dirección/ Gestión">
+                    <b>{{ articulo.revista.codigoissn }}-{{ articulo.id }}-ART</b>
+                    <p>{{ articulo|title2 }}</p>
+                    <p><b>Acceso:</b> {% if articulo.accesoabierto %}<i class="fa fa-folder-open tu" title="Abierto" ></i>{% else %}<i class="fa fa-lock tu" title="Cerrado" ></i>{% endif %}</p>
+                    <p>
+                        <b>{% if articulo.revista.tiporegistro == 1 %}Revista:{% else %}Congreso:{% endif %}</b>
+                        <span>{{ articulo.revista.codigoissn }}-{{ articulo.revista }}</span>
+                    </p>
+                </td>
+                <td class="align-middle" data-title="Requerimiento">
+                    {% with listaparticipantes=articulo|call:'participantes' %}
+                        {% for integrante in listaparticipantes %}
+                            <div class="arrow-content">
+                                <i class="arrow-item" style="bottom: 1px"></i>
+                                <div class="arrow-text " data-bs-toggle="tooltip" title="">
+                                    {{ integrante.profesor.persona.nombre_completo_minus|default_if_none:"" }} {{ integrante.administrativo.persona.nombre_completo_minus|default_if_none:"" }}  {{ integrante.inscripcion.persona.nombre_completo_minus|default_if_none:"" }}
+                                </div>
+                            </div>
+                        {% empty %}
+                            <a href='/articulosinvestigacion?action=participantesarticulos&id={{ articulo.id|encrypt }}'><span class="text-warning">Participante(s) no asignado(s)</span></a>
+                        {% endfor %}
+                    {% endwith %}
+                </td>
+                <td class="align-middle" data-title="Adjuntos">
+                    <p>
+                        <b>Estado: </b>
+                        {% if articulo.aprobado %}<span class="text-success">Aprobado</span>{% else %}<span class="text-warning">Por Aprobar</span>{% endif %}
+                    </p>
+                    <p>
+                        <b>Proy.Inv: </b>
+                        {% if articulo.tipoproyecto %}
+                            <span class="text-success tu" title="{% if articulo.proyectointerno %}{{ articulo.proyectointerno.nombre }}{% else %}{{ articulo.proyectoexterno.nombre }}{% endif %}">Si</span>
+                        {% else %}
+                            <span class="text-dark">No</span>
+                        {% endif %}
+                    </p>
+                    <p>
+                        <b>Grup.Inv: </b>
+                        {% if articulo.pertenecegrupoinv %}
+                            <span class="text-success tu" title="{{ articulo.grupoinvestigacion.nombre }}">Si</span>
+                        {% else %}
+                            <span class="text-dark">No</span>
+                        {% endif %}
+                    </p>
+                    {% if articulo.eliminadoxdoc %}
+                        <p>
+                            <span class="text-danger tu" title="Eliminado por el docente">Eliminado</span>
+                        </p>
+                    {% endif %}
+                </td>
+                <td class="text-center align-middle">
+                    {% with listabasesindexadas=articulo|call:'basesartculos' %}
+                        <p>
+                        {% for listabases in listabasesindexadas %}
+                            {{ listabases.baseindexada|title2 }}&nbsp;
+                        {% endfor %}
+                        </p>
+                        {% if articulo.categoria %}
+                            <p><b>{{ articulo.get_categoria_display|title2 }}</b></p>
+                        {% else %}
+                            <p><b>En Revisión</b></p>
+                        {% endif %}
+                    {% endwith %}
+                </td>
+                <td class="text-center align-middle">
+                    {{ articulo.fechapublicacion|date:"Y-m-d" }}
+                </td>
+                <td class="text-center align-middle">
+                    {{ articulo.numero }}
+                </td>
+                <td class="text-center align-middle">
+                    <div class="dropdown dropleft">
+                        <a href="javascript:;" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false"><i class="fa fa-ellipsis-v fs-6"></i></a>
+                        <ul class="dropdown-menu pull-right" x-placement="right-start">
+                            {% if perms.sga.puede_modificar_articulos and not articulo.eliminadoxdoc %}
+                                {% if not articulo.aprobado %}
+                                    <li><a href="/articulosinvestigacion?action=editarticulo&id={{ articulo.id|encrypt }}" class="dropdown-item"><span class="fa fa-edit dropdown-item-icon"></span> Editar</a></li>
+                                {% else %}
+                                    {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                        <li><a href="/articulosinvestigacion?action=editarticulo&id={{ articulo.id|encrypt }}" class="dropdown-item"><span class="fa fa-edit dropdown-item-icon"></span> Editar</a></li>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                            {% with numeroevidencias=articulo|call:'numeroevidenciasarticulos' numeroparticipantes=articulo|call:'numeroparticipantesarticulo' %}
+                                <li><a href="/articulosinvestigacion?action=evidenciasarticulos&id={{ articulo.id|encrypt }}" class="dropdown-item"><span class="fa fa-table dropdown-item-icon"></span> Evidencias&nbsp;<label class="badge badge-dark">{{ numeroevidencias }}</label></a></li>
+                                <li><a href="/articulosinvestigacion?action=participantesarticulos&id={{ articulo.id|encrypt }}" class="dropdown-item"><span class="fa fa-group dropdown-item-icon"></span> Participantes&nbsp;<label class="badge badge-dark">{{ numeroparticipantes }}</label></a></li>
+                            {% endwith %}
+                            <li><a href="javascript:;" class="dropdown-item" onclick="vistaFicha('{{ articulo.id|encrypt }}');"><span class="fa fa-print dropdown-item-icon"></span> Ficha Catalográfica</a></li>
+                            {% if perms.sga.puede_modificar_articulos and not articulo.eliminadoxdoc %}
+                                {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                    <li><a href="javascript:;" title="Eliminar" class="dropdown-item" onclick="eliminarajax('{{ articulo.id|encrypt }}', '{{ articulo.nombre }}', 'delarticulo', '','¿Confirma que desea eliminar el Registro?<br>')"><span class="fa fa-trash dropdown-item-icon"></span> Eliminar</a></li>
+                                {% endif %}
+                            {% endif %}
+                            {% if not articulo.aprobado and not articulo.eliminadoxdoc %}
+                                {% with totalevidencias=articulo|call:"numeroevidenciasarticulos" totalparticipantes=articulo|call:"numeroparticipantesarticulo" %}
+                                    {% if totalevidencias > 0 and totalparticipantes > 0 %}
+                                        {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                            <div class="dropdown-divider"></div>
+                                            <li class="dropdown-item"><a class="aprobararticulo" id="{{ articulo.id|encrypt }}" titulo="{{ articulo.nombre }}" href="javascript:;"><span class="fa fa-check-square-o dropdown-item-icon"></span>Aprobar</a></li>
+{#                                            <li><a href="javascript:;" class="dropdown-item" onclick="eliminarajax('{{ articulo.id|encrypt }}', '{{ articulo.nombre }}', 'aprobararticulo', '','¿Confirma que desea aprobar el artículo?<br>')"><span class="fa fa-check-square-o dropdown-item-icon"></span> Aprobar</a></li>#}
+                                        {% endif %}
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
+                        </ul>
+                    </div>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="8" class="text-center">No existen registros de artículos</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% include 'paginacionb4.html' %}
+
+    <div class="modal fade static" id="itemspanelmodalreg" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="modalreg">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><i class="fa fa-outdent" id="title-icon"></i> <b class="paneltitlemodalreg"> FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="panelbodymodalreg m-3">
+
+                    </div>
+                </div>
+                <span class="text-dark m-3 mt-0 mb-0"><b>Participantes seleccionados:</b></span>
+                <div class="modal-body m-3 mt-0 mb-2" id="nombresseleccionados" style="height: 50px; overflow-y:scroll;">
+
+                </div>
+                <div class="modal-footer mb-3 mr-5" id="footermodalreg">
+                    <button class="btn btn-orange fs-5 aceptar" tiporep=""><i class="fa fa-check"></i> Aceptar</button>
+                    <a href="javascript:;" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal" aria-label="Close"><i class="fa fa-remove"></i> Cancelar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

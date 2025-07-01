@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        function eliminar(pk, nombre, accion) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar la siguiente postulación:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        }else{
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Listado de postulaciones a programas de posgrado </h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <table class='tabla_responsive table table-bordered table-striped'>
+                        <thead>
+                            <tr>
+                                <th style="width: 300px; text-align: center">N°</th>
+                                <th style="width: 100px; text-align: center">Programa de maestría</th>
+                                <th style="width: 100px; text-align: center">Asesor Comercial</th>
+                                <th style="width: 100px; text-align: center">Fecha de inscripción</th>
+                                <th style="width: 100px; text-align: center">Estado</th>
+                                <th style="width: 100px; text-align: center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for inscri in inscripcionescohorte %}
+                            <tr>
+                                <td style="text-align: center; vertical-align: middle" class="w-5">{{ forloop.counter }}</td>
+                                <td style="text-align: left; vertical-align: middle" class="w-20">
+                                    <b>Maestría: </b>{{ inscri.cohortes.maestriaadmision.descripcion|lower|capfirst }}<br>
+                                    <b>Cohorte: </b>{{ inscri.cohortes.descripcion|lower|capfirst }}
+                                </td>
+                                <td style="text-align: {% if inscri.asesor %}left{% else %}center{% endif %}; vertical-align: middle" class="w-20">
+                                    {% if inscri.asesor %}
+                                        <b>Nombre: </b> {{ inscri.asesor.persona|title }}<br>
+                                        <b>Correo: </b> {{ inscri.asesor.persona.emailinst }}
+                                    {% else %}
+                                        <span class="badge bg-warning">Por asignar</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle" class="w-15">
+                                    {{ inscri.fecha_creacion|date:'d-m-Y' }} - {{ inscri.fecha_creacion|date:'h:i a' }}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle" class="w-10">
+                                    {% if inscri.tiene_matricula_cohorte %}
+                                        {% if inscri.retirado_matricula %}
+                                            <span class="badge bg-danger">Retirado</span>
+                                        {% else %}
+                                            <span class="badge bg-primary">Matriculado</span>
+                                        {% endif %}
+                                    {% elif inscri.inscripcion %}
+                                        <span class="badge bg-primary">Inscrito</span>
+                                    {% elif inscri.estado_aprobador == 1 %}
+                                        <span class="badge bg-warning">Pendiente</span>
+                                    {% elif inscri.estado_aprobador == 2 %}
+                                        <span class="badge bg-success">Admitido</span>
+                                    {% elif inscri.estado_aprobador == 3 %}
+                                        <span class="badge bg-success">Rechazado</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle" class="w-30">
+                                    <a class="btn btn-warning bloqueo_pantalla tu" title="Iniciar proceso de admisión"
+                                       href='/alu_requisitosmaestria?action=listadorequisitosinscripcion&idinscripcioncohorte={{ inscri.id|encrypt }}'><i
+                                            class="fa fa-hourglass-start"></i> Iniciar proceso</a>
+                                    {% if inscri.puedeeliminar %}
+                                        {% if inscri.estado_aprobador == 1 %}
+                                            {% if not inscri.genero_rubro_matricula and not inscri.genero_rubro_programa %}
+                                                <a href="javascript:;" class='btn btn-danger' onclick="eliminar('{{ inscri.id }}', '{{ inscri }}', 'delinscripcion')"><i class="fa fa-remove"></i> Eliminar postulación</a>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            </tbody>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

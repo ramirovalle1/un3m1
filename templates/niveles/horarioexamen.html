@@ -1,0 +1,751 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+
+    <link href="/static/css/bootstrap-timepicker.css?4.0.0" rel='stylesheet'/>
+    <script type='text/javascript' src="/static/js/bootstrap-timepicker.js?4.0.0"></script>
+{#    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>#}
+    <link href="/static/css/datepicker.css?4.0.0" rel='stylesheet'/>
+    <script type='text/javascript' src="/static/js/bootstrap-datepicker.js?4.0.0"></script>
+    <script src="/static/assets/js/moment.js"></script>
+
+    <script type="text/javascript">
+        var intentos = 0;
+        var materias;
+        var nivel = {{ nivel.id }};
+        var materia, detalle, cantidad, turno, action = 'addfechas', id = null, aula, tipo, pro, proferesposable;
+
+        $(function () {
+            var html;
+            {% if nivel.modalidad.id == 3 %}
+                html = "¡Rango en Exámenes en Línea! <br> Recuerde que el rango para las carreras en modalidad en línea es de una hora con quince minutos por examen.";
+            {% endif %}
+            {% if nivel.modalidad.id == 2 %}
+                html = "¡Rango en Exámenes Semipresenciales! <br> Recuerde que el rango para las carreras en modalidad semipresencial es de una hora por examen.";
+            {% endif %}
+            {% if nivel.modalidad.id == 1 %}
+               html = "¡Rango en Exámenes Presenciales! <br> Recuerde que el rango para las carreras en modalidad presencial es de una hora quince por examen.";
+            {% endif %}
+            Swal.fire({
+                title: 'Atención!',
+                html:html,
+                type: 'warning',
+                allowOutsideClick: false,
+                showCancelButton: false,
+                input: false,
+            })
+            $("select").select2({minimumResultsForSearch: 20});
+            $('#id_tiporesponsable').change(function () {
+                $('#id_responsable').empty().trigger('change');
+                $.ajax({
+                    type: 'GET',
+                    url: '{{ request.path }}?tipo=' + $(this).val() + '&materia=' + materia + '&action=buscareponsable',
+                    dataType: "json",
+                    enctype: $(this).attr('enctype'),
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    beforeSend: function () {
+                        bloqueointerface();
+                    }
+                }).done(function (data) {
+                    if (data.result === 'ok') {
+                        $.each(data.data, function (key, value) {
+                            let newOption = new Option(value.text, value.id, false, false);
+                            $('#id_responsable').append(newOption).trigger('change');
+                        })
+                        //$('#id_responsable').val(proferesposable).trigger('change');
+                    } else {
+                        //smoke.alert(data.mensaje);
+                        alertaWarning(data.mensaje);
+                    }
+                    $.unblockUI();
+                }).fail(function (jqXHR, textStatus, errorThrown) {
+                    //smoke.alert('Error en el servidor');
+                    alertaWarning('Error en el servidor');
+                    $.unblockUI();
+                });
+            });
+
+            $(".deletehora").click(function () {
+                var idhoraexamen = $(this).attr('idhoraexamen');
+                smoke.confirm("¿Está seguro de eliminar.?", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/niveles",
+                            data: {'action': 'deletehora', 'id': idhoraexamen},
+                            error: function () {
+                                $.unblockUI();
+                                //smoke.alert("Error al obtener los datos.");
+                                alertaWarning("Error al obtener los datos.");
+                            },
+                            success: function (data) {
+                                if (data.result == "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    //smoke.alert(data.mensaje);
+                                    alertaWarning(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI,ELIMINAR",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+
+            });
+            $(".deletecabhorario").click(function () {
+                var idhoracabexamen = $(this).attr('idhoracabexamen');
+                smoke.confirm("¿Está seguro de eliminar.?", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/niveles",
+                            data: {'action': 'deletecabhorario', 'id': idhoracabexamen},
+                            error: function () {
+                                $.unblockUI();
+                                //smoke.alert("Error al obtener los datos.");
+                                alertaWarning("Error al obtener los datos.");
+                            },
+                            success: function (data) {
+                                if (data.result == "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    //smoke.alert(data.mensaje);
+                                    alertaWarning(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI,ELIMINAR",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+
+            });
+
+            $("#adicionarycerraractividad").click(function () {
+                var horaini = $("#id_horainicio").val();
+                //horaini=horaini.slice(0, -3);
+                var horafin = $("#id_horafin").val();
+                //horafin=horafin.slice(0, -3);
+                var fechaseleccionado = $('#id_fecha');
+                {#var cantalumnos = $("#id_cantalumnos").val();#}
+                var idhorariexamen = $("#idhorariexamen").val();
+                {#var idgrupo = $("#id_tipogrupo").val();#}
+                if (horaini === '') {
+                    $("#itemspaneltemas .incompletotemas").show();
+                    return false;
+                }
+                if (fechaseleccionado.val() !== '') {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {
+                            'action': action,
+                            'horaini': horaini,//.toLocaleTimeString('en-US', { timeStyle: 'short' }),
+                            'horafin': horafin,//.toLocaleTimeString('en-US', { timeStyle: 'short' }),
+                            'idhorariexamen': idhorariexamen,
+                            'fecha': fechaseleccionado.val(),
+                            'materia': materia,
+                            'detalle': detalle,
+                            'cantalumnos': cantidad,
+                            'id': id,
+                            'tipo': $('#id_tiporesponsable').val(),
+                            'pro': $('#id_responsable').val(),
+                            'aula': $('#id_aula').val()
+
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            //smoke.alert("Error al obtener los datos.");
+                            alertaWarning("Error al obtener los datos.");
+                        },
+                        success: function (data) {
+                            if (data.result === "ok") {
+                                location.reload();
+                                tooltips();
+                            } else {
+                                $.unblockUI();
+                                //smoke.alert(data.mensaje);
+                                alertaWarning(data.mensaje);
+                            }
+                        }
+                    });
+                } else {
+                    //smoke.alert('Debe seleccionar una fecha');
+                    alertaWarning('Debe seleccionar una fecha');
+                }
+            });
+            editactividad = function (materiat, turnot, aulat, tiporesponsable, reponsable, horarioexamen, detallet, cantidadt, fecha, inicio, fin, pk) {
+                $("#itemspaneltemas").modal({backdrop: 'static', width: '600px'}).modal('show');
+                materia = materiat;
+                detalle = detallet;
+                cantidad = cantidadt;
+                turno = turnot;
+                action = 'editfechas';
+                id = pk;
+                var fec = (fecha.getDate() + 1) + '-' + (fecha.getMonth() + 1) + '-' + fecha.getFullYear();
+                $('#id_fecha').datepicker().val(fec).trigger('change')
+                $('#id_horainicio').timepicker('setTime', inicio);
+                $('#id_horafin').timepicker('setTime', fin);
+                $('#id_aula').val(aulat).trigger('change');
+                $('#id_tiporesponsable').val(tiporesponsable).trigger('change');
+                proferesposable = reponsable
+                $("#idhorariexamen").val(horarioexamen);
+                {#$("#id_cantalumnos").prop('max', max).val(0);#}
+            }
+
+
+            addactividad = function (materiat, turnot, detallet, cantidadt) {
+                var fecha = new Date();
+                var fec = fecha.getDate() + '-' + (fecha.getMonth() + 1) + '-' + fecha.getFullYear();
+                $("#itemspaneltemas").modal({backdrop: 'static', width: '600px'}).modal('show');
+                materia = materiat;
+                detalle = detallet;
+                cantidad = cantidadt;
+                turno = turnot;
+                action = 'addfechas';
+                $('#id_fecha').datepicker().val(fec).trigger('change');
+                $('#id_horainicio').timepicker('setTime', fecha);
+                $('#id_horafin').timepicker('setTime', fecha)
+                $('#id_tiporesponsable').val($('#id_tiporesponsable option:first').val());
+                $('#id_tiporesponsable').val($('#id_tiporesponsable option:first').val()).trigger('change');
+                $('#id_horafin, #id_horainicio, #id_fecha').on('change', function () {
+
+
+                    let hinicio = $('#id_horainicio').val();
+                    let hfin = $('#id_horafin').val();
+
+                    if ((hinicio.split(':').length == 2) && (hfin.split(':').length == 2)) {
+                        $('#formatohora').hide();
+                        $.ajax({
+                            type: 'GET',
+                            url: '{{ request.path }}?detalle=' + detallet + '&fecha=' + $('#id_fecha').val() + '&inicio=' + hinicio + '&fin=' + hfin + '&action=buscaraula',
+                            dataType: "json",
+                            enctype: $(this).attr('enctype'),
+                            cache: false,
+                            contentType: false,
+                            processData: false,
+                            beforeSend: function () {
+                                bloqueointerface();
+                            }
+                        }).done(function (data) {
+                            if (data.result === 'ok') {
+                                $.each(data.data, function (key, value) {
+                                    let newOption = new Option(value.text, value.id, false, false);
+                                    $('#id_aula').append(newOption).trigger('change');
+                                })
+                            } else {
+                                //smoke.alert(data.mensaje);
+                                alertaWarning(data.mensaje);
+
+                            }
+                            $.unblockUI();
+                        }).fail(function (jqXHR, textStatus, errorThrown) {
+                            //smoke.alert('Error en el servidor');
+                            alertaWarning('Error en el servidor');
+                            $.unblockUI();
+                        });
+                    } else {
+                        $('#formatohora').show();
+                    }
+
+
+
+
+                 });
+
+            }
+            $("#cerrartemas").click(function () {
+                $('#id_responsable').empty().trigger('change');
+                $("#itemspaneltemas .incompletotemas").hide();
+                $("#itemspaneltemas .incompletovalotemas").hide();
+                $("#itemspaneltemas").modal("hide");
+            });
+            horainicio = $(".selectorhora");
+            horainicio.timepicker({
+                minuteStep: 1,
+                appendWidgetTo: 'body',
+                showSeconds: false,
+                showMeridian: false,
+                defaultTime: true
+            });
+            aula = $('#id_aula').val();
+            tipo = $('#id_tiporesponsable').val();
+            pro = $('#id_responsable').val();
+            $("select").select2({minimumResultsForSearch: 20});
+            $("#mclose").click(function () {
+                $(".modal-footer").show();
+                if (self.href != "#") {
+                    $(location).attr('href', self.href);
+                }
+            });
+
+
+            fechaingresar = $(".selectorfechaingresar");
+
+            {#            $(".guardar").click(function() {#}
+            {#                $(".guardar").each(function () {#}
+            {#                    var id = $(this).attr('mid');#}
+            {#                    alert(id);#}
+            {#                });#}
+            {#            });#}
+
+            guardar = function (idmateria, turno, detalle) {
+                var turnoseleccionado = $('#turno_' + turno + '_' + idmateria);
+                var fechaseleccionado = $('#fecha_' + turno + '_' + idmateria);
+                if (turnoseleccionado.val() > 0 && fechaseleccionado.val() !== '') {
+                    bloqueointerface();
+                    $.post("/niveles", {
+                        'action': 'ingresar_horarioexamen',
+                        'turno': turnoseleccionado.val(),
+                        'fecha': fechaseleccionado.val(),
+                        'materia': idmateria,
+                        'detalle': detalle
+                    }, function (data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                            {#                            fechaanterior = data.fecha;#}
+                            {#                            if (data.profesores > 0){#}
+                            {#                                location.href=location.href;#}
+                            {#                            } else {#}
+                            {#                                $.unblockUI();#}
+                            {#                                elemento.val(fechaactual);#}
+                            {#                                elemento.attr({'va': fechaactual});#}
+                            {#                                elemento.datepicker( "setValue", fechaactual).datepicker( "update").datepicker("hide");#}
+                            {#                            }#}
+                        } else {
+                            $.unblockUI();
+                            if (data.existeconflicto) {
+                                $("#conflicto_body").html(data.segmento);
+                                $("#conflicto").modal({backdrop: 'static', width: 1000}).modal('show');
+                                if (data.conflicto_por_editar) {
+                                    turnoseleccionado.val(data.idturno_anterior).trigger('change');
+                                    fechaseleccionado.datepicker('setValue', data.fecha_anterior).datepicker('update').datepicker('hide');
+                                } else {
+                                    turnoseleccionado.val(0).trigger('change');
+                                    fechaseleccionado.val('')
+                                }
+                            } else {
+                                //smoke.alert(data.mensaje);
+                                alertaWarning(data.mensaje);
+                            }
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        //smoke.alert("Fallo al cambiar la fecha");
+                        alertaWarning("Fallo al cambiar la fecha");
+                    });
+                } else {
+                    $.unblockUI();
+                    //smoke.alert("Ingrese Fecha y Seleccione Turno");
+                    alertaWarning("Ingrese Fecha y Seleccione Turno");
+                }
+            };
+            guardarfecha = function (idmateria, turno, detalle) {
+                var fechaseleccionado = $('#fecha_' + turno + '_' + idmateria);
+                if (fechaseleccionado.val() != '') {
+                    bloqueointerface();
+                    $.post("/niveles", {
+                        'action': 'ingresar_horarioexamenhora',
+                        'fecha': fechaseleccionado.val(),
+                        'materia': idmateria,
+                        'detalle': detalle
+                    }, function (data) {
+                        if (data.result == 'ok') {
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            //smoke.alert(data.mensaje);
+                            alertaWarning(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        //smoke.alert("Fallo al cambiar la fecha");
+                        alertaWarning("Fallo al cambiar la fecha");
+                    });
+                } else {
+                    $.unblockUI();
+                    //smoke.alert("Ingrese Fecha");
+                    alertaWarning("Ingrese Fecha");
+                }
+            };
+
+            $("#conflicto_cerrar").click(function () {
+                $("#conflicto").modal("hide");
+            });
+
+            fechaingresar.datepicker({format: "dd-mm-yyyy"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            });
+
+
+            $(".filterable tr.principal:has(td)").each(function () {
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox").keyup(function () {
+                var s = $(this).val().toLowerCase().split(" ");
+                console.log(s)
+                $(".filterable tr.principal:hidden").show();
+                $.each(s, function () {
+                    $(".filterable tr.principal:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            });
+            $(".filterable2 tr:has(td)").each(function () {
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn2'></td>").hide().text(t).appendTo(this);
+            });
+            $("#FilterTextBox2").keyup(function () {
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable2 tr:hidden").show();
+                $.each(s, function () {
+                    $(".filterable2 tr:visible .indexColumn2:not(:contains('" + this + "'))").parent().hide();
+                });
+            });
+        });
+    </script>
+    <style>
+        div.swal2-content span.select2-selection.select2-selection--single {
+            display: none;
+        }
+    </style>
+{% endblock %}
+{% block atras %}/niveles?action=materias&id=
+    {{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid=
+        {{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+       <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración de horario de exámenes</h6>
+            </div>
+
+            <div class="alert alert-info alert-dismissible fade show" role="alert" id="mi-div">
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                {% if nivel.modalidad.id == 3 %}
+                    <h4 class="alert-heading">¡Rango en Exámenes en Línea!</h4>
+                    Recuerde que el rango para las carreras en modalidad en línea es de una hora con quince minutos por examen.
+                {% endif %}
+                {% if nivel.modalidad.id == 1 %}
+                    <h4 class="alert-heading">¡Rango en Exámenes Presenciales!</h4>
+                    Recuerde que el rango para las carreras en modalidad presencial es de una hora quince por examen.
+                {% endif %}
+                {% if nivel.modalidad.id == 2 %}
+                    <h4 class="alert-heading">¡Rango en Exámenes Semipresenciales!</h4>
+                    Recuerde que el rango para las carreras en modalidad semipresencial es de una hora quince por examen.
+                {% endif %}
+            </div>
+
+
+            {% if nivel.cerrado %}
+                <br><label class='label label-important'>CERRADO</label>
+            {% endif %}
+        </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12 col-lg-9 col-sm-9">
+        <input type="search" style="text-transform: uppercase;  margin-bottom: 0px" placeholder="Buscar materia...."
+            class="input-block-level" id="FilterTextBox" name="FilterTextBox">
+        </div>
+        </div>
+        <div class='card mb-4'>
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive">
+            <table class="table table-bordered table-striped filterable">
+                <thead>
+                <tr class="table-light">
+                    <th style="width: 30%">Asignatura</th>
+                    <th style="width: 50px;text-align: center">Alumnos</th>
+                    <th style="width: 200px;">Aula</th>
+                    <th style="width: 500px;text-align: center">Fechas</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for materia in materias %}
+                    <tr class="principal">
+                        <td>
+                            ({{ materia.id }}) - {{ materia.nombre_completo }} <br/>
+                            {% if materia.asignaturamalla.nivelmalla %}
+                                <span class="smaller">{{ materia.asignaturamalla.nivelmalla }}</span>
+                                <br/>
+                            {% endif %}
+                            <span class="smaller">M.E.: {{ materia.modeloevaluativo.nombre|default_if_none:"" }}</span>
+                            <br>
+                            {% if materia.cerrado %}
+                                <span class="label label-important">CERRADA {{ materia.fechacierre|date:"d-m-Y" }}</span>
+                            {% else %}
+                                <span class="label label-success">ABIERTA</span>
+                            {% endif %}
+                            {% if materia.asignaturamalla.practicas %}
+                                <span class="label label-warning tu" title="Teórico-Práctica">TP</span>
+                            {% endif %}
+                            {% if materia.rectora %}
+                                <span class="label label-info tu" title="Materia general">MG</span>
+                            {% endif %}
+                            {% if materia.tutoria %}
+                                <span class="label label-warning tu" title="Tutoria">TR</span>
+                            {% endif %}
+                            {% if materia.practicas %}
+                                <span class="label label-warning tu" title="Prácticas pre-profesionales">PP</span>
+                            {% endif %}
+                            {% if not materia.validacreditos %}
+                                <span class="label label-warning tu" title="No valida para créditos">NVC</span>
+                            {% endif %}
+                            {% if not materia.validapromedio %}
+                                <span class="label label-warning tu" title="No valida para promedio">NVP</span>
+                            {% endif %}
+                            <br>
+                            {% for profesormateria in materia.profesores_materia %}
+                                <div style="float: left;width: 100%;">
+                                    {% if profesormateria.principal %}
+                                        <label class="label label-info tu" title="Principal">P</label>
+                                    {% endif %}
+                                    <span class="btn-mini btn-info tu"
+                                          title="Tiempo de Dedicación">{{ materia.abreviatura_dedicacion }}</span>
+                                    <br>
+                                    {{ profesormateria.tipoprofesor }} - <span
+                                        style="font-weight: bold;">{{ profesormateria.profesor.persona.nombre_completo_inverso }}  </span>
+                                    <br>
+                                    <span class="fechas{{ materia.id }}">[{{ profesormateria.desde|date:'d-m-Y' }} al {{ profesormateria.hasta|date:'d-m-Y' }}] Horas semanal: {{ profesormateria.hora }}</span>
+                                </div>
+                            {% endfor %}
+
+                        </td>
+                        <td style="text-align: center" class="caja">
+                            <span class="label label-info">{{ materia.cantidad_alumnos }}</span>
+                        </td>
+                        <td class="caja">
+                            {% if materia.tiene_horario %}
+                                {% for aula in materia.aulas %}{{ aula.nombre }}{% if not forloop.last %},
+                                {% endif %}{% endfor %}-({{ materia.cantidad_clases }})
+                                {% for turnos in materia.horarios_asignados %}
+                                    <br>{{ turnos.turno }}
+                                {% endfor %}
+                                <br>{{ materia.dias_programados }}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if not materia.cerrado %}
+                                <table width="100%" border="1" cellspacing="0" cellpadding="0">
+                                    {% for detalle in materia.configuracionexamen %}
+                                        <tr>
+                                            <td style="padding: 5px;vertical-align: middle; width: 30%">
+                                                <strong>{{ detalle.parcialconfiguraexamen }} </strong>
+                                                {% with fechaingresada=materia|args:detalle|call:"fecha_examen_materia" %}
+                                                    <input mid='{{ materia.id }}' type="text"
+                                                           value='{{ fechaingresada|date:'d-m-Y' }}'
+                                                           disabled="disabled"/><br>
+                                                {% endwith %}
+                                            </td>
+                                            <td style="padding: 5px;vertical-align: middle;width: 70%">
+                                                {% with fechaingresadaotra=materia|args:detalle|call:"fecha_examen_materiadia" %}
+                                                    {% if fechaingresadaotra %}
+                                                        <table width="100%" border="1" cellspacing="0" cellpadding="0">
+                                                            <tr>
+                                                                <th style="padding: 0;text-align: center">ACCIONES</th>
+                                                                <th style="padding: 0;text-align: center">H.INICIO</th>
+                                                                <th style="padding: 0;text-align: center">H.FIN</th>
+                                                                <th style="padding: 0;text-align: center">AULA</th>
+                                                            </tr>
+                                                            {% if fechaingresadaotra.detallehoraexamen %}
+                                                                {% for detallehora in fechaingresadaotra.detallehoraexamen %}
+                                                                    <tr>
+                                                                        <td style="padding: 0;text-align: center">
+                                                                            {% with fechaingresada=materia|args:detalle|call:"fecha_examen_materia" %}
+
+                                                                                {% if detalle.id in detalle_gestionar_examenes %}
+                                                                                    <a class='btn btn-tini btn-warning btn-mini tu edithora'
+                                                                                       onclick="editactividad({{ materia.id }},{{ detalle.id }}, {{ detallehora.aula_id }}, {{ detallehora.tiporesponsable }}, {{ detallehora.responsable_examen.id }}, {{ fechaingresadaotra.id }},{{ detalle.id }}, {{ materia.cantidad_alumnos }}, new Date('{{ fechaingresada|date:'Y-m-d' }}'), '{{ detallehora.horainicio|time:"H:i" }}', '{{ detallehora.horafin|time:"H:i" }}')"
+                                                                                       idhoraexamen="{{ detallehora.id }}"
+                                                                                       title="Editar"><span
+                                                                                            class="fa fa-edit"></span>
+                                                                                    </a>
+                                                                                    <a class='btn btn-tini btn-danger btn-mini'
+                                                                                       onclick="eliminarajax('{{ detallehora.id }}', 'Horario de Examen', 'deletehora')"
+                                                                                       idhoraexamen="{{ detallehora.id }}"
+                                                                                       title="Eliminar"><span
+                                                                                            class="fa fa-remove"></span>
+                                                                                    </a>
+{#                                                                                    <a href="javascript:;" title="Eliminar"#}
+{#                                                                                       onclick="eliminarajax('{{ detallehora.id }}', '{{ detallehora.id }}', 'deletehora')">#}
+{#                                                                                        <span class="fa fa-trash"></span> Eliminar</a>#}
+{#                                                                                    </a>#}
+                                                                                {% endif %}
+                                                                            {% endwith %}
+                                                                        </td>
+                                                                        <td style="padding: 0;text-align: center">{{ detallehora.horainicio|time:"H:i" }}</td>
+                                                                        <td style="padding: 0;text-align: center">{{ detallehora.horafin|time:"H:i" }}</td>
+                                                                        <td style="padding: 0;text-align: center">{{ detallehora.aula }}</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td colspan="5">
+                                                                            <b>Docente:</b> {{ detallehora.responsable_examen_nombre }}
+                                                                        </td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            {% else %}
+                                                                <tr>
+                                                                    <td style="padding: 0;text-align: center">
+                                                                        <a class='btn btn-tini btn-danger btn-mini tu deletecabhorario'
+                                                                           idhoracabexamen="{{ fechaingresadaotra.id }}"
+                                                                           title="Eliminar"><span
+                                                                                class="fa fa-remove"></span> </a>
+                                                                    </td>
+                                                                </tr>
+
+
+                                                                {#                                                            <tr><td style="padding: 0;text-align: center">#}
+                                                                {#                                                                 {% with fechaingresada=materia|args:detalle|call:"fecha_examen_materia" %}#}
+                                                                {#                                                                    <a class='btn btn-tini btn-warning btn-mini tu edithora' onclick="editactividad({{ materia.id }},{{ detalle.id }}, {{ detalle.id }}, {{ materia.cantidad_alumnos }}, new Date('{{ fechaingresada|date:'Y-m-d' }}'), new Date(), new Date())" idhoraexamen="{{ detallehora.id }}" title="Editar"><span class="fa fa-edit"></span> </a>#}
+                                                                {#                                                               {% endwith %}#}
+                                                                {#                                                            </td></tr>#}
+                                                            {% endif %}
+
+                                                        </table>
+                                                    {% else %}
+                                                        {% if detalle.id in detalle_gestionar_examenes %}
+
+                                                            <a href="javascript:;" id="itemsadicionartema"
+                                                               class="btn btn-small btn-success"
+                                                               onclick="addactividad({{ materia.id }},{{ detalle.id }}, {{ detalle.id }}, {{ materia.cantidad_alumnos }})"
+                                                               title="Agregar fecha y hora de examen"
+                                                               data-toggle="tooltip"><i class="fa fa-plus"></i>
+                                                                Adicionar</a><br>
+
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endwith %}
+                                            </td>
+                                            {#                                            <td style="padding-top: 0px;padding-left: 0px;padding-right: 0px;padding-bottom: 0px;vertical-align: middle;">#}
+                                            {#                                                <a mid='{{ materia.id }}' id="guardar_{{ detalle.id }}_{{ materia.id }}" onclick="guardarfecha({{ materia.id }},{{ detalle.id }}, {{ detalle.id }})" class='btn btn-tini btn-success guardarfecha' title="Guardar"><span class="fa fa-save" ></span> </a>#}
+                                            {#                                            </td>#}
+                                        </tr>
+                                    {% endfor %}
+                                </table>
+                                {#                                {% for detalle in materia.detallemodeloevaluativo %}#}
+                                {#                                    <strong>Parcial {{ detalle.parcial }} </strong>#}
+                                {#                                    {% with fechaingresada=materia|args:detalle|call:"fecha_examen_materia" %}#}
+                                {#                                        <input mid='{{ materia.id }}' type="text" id="fecha_{{ detalle.parcial }}_{{ materia.id }}" class='selectorfechaingresar selectorfecha input-small' va=""  value='{{ fechaingresada|date:'d-m-Y' }}'/><br>#}
+                                {#                                    {% endwith %}#}
+
+                                {#                                    <strong>Turno: </strong>#}
+                                {#                                    {% with turnoingresada=materia|args:detalle|call:"turno_examen_materia" %}#}
+                                {#                                        <select  mid='{{ materia.id }}' id='turno_{{ detalle.parcial }}_{{ materia.id }}' style="width: 220px">#}
+                                {#                                            <option value="0" selected="selected">Seleccione turno</option>#}
+                                {#                                            {% for turno in turnos %}#}
+                                {#                                                <option {% if turno.id == turnoingresada %}selected{% endif %} value="{{ turno.id }}">{{ turno }}</option>#}
+                                {#                                            {% endfor %}#}
+                                {#                                        </select>#}
+                                {#                                    {% endwith %}#}
+                                {#                                    <a mid='{{ materia.id }}' id="guardar_{{ detalle.parcial }}_{{ materia.id }}" onclick="guardar({{ materia.id }},{{ detalle.parcial }}, {{ detalle.id }})" class='btn btn-tini btn-success guardar' title="Guardar"><span class="fa fa-save" ></span> </a> <br>#}
+                                {#                                {% endfor %}#}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal static" id="conflicto" style="display: none;">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+            <h3 class="paneltitle">Conflicto en horarios de examen</h3>
+        </div>
+                <div class="modal-body" id="conflicto_body">
+        </div>
+                <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="conflicto_cerrar"> Cerrar</a>
+        </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspaneltemas" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Adicionar Jornada</h3>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info incompletotemas" style="display: none;">
+                        <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+                    </div>
+                    <div class="alert alert-danger" id="incompletovalorestemas" style="display: none;">
+                        <i class="fa fa-info-sign"></i> Revise los valores, la fecha/hora DESDE no debe ser mayor a la
+                            fecha/hora HASTA
+                    </div>
+                    <div class="alert alert-danger" id="formatohora" style="display: none;">
+                        <i class="fa fa-info-sign blinkimg"></i> El formato de hora debe ser HH:MM
+                    </div>
+                    <div class="alert alert-danger" id="alertaingresotemas" style="display: none;"> NO TIENE ACTIVIDADES</div>
+                    <div class="row-fluid">
+                        <form id="formulario2" class='form-vertical' action="" method="POST">
+                            <input type="hidden" id="id_responsable_temp">
+                            {% for field in form %}
+                        {#                        {% if field.field.widget.attrs.separator %}#}
+                        {#                            <div style="width: 100%; height: 1px; float: left;"></div>#}
+                        {#                        {% endif %}#}
+                                <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins"
+                                  style="min-height:35px; float: left; width:
+                                          {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}">
+                                <div class="control-label label-text"
+                                 {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %}
+                                 style="display: table;height: 30px;">
+                                    <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                        <label for="id_{{ field.name }}"
+                                           style="padding-right: 20px">{{ field.label }}</label>
+                                    </div>
+                                </div>
+                                <div class="control" style="float: left; width:
+                                    {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}100%{% endif %}">
+                                        {% if field.field.widget.attrs.select2search %}
+                                            <select id="id_{{ field.name }}_select2"
+                                                {% if field.field.widget.attrs.disabled %}disabled=""{% endif %}>
+                                                <option value="0" selected="selected">---------</option>
+                                            </select>
+                                            <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}"
+                                            hidden="hidden"
+                                            {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %}
+                                            class="select2hidden">
+                                            {% else %}
+                                                {{ field }}
+                                            {% endif %}
+                                            <p class="help-text"
+                                                style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                                </div>
+                        </fieldset>
+                    {% endfor %}
+                    <input type="hidden" id="idhorariexamen" name="idhorariexamen">
+                </form>
+            </div>
+        </div>
+                <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="adicionarycerraractividad"><i class="fa fa-save"></i>
+                Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info" id="cerrartemas">Cerrar</a>
+        </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

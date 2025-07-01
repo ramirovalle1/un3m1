@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        var intentos = 0;
+        $(function() {
+
+            $("#itemspanel_cerrar_reporte").click(function () {
+                $("#itemspanel_reporte").modal('hide');
+            });
+
+              $('#itemspanel_guardar_reporte').click(function () {
+                var ini = $("#id_fini").val();
+                var fin = $("#id_ffin").val();
+                $("#itemspanel_reporte").modal('hide');
+                if (ini && fin && ini <= fin) {
+                    openwindow('GET', '/th_marcadas', { action: 'excelmarcadas','fechainicio': ini,'fechafinal': fin}, '_blank');
+                }
+            });
+
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/th_marcadas?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $('#calcular').click(function(){
+                $("#calculopanel").modal({"backdrop":"static", "width": "350"}).modal("show");
+                $("#barraprogreso").hide();
+                $("#individual").val("0");
+            });
+
+            $('#reporte_excel').click(function () {
+                $("#itemspanel_reporte").modal({backdrop:'static', width: '290'}).modal('show');
+            });
+
+            $('#calcular_individual').click(function(){
+                $("#calculopanel").modal({"backdrop":"static", "width": "350"}).modal("show");
+                $("#barraprogreso").hide();
+                $("#individual").val($(this).attr("idp"));
+            });
+
+            $('#calculopanel_cerrar').click(function(){
+                $("#calculopanel").modal('hide');
+            });
+
+            function terminar(){
+                $("#calculopanelprogresshint").html("Finalizando Cálculo");
+                $("#progressbar").css({'width': '100%'});
+                intentos = 0;
+                $("#calculopanel").modal("hide");
+                bloqueointerface();
+                location.href = "/th_marcadas";
+            }
+
+            function fallo(){
+                $.unblockUI();
+                $("#calculopanel").modal("hide");
+                smoke.alert("Fallo al calcular");
+                $("#calculopanel_cerrar, #pie_calculo").show();
+                $("#fecha_inicio").removeAttr('disabled');
+                $("#fecha_fin").removeAttr('disabled');
+            }
+
+            function calculo(lista, elemento, cantidad){
+                var persona = lista[elemento];
+                var cp = (100 / (cantidad+1)) * elemento + '%';
+                var fechai = $("#fecha_inicio").val();
+                var fechaf = $("#fecha_fin").val();
+                if (elemento>cantidad){
+                    $("#calculopanel").modal("hide");
+                    bloqueointerface();
+                    location.href = "/th_marcadas";
+                } else {
+                    $("#calculopanelprogresshint").html(persona.distributivo);
+                    $("#progressbar").css({'width': cp});
+                    $.ajax({
+                        type: "POST",
+                        url: "/th_marcadas",
+                        data: {"action": "calculando", "maid": persona.id, "fechai": fechai, "fechaf": fechaf },
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                intentos = 0;
+                                calculo(lista, elemento+1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos>=100){
+                                    fallo();
+                                } else {
+                                    calculo(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function() {
+                            intentos += 1;
+                            if (intentos>=100){
+                                fallo();
+                            } else {
+                                calculo(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+
+            empezar_calculo = function () {
+                var fechai = $("#fecha_inicio").val();
+                var fechaf = $("#fecha_fin").val();
+                var idp = $("#individual").val();
+                $("#barraprogreso").show();
+                $("#calculopanelprogresshint").show();
+                $("#fecha_fin").attr({'disabled': 'disabled'});
+                $("#fecha_inicio").attr({'disabled': 'disabled'});
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/th_marcadas",
+                    data: {'action':'lista', 'fechai': fechai, 'fechaf': fechaf, 'idp': idp},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            personas = data.personas;
+                            cantidad = personas.length;
+                            indice = 0;
+                            calculo(personas, indice, (cantidad-1));
+                        } else {
+                            smoke.alert(data.mensaje);
+                            $("#pie_calculo").show();
+                            $("#fecha_inicio").removeAttr('disabled');
+                            $("#fecha_fin").removeAttr('disabled');
+                            $("#calculopanel_cerrar, #pie_calculo").show();
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                        $("#pie_calculo").show();
+                        $("#fecha_inicio").removeAttr('disabled');
+                        $("#fecha_fin").removeAttr('disabled');
+                        $("#cerrarpanel_cerrar, #pie_calculo").show();
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $("#generar").click(function () {
+                $("#pie_calculo").hide();
+                empezar_calculo();
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class='headtitle'>
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración</h6>
+            </div>
+        </div>
+    </div>
+    <div class='container-fluid'>
+        <div class='row'>
+            <div class='col-sm-8'>
+
+                <button id="btnGroupDrop2" type="button" class="btn btn-default dropdown-toggle"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    Importar <i class="fa fa-angle-down"></i>
+                </button>
+                <ul class="dropdown-menu ">
+                    <li><a class="dropdown-item" href="/th_marcadas?action=importar_log">
+                        <i class="fa fa-plus dropdown-item-icon"></i>
+                        Importar Log</a></li>
+                    <li><a class="dropdown-item" href="/th_marcadas?action=importar">
+                        <i class="fa fa-plus dropdown-item-icon"></i>
+                        Importar</a></li>
+                    <li><a class="dropdown-item" href="/th_marcadas?action=importar_vc">
+                        <i class="fa fa-plus dropdown-item-icon"></i>
+                        Importar vinculación</a></li>
+
+                </ul>
+
+
+                <a href="/th_marcadas?action=importar" class='btn btn-success'><span class="fa fa-plus "></span>
+                    Importar</a>
+                {#                <a href="javascript:;" id="calcular" class='btn btn-success'><span class="fa fa-cogs "></span> Calcular</a>#}
+                <a href="/th_marcadas?action=jornadas" class='btn btn-success'><span class="fa fa-list "></span>
+                    Jornadas</a>
+
+                <button id="btnGroupDrop2" type="button" class="btn btn-default dropdown-toggle"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    Reportes <i class="fa fa-angle-down"></i>
+                </button>
+                <ul class="dropdown-menu ">
+                    <li><a class="dropdown-item" href="javascript:;" id="reporte_excel">
+                        <i class="fa fa-table dropdown-item-icon"></i> Marcadas activo
+                        en distributivo(Excel)</a></li>
+                     <li>
+
+                </ul>
+
+                <button id="btnGroupDrop2" type="button" class="btn btn-default dropdown-toggle"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    Procesos <i class="fa fa-angle-down"></i>
+                </button>
+                <ul class="dropdown-menu ">
+                    <li>
+                        <a class="dropdown-item" href="javascript:;"
+                           id="calcular" class='btn btn-success'>
+                            <i class="fa fa-cogs dropdown-item-icon"></i> Calcular</a>
+                    </li>
+                </ul>
+
+
+            </div>
+
+            <div class="col-sm-4" style="text-align: right">
+                <form class="form-search" onsubmit="return busqueda()">
+                    <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"
+                           style="width: {% if search or ids %}60{% else %}70{% endif %}%!important;"/>
+                    <a href="javascript:;" id='search' class='btn btn-primary-old'><span class="fa fa-search "></span>
+                    </a>
+                    {% if search or ids %}
+                        <a href="{{ request.path }}" id='allresults' class='btn btn-default'><span
+                                class="fa fa-refresh "></span> </a>
+                    {% endif %}
+                </form>
+            </div>
+
+
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-body rounded-3 border-dark-info">
+            <table class="tabla_responsive table table_primary">
+                <thead>
+                <tr>
+                    <th style="width: 150px">Identificaci&oacute;n</th>
+                    <th>Persona</th>
+                    <th style="width: 250px">Reg.Lab.</th>
+                    <th style="width: 200px">Mod.Lab</th>
+                    <th style="width: 200px">Jornada</th>
+                    <th style="width:80px;"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for persona in plantillas %}
+                    <tr>
+                        <td>{% if persona.cedula %}{{ persona.cedula }}{% else %}
+                            {{ persona.pasaporte }}{% endif %}</td>
+                        <td>{{ persona }}</td>
+                        <td>{{ regimenlaboral }}</td>
+                        <td>{{ modalidadlaboral }}</td>
+                        <td>{{ persona.jornada_actual.jornada }}</td>
+                        <td>
+                            <div class="dropdown">
+                                <div class="dropdown dropleft">
+                                    <a href="javascript:void(0);"
+                                       class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                       aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                    </a>
+                                    <ul class="dropdown-menu">
+                                        <span class="dropdown-header"><i class="fa fa-cogs"></i> Acciones</span>
+
+                                        <li><a class="dropdown-item"
+                                                href="/th_marcadas?action=jornadastrabajador&id={{ persona.id }}"><i
+                                                class="fa fa-list dropdown-item-icon"></i> Jornada laboral</a></li>
+                                        <li>
+                                            <a class="dropdown-item"
+                                                    href="/th_marcadas?action=detallejornadatrabajador&id={{ persona.id|encrypt }}"><i
+                                                    class="fa fa-list dropdown-item-icon"></i> Detalle Marcada</a></li>
+                                        <li><a class="dropdown-item"
+                                                href="javascript:;" class="calcular_individual" id="calcular_individual" idp="{{ persona.id }}"><i
+                                                class="fa fa-cogs dropdown-item-icon"></i> Calcular</a></li>
+                                        {#                                    {% if persona.jornada_actual %}#}
+                                        {#                                        <li><a class="confirmacionmodal" href="javascript:;" nhref="/th_marcadas?action=cerrarjornada&id={{ plantilla.id }}"><i class="fa fa-remove"></i> Cerrar</a> </li>#}
+                                        {#                                    {% endif %}#}
+                                    </ul>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+               {% empty %}
+                    <tr>
+                        <td colspan="10">
+                            NO EXISTEN DEPARTAMENTOS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="calculopanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4>Cálculo de horas</h4>
+                </div>
+                <div class="modal-body" id="calculopanelpanelbody">
+                    <div class="row-fluid">
+                        <div style="height: 35px">
+                            <div style="width: 100px; text-align: right; padding-right: 20px; float: left">
+                                Fecha inicio
+                            </div>
+                            <div style="float: left">
+                                <input type="date" id="fecha_inicio" class="form-control"
+                                       value="{{ fecha|date:'Y-m-d' }}">
+                            </div>
+                        </div>
+                        <div style="height: 35px">
+                            <div style="width: 100px; text-align: right; padding-right: 20px; float: left">
+                                Fecha fin
+                            </div>
+                            <div style="float: left">
+                                <input type="date" id="fecha_fin" class="form-control"
+                                       value="{{ fecha|date:'Y-m-d' }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div id="barraprogreso">
+                        Progreso de cálculo:
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%;" id="progressbar"></div>
+                        </div>
+                        <div id="calculopanelprogresshint">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="modal-footer" id="pie_calculo">
+                        <input type="hidden" id="individual" name="individual" value="0">
+                        <a href="javascript:;" class="btn btn-success" id="generar">Generar</a>
+                        <a href="javascript:;" class="btn btn-cerrar btn-info" id="calculopanel_cerrar">Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel_reporte" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="paneltitle">Reporte en excel marcadas </h4>
+                </div>
+                <div class="modal-body">
+                    <div class="row-fluid">
+                        <div class="alert alert-danger invalidofechas1" style="display: none">
+                            <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar.
+                        </div>
+                        <div style="height: 35px">
+                            <div style="width: 100px; text-align: right; padding-right: 20px; float: left">
+                                Fecha inicio
+                            </div>
+                            <div style="float: left">
+                                <input type="date" id="id_fini" class="form-control"
+                                       value="{{ fecha|date:'Y-m-d' }}">
+                            </div>
+                        </div>
+                        <div style="height: 35px">
+                            <div style="width: 100px; text-align: right; padding-right: 20px; float: left">
+                                Fecha fin
+                            </div>
+                            <div style="float: left">
+                                <input type="date" id="id_ffin" class="form-control"
+                                       value="{{ fecha|date:'Y-m-d' }}">
+                            </div>
+                        </div>
+{#                        <div style="text-align: center;">#}
+{#                            <input placeholder="Fecha desde" type="text" value="" name="id_fini" id="id_fini"#}
+{#                                   style="width: 100px">#}
+{#                            <input placeholder="Fecha hasta" type="text" value="" name="id_ffin" id="id_ffin"#}
+{#                                   style="width: 100px"><br><br>#}
+{#                        </div>#}
+                    </div>
+                </div>
+                <div class="modal-footer" style="text-align: center">
+                    <a href="javascript:;" class="btn btn-danger" id="itemspanel_guardar_reporte"><i
+                            class="fa fa-plus"></i> Procesar</a>
+                    <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar_reporte"> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

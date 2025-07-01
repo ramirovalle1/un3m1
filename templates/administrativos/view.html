@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+
+    <style type="text/css">
+        .offcanvas-header {
+           background-color: #1c3247;
+            height: 68px;
+            align-items: center;
+            border-bottom: 10px solid #FE9900 ;
+        }
+
+        #offcanvasRightLabel {
+            font-size: 15px;
+            color: white;
+            font-family: 'Arial',
+            sans-serif;
+            padding-top: 12px;
+        }
+
+        a h4 {
+            padding-left: 20px; padding-bottom: 15px; padding-top: 15px
+        }
+
+        .accordion-button{
+            background-color: #fff;
+        }
+
+        a h4:hover,
+        .accordion-button:hover{
+            background-color: #D6EAF8;
+        }
+
+        .btn-close {
+            background: transparent url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3E%3Cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3E%3C/svg%3E") 50%/.75rem auto no-repeat !important;
+            border: 0;
+            border-radius: .25rem;
+            box-sizing: content-box;
+            color: #fff;
+            height: .75rem;
+            opacity: 1;
+            font-weight: bold;
+            padding: .25em;
+            width: .75rem
+        }
+
+    </style>
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $(".fancybox").fancybox();
+
+            function reiniciarAcordeones() {
+                var acordeones = $('.accordion-item');
+                // Recorrer todos los acordeones y cerrarlos
+                acordeones.each(function () {
+                    var acordeon = $(this).find('.accordion-collapse');
+                    if (acordeon.hasClass('show')) {
+                        acordeon.collapse('hide');
+                    }
+                });
+                // Eliminar la clase "active" de todos los botones
+                var botones = $('.accordion-button');
+            }
+
+            $('.btn-reiniciar-acordeones').click(function () {
+                reiniciarAcordeones();
+            });
+
+        });
+
+        $(function () {
+
+            $("select").select2({minimumResultsForSearch: 20});
+
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var g = $("#grupo_list").val();
+                var p = $("#perfil").val();
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "/administrativos?s=" + term + "&gruposelect=" + g + "&perfil=" + p;
+                } else {
+                    bloqueointerface();
+                    location.href = "/administrativos?gruposelect=" + g + "&perfil=" + p;
+                }
+                return false;
+            };
+
+            $("#grupo_list").change(function () {
+                busqueda();
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $(".tl").tooltip({position: "center up"});
+
+            $("#perfil").change(function () {
+                busqueda();
+            });
+
+            if ('{{ ids }}'.length) {
+                $('#grupo_list').val('{{ gruposelect }}').trigger('change');
+            }
+
+            $(".auditoria").click(function () {
+                var id = $(this).attr('idi');
+                bloqueointerface();
+                $.post("/administrativos", {'action': 'auditoria', 'id': id}, function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $('.modal-body', $("#modalauditoria")).html(data.contenido);
+                        var height = $(window).height() - 150;
+                        $("#modalauditoria").modal({backdrop: 'static', width: '60%', height: height}).modal('show');
+                    } else {
+                        $.unblockUI();
+                        NotificationJG.error(data.mensaje)
+                    }
+                }, 'json');
+            });
+
+            $(".action-close", $("#modalauditoria")).click(function () {
+                $("#modalauditoria").modal("hide");
+            });
+        });
+
+        function eliminar(pk, idg, nombre, accion, grupo) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar el grupo ${grupo} previamente asignado a:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                            idg: idg
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                location.reload();
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        } else {
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12 pb-2">
+                {% if perms.sga.puede_modificar_administrativos %}
+                    <a href="/administrativos?action=add" class='btn btn-success'><span class="fa fa-plus "></span>
+                        <t class="hidden-phone hidden-tablet visible-desktop">Adicionar</t>
+                    </a>
+                    <a href="/administrativos?action=exportarexcel" class='btn btn-warning'><span class="fa fa-file-pdf-o "></span>
+                        <t class="hidden-phone hidden-tablet visible-desktop"></t>
+                    </a>
+                    {% if persona.usuario.is_superuser %}
+                        <a href="/administrativos?action=viewhistorial" class='btn btn-success bloqueo_pantalla'><span class="fa fa-history "></span>
+                            <t class="hidden-phone hidden-tablet visible-desktop">Historial cargo laboral</t>
+                        </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <form method="GET">
+            <input type="hidden" name="action" value="{{ action }}">
+            <div class="row">
+                <div class="col-lg-3 col-md-4 col-12">
+                    <div class="input-group mb-2" style="margin-left: 5px">
+                        <select name="perfil" id="perfil" class="form-control" style="width: 100%">
+                            <option value="0">Perfiles</option>
+                            <option value="1" {% if perfil == '1' %}selected{% endif %}>Activos</option>
+                            <option value="2" {% if perfil == '2' %}selected{% endif %}>Inactivos</option>
+                        </select>
+                    </div>
+                </div>
+                {% if grupos %}
+                    <div class="col-lg-3 col-md-4 col-12">
+                        <div class="input-group mb-2" style="margin-left: 5px">
+                            <select id="grupo_list" name="gruposelect" class="form-control" style="width: 100%;">
+                                <option value="0">TODOS</option>
+                                {% for grupo in grupos %}
+                                    <option {% if gruposelect == grupo.id %}selected{% endif %} value="{{ grupo.id }}">{{ grupo }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                {% endif %}
+                <div class="col-lg-6 col-md-4 col-12">
+                    <div class="input-group mb-2">
+                        <input class='form-control' type='text' id='searchinput' name="s" value='{{ s }}' autocomplete="off" placeholder="Buscar"/>
+                        <div class="input-group-append">
+                            <a class="btn btn-primary-old" href="javascript:void(0);" onclick="busqueda()" id="button-addon2"><i
+                                    class="fa fa-search"></i></a>
+                            {% if search or ids or perfil %}
+                                <a title="Ver todo" href="{{ request.path }}" class="btn btn-default tr">
+                                    <i class="fas fa-sync-alt"></i>
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th style="text-align: center">Teléfonos</th>
+                            <th style="width: 300px;">Grupos</th>
+                            <th style="width: 100px;">Usuario</th>
+                            <th style="width: 100px;">Identificaci&oacute;n</th>
+                            <th style="width: 250px;">Email/Tel&eacute;fono</th>
+                            <th style="width: 30px; text-align: center;">Perfil</th>
+                            <th style="width: 30px; text-align: center;">User</th>
+                            <th style="width: 30px; text-align: center">Foto</th>
+                            <th style="width: 80px;"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for administrativo in administrativos %}
+                            <tr>
+                                <td>{{ administrativo.persona }}- {{ administrativo.persona.id }}<br>
+                                    {% if not administrativo.activo %}
+                                        <span class="label label-important tu" title="Perfil Desactivado">PFL DESACT.</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% for telefono in administrativo.persona.lista_telefonos %}
+                                        {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+                                    {% if administrativo.persona.telefono %}
+                                        <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ administrativo.persona.telefono }}&text=Hola {{ administrativo.persona }}'
+                                           target="_blank" class="btn btn-mini btn-success tu"
+                                           title="Enviar mensaje por whatsapp"><i class="fa fa-whatsapp"></i></a>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% for grupo in administrativo.persona.grupos %}
+                                        <div class="btn-group" style="margin-right: 3px; margin-bottom: 2px; margin-left: 0; float: left">
+                                            <a href="javascript:;" class="btn btn-tini">{{ grupo }}</a>{% if not forloop.last %}, {% endif %}
+                                            {% if perms.sga.puede_modificar_administrativos %}
+{#                                                {% if not grupo.id == grupo_administrativos and not grupo.id == grupo_docentes and not grupo.id == grupo_aspirantes and not grupo.id == grupo_estudiantes and not grupo.id == grupo_empleadores %}#}
+                                                {% if not grupo.id in ids_group_default %}
+                                                    <a href='javascript:;' title="Eliminar garante"
+                                                       class="btn btn-tini btn-danger"
+                                                       onclick="eliminar('{{ administrativo.id }}', '{{ grupo.id }}', '{{ administrativo.persona }}', 'delgrupo', '{{ grupo }}')"><i class="fa fa-minus"></i></a>
+{#                                                    <a href="javascript:;" nhref="/administrativos?action=delgrupo&id={{ administrativo.id }}&idg={{ grupo.id }}" class="btn btn-tini confirmacionmodal btn-danger"><i class="fa fa-minus"></i></a>#}
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {% if administrativo.persona.user_system and not administrativo.persona.usuario.is_superuser %}
+                                        {{ administrativo.persona.usuario }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if administrativo.persona.cedula %}{{ administrativo.persona.cedula }}<br>{% endif %}
+                                    {% if administrativo.persona.pasaporte %}{{ administrativo.persona.pasaporte }}{% endif %}
+                                </td>
+                                <td>
+                                    {% for email in administrativo.persona.lista_emails %}
+                                        <a href="mailto:{{ email }}">{{ email }}</a><br/>
+                                    {% endfor %}
+                                    {% if administrativo.persona.lista_telefonos %}
+                                        {% for telefono in administrativo.persona.lista_telefonos %}
+                                            {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                        {% endfor %}
+                                        <br>
+                                    {% endif %}
+                                    <span>F. Nacimiento: {% if administrativo.persona.nacimiento %}{{ administrativo.persona.nacimiento|date:'d-m-Y' }}{% endif %}</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if administrativo.activo %}
+                                        <i class="fa fa-check"></i>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if administrativo.persona.activo %}
+                                        <i class="fa fa-check"></i>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% if administrativo.persona.tiene_foto %}
+                                        <a data-fancybox="image" class="tu" title="Ver Foto" href="https://sga.unemi.edu.ec{{ administrativo.persona.foto.foto.url }}">
+                                            <i class="fa fa-camera"></i>
+                                        </a>
+                                    {% endif %}
+                                </td>
+                                <td>
+
+                                    {% if perms.sga.puede_modificar_administrativos %}
+
+                                        <div class="text-center">
+                                        <button class="text-center btn btn-default btn-reiniciar-acordeones" type="button" data-bs-toggle="offcanvas"
+                                                data-bs-target="#offcanvasRight_{{ administrativo.id }}" aria-controls="offcanvasRight" >Acciones
+                                        </button>
+                                        </div>
+                                        <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasRight_{{ administrativo.id }}"
+                                             aria-labelledby="offcanvasRightLabel">
+                                            <div class="offcanvas-header">
+                                                <h2 id="offcanvasRightLabel"> <span style="margin-right: 10px;"><i class="fas fa-user"></i></span>
+                                                    {{ administrativo.persona }}</h2>
+                                                <button type="button" class="btn-close text-reset"
+                                                        data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                                            </div>
+
+                                            <div class="offcanvas-body" style="padding-top: 1rem; padding-bottom: 1rem">
+                                                <div class="accordion accordion-flush" id="accordionGrupo_{{ administrativo.id }}">
+
+                                                <a data-bs-dismiss="offcanvas"
+                                                   href='/administrativos?action=edit&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'>
+                                                   <h4 class="mb-0"><i class="fa fa-edit"></i> Editar</h4>
+                                                </a>
+                                                <a data-bs-dismiss="offcanvas"
+                                                   href='/administrativos?action=addgrupo&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'>
+                                                   <h4 class="mb-0"><i class="fa fa-group"></i> Adicionar a grupo</h4>
+                                                </a>
+                                                <a data-bs-dismiss="offcanvas"
+                                                   href='/administrativos?action=adicionacarrera&id={{ administrativo.id }}'>
+                                                   <h4 class="mb-0"><i class="fa fa-list"></i> Adicionar a Carrera</h4>
+                                                </a>
+                                                <a data-bs-dismiss="offcanvas"
+                                                   href='/administrativos?action=listadofirmas&idpersona={{ administrativo.persona.id }}'>
+                                                   <h4 class="mb-0"><i class="fa fa-list"></i> Firmas</h4>
+                                                </a>
+                                                <a data-bs-dismiss="offcanvas"
+                                                   href="/box_medical?action=valoracionpersona&id={{ administrativo.persona.id }}">
+                                                   <h4 class="mb-0"><i class="fa fa-eye"></i> Valoraci&oacute;n m&eacute;dica</h4>
+                                                </a>
+
+                                                    <div class="accordion-item border-top border-bottom">
+                                                        <div class="accordion-header" id="header-sistema">
+                                                            <button class="accordion-button collapsed"
+
+                                                                    type="button" data-bs-toggle="collapse"
+                                                                    data-bs-target="#flush-sistema"
+                                                                    aria-expanded="false"
+                                                                    aria-controls="flush-sistema">
+                                                                <h4 class="mb-0"><i class="fa fa-wrench"></i>
+                                                                    Acceso al sistema</h4>
+                                                            </button>
+                                                        </div>
+                                                        <div id="flush-sistema"
+                                                             class="accordion-collapse collapse"
+                                                             data-bs-parent="#accordionGrupo_{{ administrativo.id }}"
+                                                             aria-labelledby="header-sistema">
+                                                            <div class="accordion-body">
+                                                                {% if not administrativo.persona.id == persona.id %}
+                                                                    {% if not administrativo.es_profesor %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref='/administrativos?action=addprofesor&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'><span class="fa fa-user"></span> Crear profesor</a></li>
+                                                                    {% endif %}
+                                                                    {% if perms.sga.puede_resetear_clave_administrativo %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=resetear&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><span class="fa fa-key"></span> Resetear clave usuario</a></li>
+                                                                    {% endif %}
+                                                                    {% if administrativo.activo %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=desactivarperfil&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-close"></i> Desactivar perfil</a></li>
+                                                                    {% else %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=activarperfil&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-check"></i> Activar perfil</a></li>
+                                                                    {% endif %}
+                                                                    {% if administrativo.persona.usuario.is_active %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=desactivar&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-close"></i> Desactivar usuario</a></li>
+                                                                    {% else %}
+                                                                        <li class="dropdown-item"><a data-bs-dismiss="offcanvas" class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=activar&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-check"></i> Activar usuario</a></li>
+                                                                    {% endif %}
+                                                                    <li class="dropdown-item"><a data-bs-dismiss="offcanvas" href="javascript:;" class="auditoria" idi="{{ administrativo.id|encrypt }}"><span class="fa fa-check "></span> Auditoria </a></li>
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+{#                                                    {% if persona.usuario.is_superuser and not administrativo.persona.usuario.is_superuser %}#}
+                                                    {% if perms.posgrado.puede_entrar_como_usuario %}
+                                                        <a data-bs-dismiss="offcanvas"
+                                                           href='/cu?id={{ administrativo.persona.usuario.id }}'>
+                                                            <h4 class="mb-0"><i class="fa fa-user"></i> Entrar como este usuario</h4>
+                                                        </a>
+
+                                                    {% endif %}
+
+                                                </div><!-- Fin acordeon general  -->
+                                            </div> <!-- canvas body  -->
+                                        </div>
+
+
+                                        <div class="dropbottom">
+{#                                            <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">#}
+{#                                                Acción <i class="fa fa-angle-down"></i>#}
+{#                                            </button>#}
+                                            <ul class="dropdown-menu" x-placement="right-start">
+                                                <li class="dropdown-item"><a href='/administrativos?action=edit&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'><span class="fa fa-edit"></span> Editar</a></li>
+                                                <li class="dropdown-item"><a href='/administrativos?action=addgrupo&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'><span class="fa fa-group"></span> Adicionar a grupo</a></li>
+                                                <li class="dropdown-item"><a href='/administrativos?action=adicionacarrera&id={{ administrativo.id }}'><span class="fa fa-list"></span> Adicionar a Carrera</a></li>
+                                                <li class="dropdown-item"><a href='/administrativos?action=listadofirmas&idpersona={{ administrativo.persona.id }}'><span class="fa fa-list"></span> Firmas</a></li>
+                                                <li class="dropdown-item"><a href="/box_medical?action=valoracionpersona&id={{ administrativo.persona.id }}"><span class="fa fa-eye"></span> Valoraci&oacute;n m&eacute;dica</a></li>
+
+                                                <div class="dropdown-divider"></div>
+                                                <div class="dropdown-submenu dropdown-hover dropdown-menu-right">
+                                                    <li class="dropdown-item dropdown-submenu">
+                                                        <a id="dropsubmenu" class="dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                            <i class="fa fa-wrench"></i> Acceso al sistema
+                                                        </a>
+                                                    </li>
+                                                    <ul class="dropdown-menu border-0" aria-labelledby="dropsubmenu" style="position: absolute; transform: translate3d(-200px, 0px, 0px); top: 0px; left: 0px;width: 200px; will-change: transform;">
+                                                        {% if not administrativo.persona.id == persona.id %}
+                                                            {% if not administrativo.es_profesor %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref='/administrativos?action=addprofesor&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}'><span class="fa fa-user"></span> Crear profesor</a></li>
+                                                            {% endif %}
+                                                            {% if perms.sga.puede_resetear_clave_administrativo %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=resetear&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><span class="fa fa-key"></span> Resetear clave usuario</a></li>
+                                                            {% endif %}
+                                                            {% if administrativo.activo %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=desactivarperfil&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-close"></i> Desactivar perfil</a></li>
+                                                            {% else %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=activarperfil&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-check"></i> Activar perfil</a></li>
+                                                            {% endif %}
+                                                            {% if administrativo.persona.usuario.is_active %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=desactivar&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-close"></i> Desactivar usuario</a></li>
+                                                            {% else %}
+                                                                <li class="dropdown-item"><a class="confirmacionmodal" href="javascript:;" nhref="/administrativos?action=activar&id={{ administrativo.id }}{% if gruposelect %}&g={{ gruposelect }}{% endif %}{% if search %}&s={{ search }}{% endif %}{% if perfil %}&perfil={{ perfil }}{% endif %}"><i class="fa fa-check"></i> Activar usuario</a></li>
+                                                            {% endif %}
+                                                            <li class="dropdown-item"><a href="javascript:;" class="auditoria" idi="{{ administrativo.id|encrypt }}"><span class="fa fa-check "></span> Auditoria </a></li>
+                                                        {% endif %}
+                                                    </ul>
+                                                </div>
+                                                <div class="dropdown-divider"></div>
+                                                {% if persona.usuario.is_superuser %}
+                                                    <li class="dropdown-item"><a href='/cu?id={{ administrativo.persona.usuario.id }}'><span class='fa fa-user'></span> Entrar como este usuario</a></li>
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="12" STYLE="text-align: center">NO EXISTEN REGISTROS DE PERSONAL ADMINISTRATIVO</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

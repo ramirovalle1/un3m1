@@ -1,0 +1,184 @@
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script>
+        $(function(){
+            var ec = '{{ beca.estadorevisioncontrato }}';
+
+            $("#estadocontrato").addClass("validate[required]");
+
+            $('#estadocontrato').change(function() {
+                var control = $(this);
+                $("#observacion").val("");
+                valor = control.val();
+
+                if((valor == '2' || valor =='')){
+                    $("#observacion").prop('disabled', true).removeClass("validate[required]");
+                }
+                else{
+                    $("#observacion").prop('disabled', false).addClass("validate[required]");
+                }
+            });
+
+            if(ec == '2' || ec == '3')
+                $("#estadocontrato").val(ec).trigger("change");
+
+            {% if not permite_modificar %}
+                $("#itemspanelvalidarcontratoguardar").css('display','none');
+            {% else %}
+                $("#itemspanelvalidarcontratoguardar").css('display','inline-block');
+            {% endif %}
+
+
+            $('#itemspanelvalidarcontratoguardar').click(function () {
+                $("#formulario").validationEngine('attach',{ scroll: false });
+                var valid = $("#formulario").validationEngine('validate', { scroll: false });
+
+                if(valid){
+                    bloqueointerface();
+                    var formdata = new FormData($("#formulario")[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_becas",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                location.href = "/adm_becas?estadodocumento={{ estadodocumento }}&estadocontrato={{ estadocontrato }}";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            $(".solo-digitos").bind("keypress", function (e) {
+                var keyCode = e.which ? e.which : e.keyCode
+                if (!(keyCode >= 48 && keyCode <= 57)) {
+                    //$(".error").css("display", "inline");
+                    return false;
+                }else{
+                    //$(".error").css("display", "none");
+                }
+            });
+
+            $('.nav-tabs a').on('shown.bs.tab', function(event){
+                var x = $(event.target).parent().index();        // active tab
+                if(x == 0)
+                    $("#itemspanelvalidarcontratoguardar").css('display','inline-block');
+                else
+                    $("#itemspanelvalidarcontratoguardar").css('display','none');
+            });
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class="tabbable">
+        <ul class="nav nav-tabs">
+            <li class="active"><a class="tabs" href="#1" data-toggle="tab"><i class="fa fa-check-square"></i> Revisión y Validación</a></li>
+            {% if permite_modificar %}
+                <li><a class="tabs" href="#2" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Contrato de Beca</a></li>
+                <li><a class="tabs" href="#3" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Cédula de Solicitante</a></li>
+                <li><a class="tabs" href="#4" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Cédula Representante Solidario</a></li>
+            {% endif %}
+        </ul>
+        <div class="tab-content" style="overflow: inherit">
+            <div class="tab-pane active" id="1">
+                <table class="table table-bordered" >
+                    <thead>
+                        <tr>
+                            <th style="vertical-align: middle">Alumno:</th>
+                            <td>{{ beca.solicitud.inscripcion.persona.nombre_completo_inverso }}</td>
+                            <th style="vertical-align: middle;">N°Solicitud:</th>
+                            <td><span class="label label-success">{{ beca.solicitud.id }}</span></td>
+                        </tr>
+                        <tr>
+                            <th>Tipo Beca:</th>
+                            <td><span class="label label-info">{{ beca.solicitud.becatipo.nombre|upper }}</span></td>
+                            <th>Fecha Asignación</th>
+                            <td>{{ beca.fecha_creacion|date:"Y-m-d" }}</td>
+                        </tr>
+                    </thead>
+                </table>
+                <table class="table table-bordered" >
+                    <thead>
+                    <tr>
+                        <th style="width: 50%; text-align: center">Tipo</th>
+                        <th style="width: 30%; text-align: center">Archivo</th>
+                        <th style="width: 20%; text-align: center">Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                        <td>Contrato de Beca:</td>
+                        <td style="text-align: center">
+                            {% if beca.archivocontrato  %}
+                                <a target="_blank" href="{{ beca.archivocontrato.url }}" class="btn btn-success tu" title="Descargar"><i class="fa fa-download"></i> Descargar</a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if not beca.archivocontrato  %}
+                                <span class="label label-warning">NO CARGADO</span>
+                            {% else %}
+                                <span class="label label-{% if beca.estadorevisioncontrato == 1 %}info{% elif beca.estadorevisioncontrato == 2 %}success{% else %}important{% endif %}">{{ beca.get_estadorevisioncontrato_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+                {% if permite_modificar %}
+                    <form name="formulario" id="formulario">
+                        <table class="table table-bordered" >
+                            <tbody>
+                                <tr>
+                                    <td>Estado:<input type='hidden' name='id' id='id' value='{{ idb }}' />
+                                    <input type='hidden' name='action' value='validarcontrato' /></td>
+                                    <td>
+                                        <select id="estadocontrato" name="estadocontrato" style="width: 200px">
+                                            <option value="">---------</option>
+                                            <option value="2">VALIDADO</option>
+                                            <option value="3">RECHAZADO</option>
+                                        </select><p class="help-text"></p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Observaciones:</td>
+                                    <td colspan="3">
+                                        <textarea id="observacion" name="observacion" value="" style="width: 95%; text-transform: uppercase"></textarea><p class="help-text"></p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                {% endif %}
+            </div>
+            {% if permite_modificar %}
+                <div class="tab-pane" id="2">
+                    <iframe border=0 frameborder=0 height=400px width=820 src="{{ beca.archivocontrato.url }}"></iframe>
+                </div>
+                <div class="tab-pane" id="3">
+                    <iframe border=0 frameborder=0 height=400px width=820 src="{{ documentos.cedula.url }}"></iframe>
+                </div>
+                <div class="tab-pane" id="4">
+                    <iframe border=0 frameborder=0 height=400px width=820 src="{{ documentos.cedularepresentantesol.url }}"></iframe>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,825 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        $(function() {
+            addactividad = function(profesor,periodo) {
+                $("#itemspaneltemas").modal({backdrop:'static', width: '400px'}).modal('show');
+                $("#idprofesor").val(profesor);
+                $("#idperiodo").val(periodo);
+
+            }
+
+            $("#adicionarycerraractividad").click(function() {
+                var fecha = $("#id_fecha").val();
+                var horaini = $("#id_horainicio").val();
+                var horafin = $("#id_horafin").val();
+                var tipodir = $("#tipodir").val();
+                var idperiodo = $("#idperiodo").val();
+                var idprofesor = $("#idprofesor").val();
+                var lugar = $("#id_lugar").val();
+                if (fecha== '' || horaini == ''){
+                    mensajeWarning("Complete todos los campos para continuar.");
+                    return false;
+                }
+                $("#itemspaneltemas").modal("hide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_evaluaciondocentesacreditacioncoord",
+                    data: {'action': 'addfechas', 'fecha': fecha, 'horaini': horaini, 'horafin': horafin, 'idperiodo': idperiodo, 'lugar': lugar, 'idprofesor': idprofesor,'tipodir': tipodir, 'idfacu': {{ coordinacion.id }}},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            bloqueointerface();
+                            location.reload();
+                            {#$('#nombreactividad'+data.profesor).html('Fecha:'+data.fecha+'<br>Hora Inicio:'+data.hinicio+'<br>Hora Fin:'+data.hfin+'<br><a href="javascript:;" class="btn btn-tini btn-danger eliminarobj tu"  onclick="deleteactividad('+data.idfechasdocentes+')" title="Eliminar"><i class="fa fa-remove"></i></a>');#}
+                            tooltips();
+                            {#                            conectar_controlestemas();#}
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $("#selectcoordinacion").change(function() {
+                var id;
+                id = $(this).val();
+                bloqueointerface();
+                location.href = '/adm_evaluaciondocentesacreditacioncoord?idcoor='+id;
+            });
+            deleteactividad = function(idfechaprofe) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_evaluaciondocentesacreditacioncoord",
+                    data: {'action': 'delfechadocente', 'id': idfechaprofe, 'idfacu': {{ coordinacion.id }} },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $('#leyendafechas').html(data.apellido1+' '+data.apellido2+' '+data.nombres)
+                            $('#codigofecha').val(data.codigofecha)
+                            $('#selectdeleteparesfechas').modal({'width': 800}).modal('show');
+                        } else {
+                            mensajeWarning(data.mensaje);
+                        }
+                    }
+                });
+            }
+            $("#eliminacionmodal_formbuttonfechadoc").click(function(){
+                bloqueointerface();
+                $('#selectdeleteparesfechas').modal('hide');
+                var codigofecha = $("#codigofecha").val();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_evaluaciondocentesacreditacioncoord",
+                    data: {'action': 'eliminarfechadocente', 'codigofecha': codigofecha,'idfacu': $('#idcoordinacion').val()},
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            location.reload();
+                            {#$('#nombreactividad'+data.idprofesor).html('<a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-success" onclick="addactividad('+data.idprofesor+','+data.idperiodo+')"><i class="fa fa-plus"></i></a>');#}
+                        } else {
+                            $.unblockUI();
+                            mensajeWarning(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $("#eliminacionmodal_cancelfechadoc").click(function(){
+                $('#selectdeleteparesfechas').modal('hide');
+            });
+            $("#cerrartemas").click(function() {
+                $("#itemspaneltemas .incompletotemas").hide();
+                $("#itemspaneltemas .incompletovalotemas").hide();
+                $("#itemspaneltemas").modal("hide");
+            });
+            $("#guardar").click(function() {
+                var lista = actualizar_lista();
+                var datos = {};
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_evaluaciondocentesacreditacioncoord",
+                    data: {'action': 'asignarevaluacionpar', 'listaprofesores': lista },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            location.href = 'adm_evaluaciondocentesacreditacioncoord';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            actualizar_lista = function(){
+                var lista = '';
+                $('.selector').each(function() {
+                    if ($(this).is(":checked")){
+                        var idp = $(this).attr('idp');
+                        var idc = $(this).attr('idc');
+                        var elementos = $("tr[id^='evaluadorpersona_" + idp + "_" + idc + "']");
+                        if (elementos.length > 0){
+                            var evaluadores = '';
+                            elementos.each(function(){
+                                var ide = $(this).attr('idpe');
+                                var actividades = '';
+                                var elementosactividades = $('#actividad_' + idp + '_' + ide + ' span');
+                                elementosactividades.each(function(){
+                                    actividades += $(this).attr('ida') + "-";
+                                });
+                                if (actividades.length > 0){
+                                    actividades = actividades.substring(0, actividades.length-1);
+                                }
+
+                                evaluadores += ide+ '=' + actividades + ":";
+                            });
+                            if (evaluadores.length > 0){
+                                evaluadores = evaluadores.substring(0, evaluadores.length-1);
+                            }
+                            lista += idp + ',' + idc + ',' + evaluadores + '#';
+                        }
+                    }
+                });
+                if (lista.length > 0){
+                    lista = lista.substring(0, lista.length-1);
+                }
+                return lista;
+            };
+
+            $('.selector').click(function(){
+                var idp = $(this).attr('idp');
+                var idc = $(this).attr('idc');
+                if ($(this).is(":checked")) {
+                    $('#addparbtn_'+idp+'_'+idc).show();
+                } else {
+                    $('#addparbtn_'+idp+'_'+idc).hide();
+                }
+            });
+
+            verificarbotones = function(){
+                $('.selector').each(function(){
+                    var idp = $(this).attr('idp');
+                    var idc = $(this).attr('idc');
+                    if ($(this).is(":checked")) {
+                        $('#addparbtn_'+idp+'_'+idc).show();
+                    } else {
+                        $('#addparbtn_'+idp+'_'+idc).hide();
+                    }
+                });
+            };
+
+            adicionaractividad = function(){
+                $('.adicionaractividad').click(function(){
+                    var idact = $(this).attr('idact');
+                    var idp = $(this).attr('idp');
+                    var ide = $(this).attr('ide');
+                    var idc = $(this).attr('idc');
+                    //alert(idact +' '+ idp + '' + ide)
+                    $('#selectactividad_run').attr({'idp': idp, 'ide': ide, 'idc': idc});
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_evaluaciondocentesacreditacioncoord",
+                        data: {'action': 'listaactividades', 'id': idp, 'ide': ide, 'idact': idact},
+                        error: function () {
+                            $.unblockUI();
+                            mensajeWarning("Error al obtener los datos.");
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == "ok") {
+                                $('#selectactividadlista').html(data.data);
+                                $('#selectactividad').modal({'width': 800}).modal('show');
+                            } else {
+                                mensajeWarning(data.mensaje);
+                            }
+                        }
+                    });
+                });
+            };
+
+            $('#selectpar_close').click(function(){
+                $('#selectpar').modal('hide');
+            });
+
+            $('.addpar').click(function(){
+                var idp = $(this).attr('idp');
+                var idc = $(this).attr('idc');
+                $('.selectorpar').each(function(){
+                    $(this).prop('checked', false);
+                });
+                $('#selectpar_run').attr({'idp': idp, 'idc': idc});
+                if ($("#selectparpares").html() == ''){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_evaluaciondocentesacreditacioncoord",
+                        data: {'action': 'verdocentespares' },
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $("#selectparpares").html(data.data);
+                                $('#selectpar').modal({backdrop: 'static', width: '900'}).modal('show');
+                                $.unblockUI();
+                            } else {
+                                $.unblockUI();
+                                mensajeSuccess(data.mensaje)
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeWarning('Error al obtener los datos.')
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $('#selectpar').modal({backdrop: 'static', width: '900'}).modal('show');
+                }
+            });
+
+            $('#selectactividad_close').click(function(){
+                $('#selectactividad').modal('hide');
+            });
+
+            $('#selectactividad_run').click(function(){
+                bloqueointerface();
+                var idp = $(this).attr('idp');
+                var ide = $(this).attr('ide');
+                var tipodir = $("#tipodir").val();
+                var idcoor = $(this).attr('idc');
+                var bandera = 0;
+                var evaluadorest = '';
+                $('.actividad').each(function(){
+                    if ($(this).is(":checked")){
+                        var ida = $(this).attr('ida');
+                        evaluadorest += ida+ ":";
+                        bandera = 1;
+
+                    }
+                });
+                if(bandera==1) {
+                    $('#lisactividades_' + idp + '_' + idcoor + '_' + ide).empty();
+                    $('#selectactividad').modal('hide');
+                    lista = idp + ',' + ide + ',' + idcoor + ',' + evaluadorest;
+                    lista = lista.substring(0, lista.length - 1);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_evaluaciondocentesacreditacioncoord",
+                        data: {'action': 'addpar', 'listaprofe': lista, 'tipodir': tipodir},
+                        error: function () {
+                            $.unblockUI();
+                            mensajeWarning('Error al obtener los datos.')
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == "ok") {
+                                {#alert('ghgfh')#}
+                                {#location.reload();#}
+                                $('#numactividad'+idp).html(data.mensajeactividades);
+                                $('.actividad').each(function () {
+                                    if ($(this).is(":checked")) {
+                                        var ida = $(this).attr('ida');
+                                        $('#lisactividades_' + idp + '_' + idcoor + '_' + ide).append('<li class="list-group-item" style="text-align: justify;font-size: 11px;padding: 6px 3px" id="actividad_' + idp + '_' + ide + '">' + $('#nombreactividad_' + ida).html() + '</li>');
+                                        evaluadorest += ida + ":";
+                                    }
+                                });
+                            } else {
+                                mensajeWarning(data.mensaje)
+                            }
+                        }
+                    });
+                }else {smoke.alert("Debe seleccionar actividades.");
+                    return false}
+
+            });
+
+            $('#selectpar_run').click(function(){
+                var idc = $(this).attr('idc');
+                var idp = $(this).attr('idp');
+                $('.selectorpar').each(function(){
+                    if ($(this).is(":checked")){
+                        var idpe = $(this).attr('idpe');
+                        var existe = document.getElementById('evaluadorpersona_' + idp + '_' + idc + '_'+ idpe);
+                        if (!existe){
+                            $('#miseleccionado_' + idp + '_' + idc).append('<ul class="list-group" id="evaluadorpersona_' + idp + '_' + idc + '_'+ idpe +'" idpe="' + idpe + '">' +
+                                '<li class="list-group-item list-group-item-dark" aria-current="true">' +
+                                '<a class="btn btn-tini btn-info tu adicionaractividad" title="Actividades" ide="' + idpe + '" idp="' + idp + '" idc="' + idc + '" idact="evaluadoractpersona_' + idp + '_' + idc + '_'+ idpe +'""><i class="fa fa-list"></i></a> ' +
+                                '<a class="btn btn-tini btn-danger tu eliminarevaluador" idr="evaluadorpersona_' + idp + '_' + idc + '_'+ idpe +'" title="Eliminar" ide="' + idpe + '" idp="' + idp + '"><i class="fa fa-remove"></i></a>' +
+                                $('#nombreseleccionado_' + idpe ).html() +
+                                '</li>' +
+                                '<div id="lisactividades_' + idp + '_' + idc + '_'+ idpe +'"></div>' +
+                                '</ul>')
+                        }
+                    }
+                });
+
+                $('#selectpar').modal('hide');
+                conectarcontroles();
+            });
+
+            conectarcontroles = function(){
+                $(".eliminarevaluador").unbind();
+                $(".adicionaractividad").unbind();
+
+                adicionaractividad();
+                $(".eliminarevaluador").click(function(){
+                    var iditem = $(this).attr('idr');
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_evaluaciondocentesacreditacioncoord",
+                        data: {'action': 'listadelpar', 'id': iditem },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al obtener los datos.");
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == "ok") {
+                                $('#leyenda').html(data.evaluador)
+                                $('#idpersona').val(data.idevaluado)
+                                {#alert(data.idcoordinacion)#}
+                                $('#idcoordinacion').val(data.idcoordinacion)
+                                $('#idevaluador').val(data.idevaluador)
+                                $('#selectdelete').modal({'width': 800}).modal('show');
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        }
+                    });
+
+
+                });
+
+                tooltips();
+            };
+
+            verificarbotones();
+            conectarcontroles();
+
+            $(".filterable tr:has(td)").each(function(){
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+            $("#FilterTextBox").keyup(function(){
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable tr:hidden").show();
+                $.each(s, function(){
+                    $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            });
+
+            $(".filterable2 tr:has(td)").each(function(){
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+            $("#FilterTextBox2").keyup(function(){
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable2 tr:hidden").show();
+                $.each(s, function(){
+                    $(".filterable2 tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+            });
+
+            $("#instrumentos").change(function(){
+                bloqueointerface();
+                location.href = 'adm_evaluaciondocentesacreditacioncoord';
+            });
+
+            $("#eliminacionmodal_formbutton").click(function(){
+                $('#selectdelete').modal('hide');
+                var nomelimina = ''
+                nomelimina = 'evaluadorpersona_'+ $('#idpersona').val()+'_'+$('#idcoordinacion').val()+'_'+$('#idevaluador').val()
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_evaluaciondocentesacreditacioncoord",
+                    data: {'action': 'eliminarasigpares', 'evaluado': $('#idpersona').val(),'coordinacion': $('#idcoordinacion').val(),'evaluador': $('#idevaluador').val()},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $('#numactividad'+$('#idpersona').val()).html(data.mensajeactividad);
+                            $('#'+nomelimina).remove();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $("#eliminacionmodal_cancel").click(function(){
+                $('#selectdelete').modal('hide');
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_evaluaciondocentesacreditacion{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <form method="GET">
+            <div class="container-fluid">
+                <div class="form-row">
+                    <div class="col-md-12 col-sm-12">
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" placeholder="Buscar"
+                                   aria-label="Buscar" autocomplete="off" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary bloqueo_pantalla" type="submit" id="button-addon2">
+                                    <i class="fa fa-search"></i>
+                                </button>
+                                {% if url_vars %}
+                                    <a title="Ver todo" href="{{ request.path }}?action={{ action }}" class="btn btn-default tr bloqueo_pantalla">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        {#                <div {% if coordinaciones %} class='span6'{% else %}class='span12'{% endif %}>#}
+        {#                    <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">#}
+        {#                </div>#}
+        {#        <div class="card mb-4">#}
+        {#            <div class="card-body border-top border-6 rounded-3 border-dark-info">#}
+        {#                <div class="table-responsive-xxl">#}
+        <table class="table table_primary  table-striped" id="example">
+            <thead class="table-light">
+            <tr>
+                <th style="width: 30px"></th>
+                <th style="width: 250px;">Profesor a evaluar </th>
+                <th style="width: 150px">Fecha</th>
+                <th style="width: 400px;">Par evaluador</th>
+            </tr>
+            </thead>
+            <tbody >
+            {% for profesor in listahoras %}
+                <input type="hidden" id="tipodir" name="tipodir" value="{{ profesor.tipodirector }}">
+                {% with distributivo=profesor.evaluado|args:proceso.periodo|call:'get_distributivohoras' %}
+
+                        <tr>
+                        <td style="text-align: center;">
+                            {% with profesorseleccionado=proceso|args:profesor.evaluado.id|call:'profesor_seleccionado_parsin' evaluado=proceso|args:profesor.evaluado.id|call:'profesor_evaluado_parsin' %}
+                                <input type="checkbox" id="evaluado_{{ profesor.evaluado.id }}_{{ coordinacion.id }}" idp="{{ profesor.evaluado.id }}" idc="{{ coordinacion.id }}" class="selector" evaluadores='' {% if profesorseleccionado %}checked{% endif %} {% if finalizo %}disabled="disabled" {% endif %} {% if evaluado %}disabled="disabled" {% endif %}>
+                            {% endwith %}
+                            {% if numeropagina == 1 %}
+                                {{ forloop.counter }}
+                            {% else %}
+                                {% with contador=numerofilasguiente|sumar_pagineo:forloop.counter %}
+                                    {{ contador }}
+                                {% endwith %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div>
+                                        <span class="avatar avatar-lg">
+                                            {% if profesor.evaluado.persona.foto.foto %}
+                                                <img src="https://sga.unemi.edu.ec{{ profesor.evaluado.persona.foto.foto.url }}" class="rounded-circle">
+                                            {% else %}
+                                                {% if profesor.evaluado.persona.sexo_id == 1 %}
+                                                    <img src="/static/images/iconos/mujer.png" class="rounded-circle">
+                                                {% else %}
+                                                    <img src="/static/images/iconos/hombre.png" class="rounded-circle">
+                                                {% endif %}
+                                            {% endif %}
+                                        </span>
+                                </div>
+                                <div class="ms-0">
+                                    <h6 class="mb-0">
+                                        <span class="fa fa-id-badge" aria-hidden="true"></span>
+                                        {% if profesor.evaluado.persona.cedula %}
+                                            {{ profesor.evaluado.persona.cedula }}
+                                        {% else %}
+                                            {{ profesor.evaluado.persona.pasaporte }}
+                                        {% endif %}
+                                        |
+                                        <span class="fa fa-user" aria-hidden="true"></span> {{ profesor.evaluado.persona }}
+                                    </h6>
+                                    <p class="mb-0 text-muted">
+                                        <span class="fa fa-envelope"></span> <a
+                                            href="mailto:{{ profesor.evaluado.persona.emailinst }}">{{ profesor.evaluado.persona.emailinst }}</a>
+                                    </p>
+                                    <h6 class="mb-0 text-muted">
+                                        <strong>
+                                            {% if distributivo.coordinacion.alias %}{{ distributivo.coordinacion.alias }} | {% endif %}
+                                            {% if profesor.evaluado.categoria %}{{ profesor.evaluado.categoria.nombre }}{% endif %}
+                                        </strong>
+                                    </h6>
+                                    <h6 class="mb-0 text-muted">
+                                        <strong>
+                                            {% with actividadesactiva=proceso.periodo|args:profesor.evaluado.id|call:'actividadesactivas' %}
+                                                <label class="label label-info" id="numactividad{{ profesor.evaluado.id }}">{{ actividadesactiva }}</label>
+                                            {% endwith %}
+                                        </strong>
+                                    </h6>
+                                </div>
+                            </div>
+                        </td>
+                        <td style="vertical-align: top !important">
+                            <div id="nombreactividad{{ profesor.evaluado.id }}" class="border-top border-6 rounded-3 border-dark-secondary" >
+                                {% for tipoeva in listatipoevalua %}
+                                    <ul class="list-group" style="margin-top: 1px"  >
+                                        <li class="list-group-item-info d-flex justify-content-between align-items-start" aria-current="true" style="padding: 6px 3px;">
+                                            <h6 class="mb-0">
+                                                <strong>
+                                                    |<b class="border-dark-secondary">  {{ tipoeva.1 }}</b>
+                                                </strong>
+                                            </h6>
+                                        </li>
+                                     {% if distributivo %}
+                                        <div >
+                                            <li class="list-group-item" style="text-align: justify;font-size: 11px;padding: 6px 3px" >
+                                                {% with profesoresfechas=coordinacion|args:profesor.evaluado.id|args:idperiodo|args:distributivo.coordinacion.id|args:tipoeva.0|call:'docente_fechaspares' %}
+                                                    {% if profesoresfechas %}
+                                                        {% for fechaprofe in profesoresfechas %}
+                                                            <i class="fa fa-calendar" aria-hidden="true"></i> {{ fechaprofe.fecha|date:"d-m-Y" }}<br>
+                                                            <i class="fa fa-clock-o" aria-hidden="true"></i> {{ fechaprofe.horainicio|time:"G:i" }}
+                                                            <i class="fa fa-clock" aria-hidden="true"></i> {{ fechaprofe.horafin|time:"G:i" }}<br>
+                                                            {% if fechaprofe.lugar %}<i class="fa fa-location-arrow" aria-hidden="true"></i> <span style="font-size: 9px; text-align: justify;">{{ fechaprofe.lugar|upper }}</span><br>{% endif %}
+                                                            {#                                                        {% if fechaprofe.usuario_creacion %}<b><i class="fa fa-user-plus" aria-hidden="true"></i> </b>{{ fechaprofe.usuario_creacion }}<br>{% endif %}#}
+                                                            {#                                                        {% if fechaprofe.usuario_modificacion %}<b><i class="fa fa-user-edit" aria-hidden="true"></i> </b>{{ fechaprofe.usuario_modificacion }}<br>{% endif %}#}
+                                                            {% if not finalizo %}
+                                                                {% if fechaprofe.tipodirector == profesor.tipodirector %}
+                                                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminarobj tu"  onclick="deleteactividad({{ fechaprofe.id }})"  idact="'+data.idprofesor+'" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                                                {% endif %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        {% if not finalizo %}
+                                                            {% if tipoeva.0 == profesor.tipodirector %}
+                                                                <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-success" onclick="addactividad({{ profesor.evaluado.id }},{{ idperiodo }})"><i class="fa fa-plus"></i></a>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endwith %}
+                                            </li>
+                                        </div>
+                                     {% endif %}
+                                    </ul>
+                                {% endfor %}
+                            </div>
+                        </td>
+
+                        <td style="vertical-align: top !important">
+                            <div id="miseleccionado_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}" class="border-top border-6 rounded-3 border-dark-secondary">
+                                {% with evaluadoresseleccionados=proceso|args:profesor.evaluado.id|call:'evaluadores_seleccionados_partotal' %}
+                                    {% if evaluadoresseleccionados %}
+                                        {% for detalle in evaluadoresseleccionados %}
+                                            <ul class="list-group" style="margin-top: 1px" id="evaluadorpersona_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}_{{ detalle.evaluador.id }}" idpe="{{ detalle.evaluador.id }}">
+                                                <li class="list-group-item-info d-flex justify-content-between align-items-start " aria-current="true" style="padding: 6px 3px;">
+                                                    <div class="ms-2 me-auto">
+                                                        <div class="fw-bold">
+                                                            {% if not finalizo %}
+                                                                {% if distributivo %}                                                                {#                                                                    {% with evaluado=proceso|args:profesor.evaluado.id|args:detalle.evaluador|args:coordinacion|call:'evaluado_por_par' %}#}
+                                                                    {% with evaluado=proceso|args:profesor.evaluado.id|args:detalle.evaluador|args:distributivo.coordinacion.id|call:'evaluado_por_par' %}
+                                                                        {% if not evaluado %}
+                                                                            {% if detalle.usuario_creacion.id == persona.usuario.id %}
+                                                                                <a class="tu btn btn-info btn-tini adicionaractividad" title="Actividades" ide="{{ detalle.evaluador.id }}" idp="{{ profesor.evaluado.id }}" idc="{{ distributivo.coordinacion.id }}" idact="evaluadoractpersona_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}_{{ detalle.evaluador.id }}"><i class="fa fa-list"></i></a>
+                                                                                <a class="btn btn-tini btn-danger tu eliminarevaluador" idr="evaluadorpersona_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}_{{ detalle.evaluador.id }}" title="Eliminar" ><i class="fa fa-remove"></i></a>
+                                                                            {% endif %}
+                                                                        {% endif %}
+                                                                    {% endwith %}
+                                                                {% else %}
+                                                                    {% with evaluado=proceso|args:profesor.evaluado.id|args:detalle.evaluador|args:profesor.coordinacion.id|call:'evaluado_por_par' %}
+                                                                        {% if not evaluado %}
+                                                                            {% if detalle.usuario_creacion.id == persona.usuario.id %}
+                                                                                <a class="btn btn-tini btn-danger tu eliminarevaluador" idr="evaluadorpersona_{{ profesor.evaluado.id }}_{{ profesor.coordinacion.id }}_{{ detalle.evaluador.id }}" title="Eliminar" ><i class="fa fa-remove"></i></a>
+                                                                            {% endif %}
+                                                                        {% endif %}
+                                                                    {% endwith %}
+                                                                {% endif %}
+                                                            {% endif %}
+
+                                                            <strong>
+                                                                <b class="border-dark-secondary"> {{ detalle.evaluador }}</b>
+                                                            </strong>
+                                                        </div>
+
+                                                    </div>
+                                                    <strong>
+                                                        {{ detalle.get_tipodirector_display }} |
+                                                        {% if detalle.usuario_creacion %}<b><i class="fa fa-user-plus" aria-hidden="true"></i> </b>{{ detalle.usuario_creacion }}<br>{% endif %}
+                                                        {#                                                                    {% if detalle.usuario_modificacion %}<b><i class="fa fa-user-edit" aria-hidden="true"></i> </b>{{ detalle.usuario_modificacion }}<br>{% endif %}#}
+                                                    </strong>
+                                                    <span class="badge bg-primary rounded-pill">{{ detalle.mis_actividades|length }}</span>
+
+                                                </li>
+                                                <div id="lisactividades_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}_{{ detalle.evaluador.id }}">
+                                                    {% for actividad in detalle.mis_actividades %}
+                                                        <li class="list-group-item" style="text-align: justify;font-size: 11px;padding: 6px 3px" id="actividad_{{ profesor.evaluado.id }}_{{ detalle.evaluador.id }}">
+                                                            {{ actividad.detalledistributivo.nombre }}
+                                                        </li>
+                                                    {% endfor %}
+                                                </div>
+                                            </ul>
+                                        {% endfor %}
+                                    {% endif %}
+                                {% endwith %}
+                            </div>
+
+                            <div id="addparbtn_{{ profesor.evaluado.id }}_{{ coordinacion.id }}">
+                            {% if distributivo %}
+                                {% if not finalizo %}
+                                    <a class="btn btn-tini btn-success addpar" id="addpar_{{ profesor.evaluado.id }}_{{ distributivo.coordinacion.id }}" idp="{{ profesor.evaluado.id }}" idc="{{ distributivo.coordinacion.id }}"><i class="fa fa-user-plus"></i> Seleccionar</a>
+                                {% endif %}
+                            {% else %}
+                                <h4>No tiene distributivo asignado</h4>
+                            {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+
+
+                {% endwith %}
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+        {#                </div>#}
+        {#            </div>#}
+        {#        </div>#}
+    </div>
+    {#    {% if not finalizo %}#}
+    {#        <div class='row-fluid'>#}
+    {#            <div class='span12'>#}
+    {#                <a class="btn btn-success" href="javascript:;" id="guardar">Guardar</a>#}
+    {#            </div>#}
+    {#        </div>#}
+    {#    {% endif %}#}
+    <div class="modal fade static" id="selectpar" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="paneltitle">SELECCIONAR PAR EVALUADOR</h4>
+                </div>
+                <div class="modal-body" id="selectparpares"></div>
+                <div class="modal-footer">
+                    <div style="float: right">
+                        <a id="selectpar_run" class="btn btn-success">Seleccionar</a>
+                        <a id="selectpar_close" class="btn">Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="selectactividad" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="paneltitle">Seleccionar actividades</h4>
+                </div>
+                <div class="modal-body" id="selectpar-body">
+                    <div style="height: 300px; overflow-y: scroll">
+                        <table class="table table-bordered table-striped">
+                            <thead class="table-light">
+                            <tr>
+                                <th style="width: 50px;"></th>
+                                <th>Actividad</th>
+                                <th style="width: 150px">Criterio</th>
+                                <th style="width: 10px"></th>
+                            </tr>
+                            </thead>
+                            <tbody id="selectactividadlista">
+
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div style="float: right">
+                        <a id="selectactividad_run" class="btn btn-success">Seleccionar</a>
+                        <a id="selectactividad_close" class="btn">Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="selectdelete" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="paneltitle">Eliminar asignación de pares</h4>
+                </div>
+                <div class="modal-body" id="selectdeletepar-body">
+                    <input type='hidden' id="idpersona" name="idpersona" value=""/>
+                    <input type='hidden' id="idcoordinacion" name="idcoordinacion" value=""/>
+                    <input type='hidden' id="idevaluador" name="idevaluador" value=""/>
+                    <p style="margin-top: 10px;">Esta seguro(a) que desea eliminar: <b id="leyenda"></b></p>
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="eliminacionmodal_formbutton" class='btn btn-danger btn-form'> {% block botonlabel %}Eliminar{% endblock %}</a>
+                        <a href="javascript:;" id="eliminacionmodal_cancel" class="btn btn-info"> Cerrar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspaneltemas" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Adicionar Fecha</h3>
+                </div>
+                <div class="container-fluid">
+                    <div class="modal-body panelbody">
+                        <div class="alert alert-info incompletotemas" style="display: none;">
+                            <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+                        </div>
+                        <div class="alert alert-danger" id="incompletovalorestemas" style="display: none;">
+                            <i class="fa fa-info-sign"></i> Revise los valores, la fecha/hora DESDE no debe ser mayor a la fecha/hora HASTA
+                        </div>
+                        <div class="alert alert-danger" id="alertaingresotemas" style="display: none;"> NO TIENE ACTIVIDADES</div>
+                        <div class="row-fluid">
+                            <form id="formulario2" class='form-vertical' action="" method="POST" >
+                                {% for field in form %}
+                                    {% if field.field.widget.attrs.separator %}
+                                        {% if field.field.widget.attrs.blanklinebefore %}
+                                        {% endif %}
+                                        <div style="width: 100%; height: max-content">
+                                            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                                                <span style="padding:0 10px; background: #f5f5f5;">
+                                                    {% if field.field.widget.attrs.separatortitle %}
+                                                        {{ field.field.widget.attrs.separatortitle }}
+                                                    {% endif %}
+                                                 </span>
+                                            </h6>
+                                        </div>
+                                    {% endif %}
+                                    <div id="fieldset_{{ field.name }}" class="col-lg-{{ field.field.widget.attrs.col }}" style="float: left; padding-right: 10px;">
+                                        <label class="control-label pr-2" for="id_{{ field.name }}"><b>{{ field.label }}&nbsp;:</b></label>
+                                        {{ field }}
+                                        <p class="help-text">{{ field.help_text }} </p>
+                                    </div>
+                                {% endfor %}
+                                <input type="hidden" id="idprofesor" name="idprofesor">
+                                <input type="hidden" id="idperiodo" name="idperiodo">
+                            </form>
+                            {#                <form id="formulario2" class='form-vertical' action="" method="POST" >#}
+                            {#                    {{ form }}#}
+                            {#                    <input type="hidden" name="codturno" id="codturno" value="0">#}
+                            {#                    <input type="hidden" name="coddia" id="coddia" value="0">#}
+                            {#                </form>#}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a href="javascript:;" class="btn btn-success" id="adicionarycerraractividad"><i class="fa fa-plus"></i> Adicionar</a>
+                    <a href="javascript:;" class="btn btn-cerrar btn-info" id="cerrartemas">Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="selectdeleteparesfechas" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="paneltitle">Eliminar Fechas de Docente</h4>
+                </div>
+                <div class="modal-body" id="selectdeletepar-body">
+                    <input type="hidden" name="codigofecha" id="codigofecha" value="0">
+                    <p style="margin-top: 10px;">Esta seguro(a) que desea eliminar: <b id="leyendafechas"></b></p>
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="eliminacionmodal_formbuttonfechadoc" class='btn btn-danger btn-form'> Eliminar</a>
+                        <a href="javascript:;" id="eliminacionmodal_cancelfechadoc" class="btn btn-info"> Cerrar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

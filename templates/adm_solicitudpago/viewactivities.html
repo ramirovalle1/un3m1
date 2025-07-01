@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        function aprobarRevision(opc, footer = false) {
+            var tituloForm = `<div class="text-left">
+            <h2 class="texto-naranja">Aprobar/Rechazar actividades</h2>
+            <p>Esta acción e irreversible</p></div>`;
+            var resumenContenido = "<h3 class='text-blue'> Lista de actividades con observación: </h3><br>";  // Contenedor para el resumen
+            resumenContenido += "<ul>";  // Contenedor para el resumen
+            var count = 0;
+            // Iterar sobre los textarea con ID que comienza con "id_observacion_"
+            $(".actividades_tr").each(function () {
+                var actividad = $(this).find("td:eq(1)").text();
+                var link = $(this).find("td:eq(3)").html();
+                var fecha = $(this).find("td:eq(4)").text();
+                var observacion = $(this).find("textarea").val();
+
+                // Verificar si el textarea tiene texto
+                if (observacion.replace(/\s+/g, '') !== "") {
+                    count++;
+                    // Crear una fila en el resumen
+                    resumenContenido += "<li><b>Actividad:</b> " + actividad + "<br><b>Link:</b> " + link + "<br><b>Fecha:</b> " + fecha + "<br><b>Observación:</b> " + observacion + "</li>";
+
+                }
+            });
+            resumenContenido += "</ul>"
+            resumenContenido += `<p>Total de registro con observación: ${count}</p>`
+            if( count > 0){
+                 resumenContenido += `<span class= 'badge badge-warning'>Usted va ha rechazar el informe</span>`
+            }else{
+                resumenContenido += `<span class= 'badge badge-success'>Usted va ha aprobar el informe</span>`
+            }
+            $("#itemspanel .panelbody").html(resumenContenido);
+            $("#itemspanel .paneltitle").html(tituloForm);
+
+            $("#itemspanel").modal({backdrop: 'static', keyboard: false,}).modal("show");
+
+        }
+
+        function obtenerDatos() {
+            var datos = [];
+
+            // Recorre cada fila de la tabla y obtén la información
+            $(".actividades_tr").each(function () {
+                var idActividad = $(this).attr("idd");
+                var observacion = $(this).find("textarea").val();
+                if (observacion.replace(/\s+/g, '') !== "") {
+                    // Agrega la información a la lista
+                    datos.push({id: idActividad, observacion: observacion});
+                }
+            });
+
+            return datos;
+        }
+
+        function enviarAccionAlServidor(accion) {
+            // Obtén la lista de actividades y observaciones
+            var datos = obtenerDatos();
+            if (accion == 'rechazar_actividades_ind') {
+                if (datos.length <= 0) {
+                    $.ajax({
+                        url: '{{ request.path }}',
+                        type: 'POST',
+                        data: {
+                            action: 'verificar_aprobacion_requisitos_actividades',
+                            id_soli: '{{ soli.id|encrypt }}',
+                            datos: JSON.stringify(datos)
+                        },
+                        success: function (data) {
+                            if (data.result) {
+                                NotificationJG.success("Se ha enviado");
+                                window.location.href = '/adm_solicitudpago?action=viewinformesmen&id={{ soli.id|encrypt }}';
+                            } else {
+                                NotificationJG.error(data.mensaje)
+                            }
+                        },
+                        error: function () {
+                            NotificationJG.error("Error de conexión, intentelo mas tarde.")
+                        },
+                        dataType: "json",
+                    });
+                }else{
+                // Realiza la petición AJAX
+                $.ajax({
+                url: '{{ request.path }}',
+                type: 'POST',
+                data: {action: accion, id_soli:'{{ soli.id|encrypt }}', datos: JSON.stringify(datos)},
+                success: function (data) {
+                    if (data.result) {
+                        NotificationJG.success("Se ha enviado");
+                        window.location.href = '/adm_solicitudpago?action=reviewactivities&id={{ soli.id|encrypt }}';
+                    }else{
+                        NotificationJG.error(data.mensaje)
+                    }
+                },
+                error: function () {
+                    NotificationJG.error("Error de conexión, intentelo mas tarde.")
+                },
+                dataType: "json",
+            });
+            }
+            }
+
+        }
+
+        $(document).ready(function () {
+            $("#btn_aprobar_revision").click(function () {
+                enviarAccionAlServidor("aprobar_actividade_ind");
+            });
+
+            $("#btn_rechazar_revision").click(function () {
+                enviarAccionAlServidor("rechazar_actividades_ind");
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_solicitudpago?action=viewinformesmen&id={{ soli.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class="container-fluid">
+        <div class='row'>
+            <div class='col-lg-12'>
+                <div class="headtitle">
+                    <h3 class="texto-blue">{{ title|lower|capfirst }}</h3>
+                    <h6>Registro de actividades diarias: {{ soli.fechainicio|date:'d/m/Y' }} -
+                        {{ soli.fechaifin|date:'d/m/Y' }}</h6>
+                </div>
+            </div>
+        </div>
+        {% if soli.estado == 0 or soli.estado == 2 %}
+            <div class="alert alert-info">
+
+                <p>Recuerde que la solicitud se encuentra en el estado pendiente o aprobado, por lo cual no podrá realizar ninguna acción en este apartado.</p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endif %}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info table-responsive">
+                <table class='table table-bordered table-striped'>
+                    <thead>
+                    <tr>
+                        <th class="w-20 text-left">ACTIVIDAD</th>
+                        <th class="w-20 text-left">TAREA EJECUTADA</th>
+                        <th class="w-10 text-center">HERRAMIENTA UTILIZADA</th>
+                        <th class="w-10 text-center">LINK</th>
+                        <th class="w-10 text-center">FECHA</th>
+                        <th class="w-30 text-left">OBSERVACIÓN</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for b in fechas %}
+                        {% with acti=soli.contrato|args:b|call:'actividades_posgrado' %}
+                            {% if acti.0 %}
+                                {% for bac in acti.1 %}
+                                    <tr class="actividades_tr" idd="{{ bac.id|encrypt }}" style="padding-top: 2px">
+                                        <td class="w-5 text-left">
+                                            {{ bac.actividades|lower|capfirst|default:"N/A" }}</td>
+                                        <td class="w-5 text-left">
+                                            {{ bac.descripcion|lower|capfirst|default:"N/A" }}</td>
+                                        <td class="w-5 text-center">{{ bac.get_tiposistema_display }}</td>
+                                        <td class="w-5 text-center">
+                                            <a href="{% if bac.link %}{{ bac.link }}{% endif %}"
+                                               target="_blank">{{ bac.get_tiposistema_display }}</a>
+                                        </td>
+                                        <td style="text-align: center;">
+                                            {{ bac.fecha|date:'d/m/Y' }}</td>
+                                        <td style="text-align: left;">
+                                        <textarea {% if soli.estado == 0 or soli.estado == 2 %}disabled{% endif %} name="observacion" idd="{{ bac.id|encrypt }}"
+                                                  id="id_observacion_{{ bac.id|encrypt }}" cols="30"
+                                                  rows="4">{% if bac.observacion %}{{ bac.observacion }}{% endif %}</textarea>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr style="padding-top: 2px">
+                                    <td colspan="4" style="text-align: center;padding-left: 2px;padding-right: 2px;">
+                                        {{ acti.1 }}
+                                    </td>
+                                    <td style="text-align: center;">{{ acti.2|date:'d/m/Y' }}</td>
+                                    <td style="text-align: center;">Ninguna</td>
+                                </tr>
+                            {% endif %}
+                        {% endwith %}
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center">NO TIENE ACTIVIDADES EN ESTE PERIODO</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <div class="text-end">
+                    <div class="btn-group">
+                        {% if soli.estado != 0 and soli.estado != 2 %}
+                            {% if not soli.solicitud_proceso_en_ejecucion %}
+                                <a href="javascript:void(0)" onclick="aprobarRevision(1,true)" class="btn btn-success">
+                                    Guardar
+                                </a>
+                            {% endif %}
+
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+{#                    <a type="button" class="btn btn-success" id="btn_aprobar_revision"> Aprobar#}
+{#                    </a>#}
+                    <a type="button" class="btn btn-success" id="btn_rechazar_revision"> Guardar
+                    </a>
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

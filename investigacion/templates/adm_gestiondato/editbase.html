@@ -1,0 +1,234 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function(){
+            $('[data-bs-toggle="tooltip"]').tooltip();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#id_titulo").addClass("validate[required]");
+            $("#archivos_aux").addClass("validate[required]");
+
+            let nf_archivo = secuenciaarchivo = {{ detalles|length }};
+
+            lista_items1 = [];
+            lista_items2 = []; //Archivos borrados
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                let campo = '<input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="'+nombreCampo+'_aux" value="">';
+                $("#fieldset_"+nombreCampo2).append(campo);
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('id_contexto', 'contexto', true);
+
+            CKEDITOR.instances['id_contexto'].on('change', function() {
+                if(CKEDITOR.instances['id_contexto'].getData().length > 0)
+                    $("#id_contexto_aux").val("OK");
+                else
+                    $("#id_contexto_aux").val("");
+            });
+
+            $(".agregaarchivo").click(function() {
+                if(datosArchivoCompleto()){
+                    nf_archivo++;
+                    secuenciaarchivo++;
+
+                    borrarFilaDefaultArchivo();
+
+                    nueva = '<tr class="detallearchivos" id="filaarchivo_' + nf_archivo.toString() + '">'+
+                        '<td class="text-center">'+secuenciaarchivo.toString()+'</td>'+
+                        '<td><input type="hidden" id="idregarchivo'+secuenciaarchivo.toString()+'" name="idregarchivo[]" value="0"><input type="hidden" id="nfila_archivo[]" name="nfila_archivo[]" value="'+nf_archivo.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_archivo'+nf_archivo.toString()+'" name="descripcion_archivo[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>'+
+                        '<td>&nbsp;</td>'+
+                        '<td class="text-center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaarchivo_'+nf_archivo.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosbase" idf="'+nf_archivo.toString()+'" id="archivo_base[]" name="archivo_base[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_archivo.toString()+'" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div></td>'+
+                        '<td class="text-center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_archivo" idreg="0" idf="' + nf_archivo.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar fila"><i class="fa fa-trash"></i></a></td>';
+
+                    $("#detalle_archivos").append(nueva);
+                    $("#detalle_archivos").find(".eliminaritem_archivo").tooltip();
+                    $("#descripcion_archivo"+nf_archivo.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_archivo.toString()).addClass("validate[required]");
+                    $(".eliminaritem_archivo").unbind("click.eliminaritem_archivo");
+                    $(".eliminaritem_archivo").bind("click.eliminaritem_archivo", eliminarItemArchivo);
+
+                    conectarChangeFileinputArchivo();
+                }
+            });
+
+            eliminarItemArchivo = function() {
+                let id = $(this).attr("idf");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+                $("#filaarchivo_"+id).remove();
+
+                if(idreg !== '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items2.push(item);
+                }
+
+                secuenciaarchivo = 0;
+                $("#tbdetallearchivos tbody tr").each(function (index) {
+                    secuenciaarchivo++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 === 0)
+                            $(this).html(secuenciaarchivo.toString());
+                    });
+                });
+
+                if(secuenciaarchivo === 0)
+                    agregarFilaDefaultArchivo();
+
+                actualizarListaArchivoBase();
+            };
+
+            actualizarListaArchivoBase = function (){
+                lista_items1 = [];
+                let cf = 1;
+                $('input[name="archivo_base[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf++;
+                });
+            };
+
+            conectarChangeFileinputArchivo = function() {
+                $(".archivosbase").unbind();
+                $(".archivosbase").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+                    $("#bgaarchivo_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizarListaArchivoBase();
+                });
+            };
+
+            agregarFilaDefaultArchivo = function (){
+                filadefault = '<tr id="fila_default_archivo">'+
+                              '<td colspan="5" class="text-center">No existen detalles de archivos agregados</td>'+
+                              '</tr>';
+                $("#detalle_archivos").append(filadefault);
+                $("#archivos_aux").val("");
+            };
+
+            borrarFilaDefaultArchivo = function (){
+                $("#fila_default_archivo").remove();
+                $("#archivos_aux").val("OK");
+            };
+
+            datosArchivoCompleto = function (){
+                let c1e = true;
+
+                $('input[name="descripcion_archivo[]"]').each(function() {
+                    if($(this).val().trim() === ''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            {% for detalle in detalles %}
+                {% if detalle.tipo_accion == 'preview' %}
+                    campoarchivo = '<a href="{{ detalle.archivo.url }}" class="btn btn-mini btn-info campoarchivo" data-width="2048" data-height="1380" data-fancybox="archivo{{ detalle.id }}" data-caption="Archivo: {{ detalle.descripcion }}" data-bs-toggle="tooltip" data-placement="top" title="Ver archivo"><i class="fa fa-eye"></i> </a>';
+                {% else %}
+                    campoarchivo = '<a href="{{ detalle.archivo.url }}" target="_blank" class="btn btn-mini btn-info campoarchivo"  data-bs-toggle="tooltip" data-placement="top" title="Descargar archivo"><i class="fa fa-download"></i> </a>';
+                {% endif %}
+                nueva = '<tr class="detallearchivos" id="filaarchivo_{{ forloop.counter }}">'+
+                    '<td class="text-center">{{ forloop.counter }}</td>'+
+                    '<td><input type="hidden" id="idregarchivo{{ forloop.counter }}" name="idregarchivo[]" value="{{ detalle.id }}"><input type="hidden" id="nfila_archivo[]" name="nfila_archivo[]" value="{{ forloop.counter }}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_archivo{{ forloop.counter }}" name="descripcion_archivo[]" type="text" value="{{ detalle.descripcion }}" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>'+
+                    '<td>'+campoarchivo+'</td>'+
+                    '<td class="text-center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaarchivo_{{ forloop.counter }}" class="badge">0</span><input type="file" style="color: transparent" class="archivosbase" idf="{{ forloop.counter }}" id="archivo_base[]" name="archivo_base[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc{{ forloop.counter }}" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div></td>'+
+                    '<td class="text-center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_archivo" idreg="{{ detalle.id }}" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar fila"><i class="fa fa-trash"></i></a></td>';
+
+                $("#detalle_archivos").append(nueva);
+                $("#detalle_archivos").find(".eliminaritem_archivo").tooltip();
+                $("#detalle_archivos").find(".campoarchivo").tooltip();
+                $("#descripcion_archivo"+nf_archivo.toString()).addClass("validate[required]");
+            {% endfor %}
+
+            conectarChangeFileinputArchivo();
+            $(".eliminaritem_archivo").unbind("click.eliminaritem_archivo");
+            $(".eliminaritem_archivo").bind("click.eliminaritem_archivo", eliminarItemArchivo);
+            $("#id_contexto_aux").val("OK");
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_gestiondato{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_gestiondato{% endblock %}
+{% block formdestinationswal %}adm_gestiondato{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editbase'/>
+    <input type='hidden' name='id' value='{{ baseinstitucional.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/adm_gestiondato{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div id="fieldset_tabla_anexos" class="col-md-12" style="float: left;">
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_anexos_subir" style="padding-right: 10px;">Archivos:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left;">
+                <div class="table-responsive-xxl">
+                    <label>Tipos permitidos: {{ tipoanexos }}, máximo {{ tamanio }}</label>
+                    <table class="table table-bordered table_primary table-striped mb-0" id="tbdetallearchivos">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="w-3 text-center">#</th>
+                                <th class="w-66 text-center">Descripción</th>
+                                <th class="w-3 text-center">...</th>
+                                <th class="w-25 text-center">Archivo</th>
+                                <th class="w-3 text-center"><a href="javascript:;" id="btnagregaranexo" class="btn btn-success btn-mini agregaarchivo" data-bs-toggle="tooltip" title="Agregar Archivo"><i class="fa fa-plus"></i> </a></th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_archivos">
+
+                        </tbody>
+                    </table>
+                    <div>
+                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivos_aux" value="OK">
+                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

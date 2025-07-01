@@ -1,0 +1,579 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript">
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 1});
+
+            selectorcontratos = $(".selectorcontratos");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorcontratos:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalleads").html(`Asignaturas seleccionadas: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorcontratos.prop('checked', true);
+                } else {
+                    selectorcontratos.prop('checked', false);
+                }
+                actulizarvalor();
+            });
+
+            selectorcontratos.change(function () {
+                actulizarvalor();
+            });
+
+            selectorcontratos.prop("checked", false);
+
+            $(".esfavorable").click(function () {
+                actualizaCheckboxes('changeesfavorable', $(this));
+                return false;
+            });
+
+            actualizaCheckboxes = function (accion, obj) {
+                var idreq = obj.attr('idreq');
+                $.blockUI({message: null});
+                $.post("/adm_secretaria", {'action': accion, 'idreq': idreq}, function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        if (data.valor) {
+                            obj.html('<i class="fa fa-check" style="color: green"></i>');
+                            location.reload();
+                        } else {
+                            obj.html('<i class="fa fa-remove" style="color: red"></i>');
+                            location.reload();
+                        }
+                    }
+                }, "json");
+                valores_check = null;
+            };
+
+        });
+
+        function AprobarAsignaturas(pk, nombre, accion, tienefavorable, est, tieneinformeaprobado) {
+            var ids;
+            var contador = 0;
+            var seleccionados = $(".selectorcontratos:checked");
+            var tiene = parseInt(tienefavorable);
+            var est = parseInt(est);
+
+            console.log(seleccionados);
+            console.log(tieneinformeaprobado);
+            ids = '';
+            seleccionados.each(function () {
+                if (ids.length > 0) {
+                    ids += ",";
+                }
+                ids += $(this).attr('rid');
+                contador += 1;
+            });
+
+            if (est != 27) {
+                if (tieneinformeaprobado == 'SI') {
+                    if (tiene > 0) {
+                        if (contador > 0) {
+                            Swal.fire({
+                                title: `<h4>Notificar asignaturas favorables</h4>`,
+                                html: `Al confirmar esta acción, se notificará a la solicitante, <b>${nombre}</b> , sobre las asignaturas favorables que usted, como coordinador, ha seleccionado. Es importante recalcar que dichas asignaturas son las que se considerarán para aplicar la homologación una vez realizado el pago del valor generado. Por otro lado, las asignaturas no favorables también serán notificadas al solicitante.<br><br><b>Asignaturas seleccionadas: </b>` + contador,
+                                type: 'warning',
+                                showCancelButton: true,
+                                allowOutsideClick: false,
+                                confirmButtonColor: '#3085d6',
+                                cancelButtonColor: '#d33',
+                                confirmButtonText: 'Si, deseo hacerlo',
+                                cancelButtonText: 'Cancelar'
+                            }).then((result) => {
+                                if (result.value) {
+                                    bloqueointerface();
+                                    $.ajax({
+                                        type: 'POST',
+                                        url: '/adm_secretaria',
+                                        async: false,
+                                        data: {
+                                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                                            action: accion,
+                                            id: pk,
+                                            ids: ids
+                                        },
+                                        dataType: "json",
+                                        beforeSend: function () {
+                                            bloqueointerface();
+                                        }
+                                    }).done(function (data) {
+                                        setTimeout($.unblockUI, 1);
+                                        if (data.result == 'ok') {
+
+                                            let timerInterval
+                                            Swal.fire({
+                                                title: '',
+                                                html: '<b>Guardando cambios...</b>',
+                                                timer: 2000,
+                                                timerProgressBar: true,
+                                                didOpen: () => {
+                                                    Swal.showLoading()
+                                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                                    timerInterval = setInterval(() => {
+                                                        b.textContent = Swal.getTimerLeft()
+                                                    }, 100)
+                                                },
+                                                willClose: () => {
+                                                    clearInterval(timerInterval)
+                                                }
+                                            }).then((result) => {
+                                                /* Read more about handling dismissals below */
+                                                if (result.dismiss === Swal.DismissReason.timer) {
+                                                    console.log('I was closed by the timer')
+                                                }
+                                            })
+                                            location.reload();
+                                        } else {
+                                            alertaDanger(data.mensaje, 10000);
+                                        }
+                                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                                        setTimeout($.unblockUI, 1);
+                                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                                    }).always(function () {
+                                    });
+                                } else {
+                                }
+                            });
+                        } else {
+                            Swal.fire({
+                                title: `<h4>Sin asignatura seleccionada</h4>`,
+                                html: `Por favor, seleccione al menos una asignatura favorable. <br><br><b>Asignaturas seleccionadas: </b>` + contador,
+                                type: 'warning',
+                                showCancelButton: true,
+                                allowOutsideClick: false,
+                                confirmButtonColor: '#3085d6',
+                                cancelButtonColor: '#d33',
+                                confirmButtonText: 'Si, deseo hacerlo',
+                                cancelButtonText: 'Cancelar'
+                            });
+                        }
+                    } else {
+                        Swal.fire({
+                            title: `<h4>Ninguna asignatura favorable</h4>`,
+                            html: `Se ha detectado que ninguna de las asignaturas selccionadas por el solicitante <b>${nombre}</b> es favorable.<br><br><b>Asignaturas seleccionadas: </b>` + contador,
+                            type: 'warning',
+                            showCancelButton: false,
+                            allowOutsideClick: false,
+                            confirmButtonColor: '#3085d6',
+                            confirmButtonText: 'Aceptar'
+                        });
+                    }
+                } else {
+                    Swal.fire({
+                        title: `<h4>Informe NO aprobado y/o subido</h4>`,
+                        html: `Para poder realizar la aprobación de las asignaturas favorables, debe tener subido el informe técnico de pertinencia, el cual debe estar aprobado por el respectivo director de escuela.`,
+                        type: 'warning',
+                        showCancelButton: false,
+                        allowOutsideClick: false,
+                        confirmButtonColor: '#3085d6',
+                        confirmButtonText: 'Aceptar'
+                    });
+                }
+            } else {
+                Swal.fire({
+                    title: `<h4>Asignaturas aprobadas</h4>`,
+                    html: `Usted ya ha realizado la revisión de las asignaturas.`,
+                    type: 'warning',
+                    showCancelButton: false,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    confirmButtonText: 'Aceptar'
+                });
+            }
+        }
+
+        function AplicarHomologacion(pk, nombre, accion, subjects, rubropagado, estado) {
+            var est = parseInt(estado);
+            if (rubropagado == '1') {
+                if (est == 26) {
+                    Swal.fire({
+                        title: `<h4>Notificar asignaturas favorables</h4>`,
+                        html: `Al confirmar esta acción, se aplicará la homologación del solicitante, <b>${nombre}</b> , sobre las siguientes asignaturas favorables:<br> ${subjects}`,
+                        type: 'warning',
+                        showCancelButton: true,
+                        allowOutsideClick: false,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Si, deseo hacerlo',
+                        cancelButtonText: 'Cancelar'
+                    }).then((result) => {
+                        if (result.value) {
+                            bloqueointerface();
+                            $.ajax({
+                                type: 'POST',
+                                url: '/adm_secretaria',
+                                async: false,
+                                data: {
+                                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                                    action: accion,
+                                    id: pk,
+                                },
+                                dataType: "json",
+                                beforeSend: function () {
+                                    bloqueointerface();
+                                }
+                            }).done(function (data) {
+                                setTimeout($.unblockUI, 1);
+                                if (data.result == 'ok') {
+
+                                    let timerInterval
+                                    Swal.fire({
+                                        title: '',
+                                        html: '<b>Guardando cambios...</b>',
+                                        timer: 2000,
+                                        timerProgressBar: true,
+                                        didOpen: () => {
+                                            Swal.showLoading()
+                                            const b = Swal.getHtmlContainer().querySelector('b')
+                                            timerInterval = setInterval(() => {
+                                                b.textContent = Swal.getTimerLeft()
+                                            }, 100)
+                                        },
+                                        willClose: () => {
+                                            clearInterval(timerInterval)
+                                        }
+                                    }).then((result) => {
+                                        /* Read more about handling dismissals below */
+                                        if (result.dismiss === Swal.DismissReason.timer) {
+                                            console.log('I was closed by the timer')
+                                        }
+                                    })
+                                    location.reload();
+                                } else {
+                                    alertaDanger(data.mensaje, 10000);
+                                }
+                            }).fail(function (jqXHR, textStatus, errorThrown) {
+                                setTimeout($.unblockUI, 1);
+                                alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                            }).always(function () {
+                            });
+                        } else {
+                        }
+                    });
+                } else {
+                    Swal.fire({
+                        title: `<h4>HOMOLGACIÓN APLICADA</h4>`,
+                        html: `Usted ya ha realizado la homologación de las asignaturas favorables.`,
+                        type: 'warning',
+                        showCancelButton: false,
+                        allowOutsideClick: false,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Aceptar'
+                    });
+                }
+            } else {
+                Swal.fire({
+                    title: `<h4>No ha realizado el pago</h4>`,
+                    html: `No se puede aplicar la homologación debido a que el solicitante aún no realiza el pago`,
+                    type: 'warning',
+                    showCancelButton: false,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Aceptar'
+                });
+            }
+        }
+
+        function GenerarFicha(pk, nombre, accion, estado) {
+            var est = parseInt(estado);
+            if (est >= 24) {
+                Swal.fire({
+                    title: `<h4>Notificar asignaturas favorables</h4>`,
+                    html: `Al confirmar esta acción, descargará la ficha de homologación interna de posgrado del solicitante: <br> <b>${nombre}</b>.`,
+                    type: 'warning',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: 'GET',
+                            url: '/adm_secretaria',
+                            async: false,
+                            data: {
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                action: accion,
+                                id: pk,
+                            },
+                            dataType: "json",
+                            beforeSend: function () {
+                                bloqueointerface();
+                            }
+                        }).done(function (data) {
+                            setTimeout($.unblockUI, 1);
+                            if (data.result == 'ok') {
+
+                                let timerInterval
+                                Swal.fire({
+                                    title: '',
+                                    html: '<b>Descargando ficha de homologación...</b>',
+                                    timer: 2000,
+                                    timerProgressBar: true,
+                                    didOpen: () => {
+                                        Swal.showLoading()
+                                        const b = Swal.getHtmlContainer().querySelector('b')
+                                        timerInterval = setInterval(() => {
+                                            b.textContent = Swal.getTimerLeft()
+                                        }, 100)
+                                    },
+                                    willClose: () => {
+                                        clearInterval(timerInterval)
+                                    }
+                                }).then((result) => {
+                                    /* Read more about handling dismissals below */
+                                    if (result.dismiss === Swal.DismissReason.timer) {
+                                        console.log('I was closed by the timer')
+                                    }
+                                })
+                                window.open(data.url);
+                            } else {
+                                alertaDanger(data.mensaje, 10000);
+                            }
+                        }).fail(function (jqXHR, textStatus, errorThrown) {
+                            setTimeout($.unblockUI, 1);
+                            alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                        }).always(function () {
+                        });
+                    } else {
+                    }
+                });
+            } else {
+                Swal.fire({
+                    title: `<h4>ACCESO DENEGADO</h4>`,
+                    html: `Para poder bajar la ficha de homologación, primero debe aprobar las asignaturas favorables.`,
+                    type: 'warning',
+                    showCancelButton: false,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Aceptar'
+                });
+            }
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_secretaria?action=versolicitudes&id={{ eSolicitud.servicio.categoria.id }}&idc={% if idc %}{{ idc }}{% else %}0{% endif %}&ide={% if ide %}{{ ide }}{% else %}0{% endif %}&s={% if s %}{{ s }}{% endif %}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ title }}</h3>
+                <h6>Homologación de asignaturas de posgrado</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 col-md-3 col-sm-12">
+            <b id="totalleads">Seleccionados: 0</b> |
+            <a href="javascript:void(0);"
+               onclick="AprobarAsignaturas('{{ eSolicitud.id }}', '{{ eSolicitud.perfil.persona }}', 'informarasignaturas', '{{ tienefavorable }}', '{{ eSolicitud.estado }}', '{{ tieneinformeaprobado }}')"
+               class="btn btn-primary btn-mini tu" title="Aprobar asignaturas favorables">
+                <span class="fa fa-plus-circle"></span> Aprobar asignaturas
+            </a>
+            <a href="javascript:void(0);"
+               onclick="AplicarHomologacion('{{ eSolicitud.id }}', '{{ eSolicitud.perfil.persona }}', 'aplicarhomologacion', '{{ subjects }}', '{{ eSolicitud.tiene_rubro_pagado2 }}', '{{ eSolicitud.estado }}')"
+               class="btn btn-success btn-mini tu" title="Aplicar homologación">
+                <span class="fa fa-send"></span> Aplicar homologación
+            </a>
+            <a href="javascript:void(0);"
+               onclick="GenerarFicha('{{ eSolicitud.id }}', '{{ eSolicitud.perfil.persona }}', 'descargarfichahomologacion', '{{ eSolicitud.estado }}')"
+               class="btn btn-warning btn-mini tu" title="Descargar ficha de homologación">
+                <span class="fa fa-download"></span> Descargar ficha
+            </a>
+            {% if perms.posgrado.puede_generar_informe %}
+                {% if not eSolicitud.respaldo %}
+                    <a href='javascript:void(0);'
+                       class="btn btn-info btn-mini tu"
+                       onclick="formModalBase('{{ eSolicitud.id|encrypt }}','Firmar certificado de {{ eSolicitud.perfil.persona.nombre_completo_minus }}' ,'firmarinformehomologacion','','modal-xl')">
+                        <span class="fa fa-signature"></span> Generar y Firmar informe
+                    </a>
+                    {% if eSolicitud.tiene_informe_firmado %}
+                        <a href='{{ eSolicitud.tiene_informe.archivo_actual }}'
+                           class="btn btn-success btn-mini tu" target="_blank">
+                            <span class="fa fa-eye"></span> Ver informe
+                        </a>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+            {% if eSolicitud.estado == 27 %}
+                <a href="/inscripciones?action=record&id={{ eSolicitud.perfil.inscripcion.id }}" target="_blank"
+                   class="btn btn-info btn-mini tu" title="Descargar ficha de homologación">
+                    <span class="fa fa-eye"></span> Ver récord académico
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 col-md-3 col-sm-12" style="text-align: right;">
+            <i class="fa fa-circle" style="color: #124076"></i> Seleccionada |
+            <i class="fa fa-circle" style="color: #FE9900"></i> No seleccionada (Compatible) |
+            <i class="fa fa-circle" style="color: #dc3545"></i> No compatible |
+            <i class="fa fa-circle" style="color: #198754"></i> Compatible
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4 class="mb-0"><i class="fa fa-user"></i><b> Nombre del estudiante: </b>{{ eSolicitud.perfil.inscripcion.persona|title }}</h4>
+            <h4 class="mb-0"><i class="fa fa-address-card-o"></i><b> Cédula: </b>{{ eSolicitud.perfil.inscripcion.persona.cedula }}</h4>
+            <h4 class="mb-0"><i class="fa fa-university"></i><b> Programa de maestría/Universidad de procedencia: </b>{{ eSolicitud.carrera_homologada.nombre|lower|capfirst }}{% if eSolicitud.carrera_homologada.mencion %} con mención en {{ eSolicitud.carrera_homologada.mencion|lower }}{% endif %} / UNEMI</h4>
+            <h4 class="mb-0"><i class="fa fa-university"></i><b> Plan de estudio de procedencia: </b>{{ eSolicitud.carrera_homologada.nombre|lower|capfirst }}{% if eSolicitud.carrera_homologada.mencion %} con mención en {{ eSolicitud.carrera_homologada.mencion|lower }}{% endif %}</h4>
+            <h4 class="mb-0"><i class="fa fa-university"></i><b> Plan de estudio a homologar: </b> {{ eSolicitud.perfil.inscripcion.carrera.nombre|lower|capfirst }}{% if eSolicitud.perfil.inscripcion.carrera.mencion %} con mención en {{ eSolicitud.perfil.inscripcion.carrera.mencion|lower }}{% endif %}</h4>
+            <h4 class="mb-0"><i class="fa fa-moon"></i><b> Modalidad: </b>{{ eSolicitud.perfil.inscripcion.carrera.get_modalidad_display|title }}</h4>
+        </div>
+    </div>
+
+    <div class="col-lg-12 col-md-3 col-sm-12 ms-2">
+        <b>No. de Asignaturas por Aprobar: </b>{{ eTotalasignaturaspa|floatformat:0 }} <b>| </b>
+        <b>Total Horas por Homologar: </b>{{ eTotalhoraspa|floatformat:0 }} <b>| </b>
+        <b>Total Créditos por Homologar: </b>{{eTotalcreditospa|floatformat:0 }} <b>| </b>
+        <b>No. de Asignaturas Aprobadas: </b>{{ eTotalasignaturasap|floatformat:0 }} <b>| </b>
+        <b>Total Horas Homologadas: </b>{{ eTotalhorasap|floatformat:0 }} <b>| </b>
+        <b>Total Créditos Homologados: </b>{{ eTotalcreditosap|floatformat:0 }}
+    </div>
+
+    <div class='row'>
+        <div class="col-lg-12 col-md-12 col-sm-12">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info ms-2">
+                <table class='tabla_responsive table table-bordered table-striped'>
+                    <thead>
+                    <tr>
+                        <th rowspan="2">No.</th>
+                        <th colspan="4" style="font-size: 14px">{{ eSolicitud.carrera_homologada.nombre|lower|capfirst }}{% if eSolicitud.carrera_homologada.mencion %} con mención en {{ eSolicitud.carrera_homologada.mencion|lower }}{% endif %} modalidad {{ eSolicitud.carrera_homologada.get_modalidad_display|lower }}</th>
+                        <th rowspan="2">No.</th>
+                        <th colspan="4" style="font-size: 14px">{{ eSolicitud.perfil.inscripcion.carrera.nombre|lower|capfirst }}{% if eSolicitud.perfil.inscripcion.carrera.mencion %} con mención en {{ eSolicitud.perfil.inscripcion.carrera.mencion|lower }}{% endif %} modalidad {{ eSolicitud.carrera_homologada.get_modalidad_display|lower }}</th>
+                        <th rowspan="2">% comparativo de contenidos (similitud)</th>
+                        <th colspan="2">Se acepta asignatura</th>
+                        <th rowspan="2">Abreviación "HOM"</th>
+                        <th rowspan="2">¿Homologar?<br><input type="checkbox" id="todos"></th>
+                    </tr>
+                    <tr>
+                        <th>Asignaturas</th>
+                        <th>Calificación</th>
+                        <th>Horas</th>
+                        <th>Créditos</th>
+                        <th>Asignaturas</th>
+                        <th>Calificación</th>
+                        <th>Horas</th>
+                        <th>Créditos</th>
+                        <th>Si</th>
+                        <th>No</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for eRecord in eRecords %}
+                        <tr>
+                            <td style="text-align: center; ">{{ forloop.counter }}</td>
+                            <td style="text-align: center; ">{{ eRecord.asignatura|lower|capfirst }}</td>
+                            <td style="text-align: center; ">{{ eRecord.nota|floatformat:2 }}</td>
+                            <td style="text-align: center; ">{{ eRecord.horas|floatformat:0 }}</td>
+                            <td style="text-align: center; ">{{ eRecord.creditos|floatformat:0 }}</td>
+
+                            <td style="text-align: center; background-color: {{ eRecord.color2 }}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ forloop.counter }}</td>
+                            <td style="text-align: center; background-color: {{ eRecord.color2 }}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ eRecord.asignatura2|lower|capfirst }}</td>
+                            <td style="text-align: center; background-color: {{ eRecord.color2 }}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ eRecord.nota2|floatformat:2 }}</td>
+                            <td style="text-align: center; background-color: {{ eRecord.color2 }}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ eRecord.horas2|floatformat:0 }}</td>
+                            <td style="text-align: center; background-color: {{ eRecord.color2 }}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ eRecord.creditos2|floatformat:0 }}</td>
+
+                            <td style="text-align: center; background-color: {% if eRecord.nos == "no" %}#FE9900{% else %}{% if eRecord.colorfont == 'white' %}{% if eRecord.porcentaje == 100 %}#198754{% else %}#dc3545{% endif %}{% endif %}{% endif %}; {% if eRecord.colorfont == 'white' %}color: white{% endif %}">{{ eRecord.porcentaje }}% </td>
+                            <td style="text-align: center; ">{% if eRecord.porcentaje == 100 and eRecord.creditos == eRecord.creditos2 and eRecord.horas == eRecord.horas2 %}X{% endif %}</td>
+                            <td style="text-align: center; ">{% if eRecord.porcentaje != 100 or eRecord.creditos != eRecord.creditos2 or eRecord.horas != eRecord.horas2 %}X{% endif %}</td>
+                            <td style="text-align: center; ">HOM</td>
+
+                            <td style="text-align: center;">
+                                {% if eRecord.porcentaje == 100 and eRecord.creditos == eRecord.creditos2 and eRecord.horas == eRecord.horas2 %}
+                                    {% if eSolicitud.estado == 24 or eSolicitud.estado == 25 or eSolicitud.estado == 26  or eSolicitud.estado == 27 %}
+                                        <a href="javascript:;" class="{% if eSolicitud.estado != 27 %}esfavorable"{% endif %} idreq="{{ eRecord.solasi.id }}">
+                                            {% if eRecord.solasi.estado == 2 %}
+                                                <i class="fa fa-check tu" title="Aplica" style="color: green"></i>
+                                            {% else %}
+                                                <i class="fa fa-remove tu" title="No aplica" style="color: red"></i>
+                                            {% endif %}
+                                        </a>
+                                    {% else %}
+                                        <input type="checkbox" class="selectorcontratos" rid="{{ eRecord.idasih }}">
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

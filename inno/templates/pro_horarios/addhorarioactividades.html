@@ -1,0 +1,542 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function() {
+            addactividad = function(elemento, codigoturno,codigodia) {
+                bloqueointerface();
+                if(!$(elemento).is(':checked')){
+                    $.unblockUI();
+                    preguntaajax(`¿Está seguro que desea eliminar la actividad en este dia y hora?`,
+                "¡Esta acción es irreversible!", 'warning', function (){$.ajax({
+                                type: "POST",
+                                url: "{{ request.path }}",
+                                data: {'action': 'delactividad', 'idactividad': {{ criterio }}, 'idturno': codigoturno, 'iddia': codigodia},
+                                error: function (data) {
+                                    $.unblockUI();
+                                    NotificationJG.error(data.mensaje);
+                                },
+                                success: function (data) {
+                                    if (data.result === "ok") {
+                                        window.location.reload();
+                                    } else {
+                                        $.unblockUI();
+                                        NotificationJG.error(data.mensaje);
+                                    }
+                                }
+                            })},  function (){$(elemento).prop("checked", true)});
+                } else {
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'addactividad', 'idactividad': {{ criterio }}, 'idturno': codigoturno, 'iddia': codigodia},
+                    error: function (e) {
+                        $.unblockUI();
+                        $(elemento).prop("checked", false)
+                        NotificationJG.error(e);
+                    },
+                    success: function (data) {
+                        if (data.result === "ok") {
+                            window.location.reload();
+                        } else {
+                            $.unblockUI();
+                            $(elemento).prop("checked", false)
+                            Swal.fire({
+                                title: 'Conflicto en las horas!',
+                                html: data.mensaje,
+                                type: 'error',
+                                confirmButtonColor: '#3085d6',
+                                confirmButtonText: '<i class="fa fa-thumbs-up"></i> OK',
+                            })
+                        }
+                    }
+                });
+                }
+            }
+            $('#guardarhorario').click(function (){
+                let completo = {% if completo %} true {% else %} false {% endif %}
+                if (!completo) return false;
+                $('#modalresumen').modal('show');
+
+            });
+            $('#saveactivities').click(function (){
+                $('#modalresumen').modal('hide');
+                preguntaajax('¿Está seguro?',
+                "¡Recuerde que una vez guardado su horario será enviado al director de carrera para su aprobación y no podrá ser modificado!", 'warning', function (){
+                        $.ajax({
+                            type: "POST",
+                            url: "{{ request.path }}",
+                            data: {'action': 'saveactivities'},
+                            error: function (data) {
+                                $.unblockUI();
+                                NotificationJG.error(data.mensaje);
+                            },
+                            success: function (data) {
+                                $.unblockUI();
+                                if (data.result === "ok") {
+                                    $('#modalsuccesnotification').modal('show');
+                                } else {
+                                    NotificationJG.error(data.mensaje);
+                                }
+                            }
+                        })
+                    }, function () {
+                    });
+
+
+            });
+
+            $('#closenotifaction').click(function (){
+                bloqueointerface();
+                window.location.href = '{{ request.path }}'
+            });
+             {% if sindirector %}
+                 notificar_sin_director();
+            {% endif %}
+
+        })
+        function nextcrit(criterio){
+            bloqueointerface();
+            window.location.href = '{{ request.path }}?action=actividades&criterio='+criterio
+        }
+        function preguntaajax(html, title, type, callback_yes, callback_no){
+                 Swal.fire({
+                        html: html,
+                        title: title,
+                        type: type,
+                        showCancelButton: true,
+                        allowOutsideClick: false,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Si, deseo hacerlo',
+                        cancelButtonText: 'Cancelar'
+                    }).then((result) => {
+                        if (result.value) {
+                            bloqueointerface();
+                            callback_yes();
+                        } else {
+                            callback_no();
+                        }
+                    })
+        }
+        function notificar_sin_director(){
+                Swal.fire({
+                        text: 'Le informamos que usted no cuenta con un director de carrera asignado en su distributivo, por favor comuniquese con GTA',
+                        title: 'Atención!',
+                        type: 'warning',
+                        confirmButtonColor: '#3085d6',
+                        confirmButtonText: 'OK'
+                    })
+        }
+        function pdfhorarios() {
+            openwindow('POST', '/pro_horarios',{action: 'pdf_horarios', profesor:{{ profesor.id }},
+                periodo: {{ periodo.id }} }, '_blank');
+        }
+
+    </script>
+    <style>
+    /* Estilos para los radio buttons */
+    input[type="radio"] {
+        border: 2px solid #2D4964;
+        border-radius: 11px;
+        opacity: 1;
+    }
+    input[type="radio"]:checked {
+        background: #FE9800 0 0 no-repeat padding-box;
+        border-radius: 11px;
+        opacity: 1;
+        border: 2px solid #2D4964;
+        box-shadow: inset 0 0 0 2px white;
+        background-image: none!important;
+
+    }
+
+    input[type="radio"]:checked + label {
+        font: normal normal bold 14px/16px Roboto;
+        color: #2D4964;
+        opacity: 1;
+    }
+
+    .form-check-label {
+        text-align: left;
+        font: 14px/16px Roboto;
+        letter-spacing: 0;
+        color: #2D4964;
+    }
+
+    .sub-title-opacity {
+        text-align: left;
+        font: normal normal normal 12px Roboto;
+        letter-spacing: 0;
+        color: #A1B6CB;
+        opacity: 1;
+    }
+
+    .tabla-horario {
+        border-collapse: collapse; /* Combinar los bordes de las celdas */
+        border-spacing: 10px;
+        width: 95%;
+    }
+
+    .tabla-horario td {
+        padding-bottom: 10px;
+        color: #2D4964;
+        background-color: #f5f4f8;
+    }
+    .tabla-horario input {
+        border-color: #2D4964;
+    }
+
+    input[type="checkbox"]:checked {
+        background: {% if detalleimpartir == criterio %} #1C3247 {% else %} #FE9900 {% endif %} 0 0 no-repeat padding-box;
+        border-radius: 5px;
+        opacity: 1;
+        border: 2px solid {% if detalleimpartir == criterio %} #1C3247 {% else %} #FE9900 {% endif %};
+
+    }
+
+    .b-bold {
+        float: right!important;
+        margin-right: 75px!important;
+    }
+
+    input[type="checkbox"] {
+        border: 2px solid #1C3247;
+        border-radius: 5px;
+        opacity: 1;
+    }
+    input[type="checkbox"]:disabled {
+        border: 2px solid #BED3E8;
+    }
+    .ck-disabled-blue {
+        opacity: 1!important;
+        border-color: #1C3247!important;
+        border-radius: 4px!important;
+    }
+    .ck-disabled-cian {
+        {#background: #BED3E8!important;#}
+        opacity: 1!important;
+        border-color: #BED3E8!important;
+        border-radius: 4px!important;
+    }
+    .ck-disabled-cheked {
+        border-radius: 5px!important;
+        opacity: 1!important;
+        border: 2px solid #BED3E8FF!important;
+        background: #1C3247 url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3E%3C/svg%3E") no-repeat 0 0 !important;
+    }
+    .ck-disabled-cheked-orange {
+        border-radius: 5px!important;
+        opacity: 1!important;
+        border: 2px solid #FE9900!important;
+        background: #FE9900 url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3E%3C/svg%3E") no-repeat 0 0 !important;
+    }
+
+    .new_style_orange {
+        width: 110px;
+        height: 30px;
+    }
+    .new_style_cian {
+        width: 110px;
+        padding: 5px 18px 5px 18px;
+        {% if not ultimocriterio == criterio and not completo %}
+            background: #D3DEE8 0 0 no-repeat padding-box;
+            color: #BCC4CC!important;
+
+        {% endif %}
+    }
+
+    .icon-row-modal {
+        display: flex;
+        align-items: center;
+        padding: 1px;
+        background-color: rgba(238,246,255,1);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .icon-row-modal-secondary {
+        display: flex;
+        align-items: center;
+        padding: 1px;
+        background-color: rgb(245 250 255);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .icon-container-modal {
+        flex: 0 0 auto;
+        font-size: 20px;
+        margin-right: 20px;
+        color: rgb(33 184 69);
+        margin-left: 16px;
+    }
+
+    .text-container-modal {
+        flex: 1 1 auto;
+    }
+
+    .row-modal {
+        margin-bottom: 0;
+    }
+    .row-modal-subtitle {
+        margin-bottom: 10px;
+    }
+
+    .text-title-modal {
+        font-weight: bold;
+        font-size: 16px;
+    }
+
+    .text-description-modal {
+        font-size: 13px;
+        color: rgba(138,153,168,1);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        border-bottom:none;
+    }
+
+    .close-button-modal-times {
+        margin-left: auto;
+    }
+
+    .close-button-modal-times .btn {
+        border-radius: 25px;
+        background-color: rgb(30 105 245 / 98%);
+        color: #ffffff;
+        font-weight: 1;
+        padding-top: 0;
+        padding-left: 7px;
+        padding-right: 7px;
+        font-size: 24px;
+        opacity: 0.3;
+    }
+    .close-button-modal-times .btn:hover {
+        background-color: #2D4964;
+        opacity: 1;
+    }
+
+    {% if not ultimocriterio == criterio and not completo%}
+        .new_style_cian:hover {
+            background: #D3DEE8 0 0 no-repeat padding-box!important;
+            color: #BCC4CC!important;
+            border-color: #D3DEE8;
+        }
+    {% endif %}
+
+    .close-modal-blue {
+        width: 125px;
+        height: 35px;
+        background-color: #2D4964!important;
+        color: white!important;
+        font-size: 15px;
+        padding: 5px 18px 5px 18px;
+    }
+
+    .check-selector:hover {
+        transform: scale(1.5);
+    }
+
+
+    </style>
+{% endblock %}
+{% block atras %}/pro_horarios{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-6 col-xs-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>
+                    Por favor seleccione una actividad, día y hora.
+                </h6>
+            </div>
+        </div>
+        <div class="col-lg-6 col-xs-12" style="display: flex; flex-direction: column; align-items: flex-end; width: 44.5%;">
+            <div class="headtitle">
+                <h3 class="form-check-label texto-blue" style="font-weight: 800!important; padding-top: 0!important;">
+                    Horas
+                    de actividades planificadas:
+                    <b style="color: {% if actividades  >= horastotales %}#4DA6F3{% else %}#da4f49{% endif %}!important;font-size: 20px">{{ actividades }} de {{ horastotales }} Horas</b>
+                </h3>
+            </div>
+            {% if not aprobado and finalizado %}
+                <div style="color: red;"><b><i class="fa fa-warning"></i> Su horario de actividades está en proceso de aprobación por su director{% if director.persona.es_mujer %}a{% endif %} de carrera, {{ director.persona }}</b>
+                 </div>
+            {% elif aprobado and finalizado %}
+                <div style="color: #4DA6F3; font-size: 16px"><b><i class="fa fa-info-circle tu" title="Director{% if director.persona.es_mujer %}a{% endif %} de carrera: {{ director.persona }}"></i> Su horario de actividades está aprobado</b>
+            {% endif %}
+        </div>
+    </div>
+    {% if detalletutoria == criterio  %}
+     <div class="row">
+        <div class="col-sm-12" style="margin-left: 15px!important; width: 95%!important;">
+            <div class="alert alert-info">
+                <strong>
+                    <i class="fa fa-info"></i> Los turnos para tutoria acádemica se han validado para no generar conflicto con los horarios de clases
+                    y actividades del estudiante, las actividades propias del profesor y
+                    de las que puedan evitar que el estudiante acceda o solicite una tutoría académica.
+                </strong>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="container-fluid">
+        <div class='row' style="margin-left: 30px!important;">
+        <div class="col-lg-4  col-md-4 col-sm-12 col-xs-12">
+            {% for actividad in todaslasactividades %}
+                <div class="form-check mb-3">
+                    <input class="form-check-input" {% if criterio == actividad.pk %} checked=checked {% endif %} onclick="nextcrit({{ actividad.pk }});" type="radio" name="flexRadioDefault" id="actividad_{{ actividad.pk }}">
+                    <label class="form-check-label"  for="actividad_{{ actividad.pk }}">
+                        {% if actividad.criteriodocenciaperiodo %}
+                            {{ actividad.criteriodocenciaperiodo.criterio.nombre|convertir_tipo_oracion }} <br>
+                            <p class="sub-title-opacity"> Horas planificadas: {{ actividad.total_planificado|floatformat }} / {{ actividad.horas|floatformat }} </p>
+                        {% elif actividad.criterioinvestigacionperiodo %}
+                            {{ actividad.criterioinvestigacionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                            <p class="sub-title-opacity"> Horas planificadas: {{ actividad.total_planificado|floatformat }} / {{ actividad.horas|floatformat }} </p>
+                        {% elif actividad.criteriogestionperiodo %}
+                             {{ actividad.criteriogestionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                            <p class="sub-title-opacity"> Horas planificadas: {{ actividad.total_planificado|floatformat }} / {{ actividad.horas|floatformat }} </p>
+                        {% elif actividad.criteriovinculacionperiodo.nombre %}
+                             {{ actividad.criteriovinculacionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                            <p class="sub-title-opacity"> Horas planificadas: {{ actividad.total_planificado|floatformat }} / {{ actividad.horas|floatformat }} </p>
+                        {% endif %}
+
+                    </label>
+                </div>
+            {% endfor %}
+        <p><b><a href="javascript:;" data-bs-toggle="tooltip" title="Estimado docente, recuerde que para mejor organización de su horario de actividades, se estableció un límite máximo de horas que usted puede planificar por día,
+                    esto es:
+                    9 horas (Docentes de tiempo completo) y
+                    5 horas (Docentes de tiempo parcial)" class="btn btn-info btn-sm" style="border-radius: 17px; width: 5%;padding: 0 0 1px 0;"><i class="fa fa-info" style="font-size: 9px;"></i></a> Su límite para planificar por día es de {{ horas }} horas
+            <br>(Docente de tiempo {% if horas < 9 %}parcial{% else %}completo{% endif %} )</b></p>
+        </div>
+        <div class="col-lg-8  col-md-8 col-sm-12 col-xs-12">
+            <table class="tabla-horario">
+                <thead>
+                <tr>
+                    <th style="background-color: #f5f4f8;" class="text-center">Horas</th>
+                    {% for dia in semana %}
+                        <th style="background-color: #f5f4f8;" class="text-center">{{ dia.1 }}</th>
+                    {% endfor %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for turno in turnos %}
+                    <tr>
+                        <td class="text-center">
+                            {{ turno.turno_representar_html }}
+                        </td>
+                    {% for dia in semana %}
+                        <td class="text-center">
+                            {% with diaturno=dia.0|concat_str_int:turno.id %}
+                                <input class="form-check-input check-selector" style="cursor: pointer;" type="checkbox" {% if aprobado or finalizado or detalleimpartir == criterio %}disabled="disabled"{% endif %}{% if bloquear and not diaturno in actividades_marcadas_criterio %} disabled="disabled" {% endif %}{% if  diaturno in actividades_dia_turno and not diaturno in actividades_marcadas_criterio %} disabled="disabled" {% elif diaturno in actividades_marcadas_criterio %} checked="checked"{% endif %} value="{{ dia.0 }}{{ turno.id }}" dia="{{ dia.0 }}" turno="{{ turno.id }}" criterio="{{ criterio }}" onclick="addactividad(this, {{ turno.id }},{{ dia.0 }})" id="dia_{{ dia.0 }}_turno_{{ turno.id }}">
+                            {% endwith %}
+                            </td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                <tr><td colspan="7"></td></tr>
+                <tr>
+                    <td style="padding-left: 50px; padding-bottom: 1px; color: #1C3247; font-size: 12px" colspan="2">
+                        <input class="form-check-input ck-disabled-blue" type="checkbox"  disabled="disabled"> Horario disponible</td>
+
+                    <td colspan="5" rowspan="2" style="text-align: center">
+                     <a href="javascript:;" onclick="pdfhorarios()" class="btn btn-orange new_style_orange" style="background-color: #f97c0b" data-bs-toggle="tooltip" title="Visualizar horario en formato PDF"> Visualizar</a>
+                    {% if not finalizado %}
+                        <a href="/pro_horarios" class="btn btn-orange new_style_orange" data-bs-toggle="tooltip" title="Guardar progreso de planificación de horario sin enviar"> Guardar</a>
+                        <a href="javascript:;" class="btn btn-cian-secondary new_style_cian"
+                           id="guardarhorario"
+                                {% if not ultimocriterio == criterio and not completo%} disabled="disabled"{% endif %} data-bs-toggle="tooltip" title="Enviar horario {% if director.persona.es_mujer %} la directora {% else %} el director {% endif %} de carrera"> Enviar</a>
+                    {% endif %}
+                    </td>
+
+                </tr>
+                <tr><td style="padding-left: 50px; padding-bottom: 1px; color: #BED3E8; font-size: 12px" colspan="2"><input class="form-check-input ck-disabled-cian" type="checkbox"  disabled="disabled"> Horario no disponible</td>
+                </tr>
+                {% if detalleimpartir == criterio %}<tr><td style="padding-left: 50px; padding-bottom: 1px; color: #1C3247; font-size: 12px" colspan="2"><input class="form-check-input ck-disabled-cheked" type="checkbox"  disabled="disabled" checked="checked"> Horario no editable</td>
+                <td colspan="5"></td>
+                </tr>
+                {% else %} <tr><td style="padding-left: 50px; padding-bottom: 1px; color: #1C3247; font-size: 12px" colspan="2"><input class="form-check-input ck-disabled-cheked-orange" type="checkbox"  disabled="disabled" checked="checked"> Horario seleccionado</td>
+                <td colspan="5"></td>
+                </tr>{% endif %}
+
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    </div>
+
+<!-- Modal -->
+    <div class="modal fade" id="modalresumen" tabindex="-1" role="dialog" aria-labelledby="modalresumenlabel" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="close-button-modal-times">
+                    <a class="close btn btn-default" data-bs-dismiss="modal" aria-label="Close">&times;</a>
+                </div>
+            </div>
+          <div class="modal-body" style="padding: 1.7rem;">
+          <div class="headtitle" style="margin-left: 25px;">
+                <h3 class="texto-blue" style="margin-bottom: 18px;">Detalle de actividades planificadas</h3>
+            </div>
+              {% for actividad in todaslasactividades  %}
+                    <div class="{% if forloop.counter|divisibleby:2 %}icon-row-modal-secondary{% else %}icon-row-modal{% endif %}">
+                  <div class="icon-container-modal">
+                      <i class="fa fa-check-circle"></i>
+                  </div>
+                  <div class="text-container-modal">
+                      <div class="row-modal">
+                      <span class="text-title-modal">
+                          {% if actividad.criteriodocenciaperiodo %}
+                            {{ actividad.criteriodocenciaperiodo.criterio.nombre|convertir_tipo_oracion }}
+                        {% elif actividad.criterioinvestigacionperiodo %}
+                            {{ actividad.criterioinvestigacionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                        {% elif actividad.criteriogestionperiodo %}
+                             {{ actividad.criteriogestionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                        {% elif actividad.criteriovinculacionperiodo.nombre %}
+                             {{ actividad.criteriovinculacionperiodo.criterio.nombre|convertir_tipo_oracion }}
+                        {% endif %}
+                          </span>
+                      </div>
+                      <div class="row-modal-subtitle">
+                          <span class="text-description-modal">{{ actividad.horario_resumen }}</span>
+                      </div>
+                  </div>
+              </div>
+              {% endfor %}
+
+
+          </div>
+          <div class="modal-footer" style="border-top: none; justify-content: center; display: flex; align-items: center; padding-bottom: 30px">
+            <a class="btn btn-cian-secondary close-modal-blue" data-dismiss="modal" id="saveactivities">Continuar</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="modalsuccesnotification" tabindex="-1" role="dialog" aria-labelledby="modalsuccesnotificationnlabel" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-body" style="padding: 1.7rem 1.7rem 8px;">
+              <div class="headtitle" style="margin-left: 25%; margin-top: 10px">
+                  <h3 class="texto-blue" style="margin-bottom: 10px;">Planificación enviada</h3>
+              </div>
+              <div style="border-top: none; justify-content: center; display: flex; align-items: center;">
+                  <img src="/static/images/iconssga/icon_periodos_lectivos.svg" alt="" style="width: 130px">
+              </div>
+              <div style="text-align: center; font-size: 14px">
+                  <b>Su planificación se envió de forma correcta,</b> una vez aprobada por {% if director.persona.es_mujer %} la directora {% else %} el director {% endif %}de
+                  carrera, {{ director.persona.nombre_completo_minus }}, recibirá una notificación
+              </div>
+          </div>
+          <div class="modal-footer" style="border-top: none; justify-content: center; display: flex; align-items: center; padding-bottom: 20px">
+            <button type="button" class="btn btn-cian-secondary close-modal-blue" data-dismiss="modal" id="closenotifaction">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,227 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script src="jquery-1.10.2.min.js" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.7.7/xlsx.core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xls/0.7.4-a/xls.core.min.js"></script>
+    <script type="text/javascript">
+        var intentos = 0;
+        function ExportToTable() {
+            var regex = /^([a-zA-Z0-9\s_\\.\-:])+(.xlsx|.xls)$/;
+            /*Checks whether the file is a valid excel file*/
+            if (regex.test($("#excelfile").val().toLowerCase())) {
+                var xlsxflag = false; /*Flag for checking whether excel is .xls format or .xlsx format*/
+                if ($("#excelfile").val().toLowerCase().indexOf(".xlsx") > 0) {
+                    xlsxflag = true;
+                }
+                /*Checks whether the browser supports HTML5*/
+                if (typeof (FileReader) != "undefined") {
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        var data = e.target.result;
+                        /*Converts the excel data in to object*/
+                        if (xlsxflag) {
+                            var workbook = XLSX.read(data, { type: 'binary' });
+                        }
+                        else {
+                            var workbook = XLS.read(data, { type: 'binary' });
+                        }
+                        /*Gets all the sheetnames of excel in to a variable*/
+                        var sheet_name_list = workbook.SheetNames;
+
+                        var cnt = 0; /*This is used for restricting the script to consider only first sheet of excel*/
+                        sheet_name_list.forEach(function (y) { /*Iterate through all sheets*/
+                            /*Convert the cell value to Json*/
+                            if (xlsxflag) {
+                                var exceljson = XLSX.utils.sheet_to_json(workbook.Sheets[y]);
+                            }
+                            else {
+                                var exceljson = XLS.utils.sheet_to_row_object_array(workbook.Sheets[y]);
+                            }
+                            if (exceljson.length > 0 && cnt == 0) {
+                                BindTable(exceljson, '#exceltable');
+                                cnt++;
+                            }
+                        });
+                        $('#exceltable').show();
+                    }
+                    if (xlsxflag) {/*If excel file is .xlsx extension than creates a Array Buffer from excel*/
+                        reader.readAsArrayBuffer($("#excelfile")[0].files[0]);
+                    }
+                    else {
+                        reader.readAsBinaryString($("#excelfile")[0].files[0]);
+                    }
+                }
+                else {
+                    alert("Sorry! Your browser does not support HTML5!");
+                }
+            }
+            else {
+                alert("Please upload a valid Excel file!");
+            }
+        }
+        function terminarecalculo(){
+            $("#recalcularmodal").modal("hide");
+            bloqueointerface();
+            location.reload();
+        }
+        function recalculo(lista, elemento, cantidad){
+            var inscritoexamen = lista[elemento];
+            {#alert(inscritoexamen)#}
+            var cp = (100 / (cantidad+1)) * elemento + '%';
+            if (elemento>cantidad){
+                terminarecalculo();
+            } else {
+                $("#recalcularmodalprogresshint").html(inscritoexamen.nombres + ' <strong>registrando del</strong> ' + inscritoexamen.fecha );
+                $("#progressbar").css({'width': cp});
+                $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "/th_marcadas",
+                    data: {"action": "importar_logindividual", "cedula": inscritoexamen.cedula, "fecha": inscritoexamen.fecha },
+                    success: function(data) {
+                        if (data.result=='ok'){
+                            intentos = 0;
+                            recalculo(lista, elemento+1, cantidad);
+                        } else {
+                            intentos += 1;
+                            if (intentos>=100){
+                                fallorecalculo();
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function() {
+                        intentos += 1;
+                        if (intentos>=100){
+                            fallorecalculo();
+                        } else {
+                            recalculo(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+        function BindTable(jsondata, tableid) {/*Function used to convert the JSON array to Html Table*/
+            var columns = BindTableHeader(jsondata, tableid); /*Gets all the column headings of Excel*/
+            jsonObj = [];
+            for (var i = 0; i < jsondata.length; i++) {
+                var row$ = $('<tr/>');
+                var nombrepersona = ''
+                var cedula = ''
+
+                for (var colIndex = 0; colIndex < columns.length; colIndex++) {
+                    var cellValue = jsondata[i][columns[colIndex]];
+                    if (cellValue == null)
+                        cellValue = "";
+                    if (colIndex == 1) {
+                        item = {}
+                        item ["nombres"] = cellValue;
+                    }
+                    if (colIndex == 2) {
+                        item ["identificacioninstitucion"] = cellValue;
+                    }
+                    if (colIndex == 3) {
+                        item ["fecha"] = cellValue;
+                    }
+                    if (colIndex == 5) {
+                        item ["cedula"] = cellValue;
+                    }
+                }
+                jsonObj.push(item);
+                $(tableid).append(row$);
+            }
+            $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+            jsonString = JSON.stringify(jsonObj);
+            var indice = 0;
+            var cantidad = parseInt(i);
+            var listamarcadas = jsonObj;
+            recalculo(listamarcadas, indice, (cantidad-1));
+
+
+        }
+        function BindTableHeader(jsondata, tableid) {/*Function used to get all column names from JSON and bind the html table header*/
+            var columnSet = [];
+            var headerTr$ = $('<tr/>');
+            for (var i = 0; i < jsondata.length; i++) {
+                var rowHash = jsondata[i];
+                for (var key in rowHash) {
+                    if (rowHash.hasOwnProperty(key)) {
+                        if ($.inArray(key, columnSet) == -1) {/*Adding each unique column names to a variable array*/
+                            columnSet.push(key);
+                            headerTr$.append($('<th/>').html(key));
+                        }
+                    }
+                }
+            }
+            {#$(tableid).append(headerTr$);#}
+            return columnSet;
+        }
+        $(function() {
+            $('input[type="file"]').on('change', function(){
+                var ext = $( this ).val().split('.').pop();
+                if ($( this ).val() != '') {
+                    if((ext == "xls") || (ext == "xlsx")){
+                        $("#badge").html('1')
+                    }
+                    else
+                    {
+                        $( this ).val('');
+                        $("#badge").html('')
+                        smoke.alert("Extensión no permitida: " + ext + " \n Se requiere solo archivo con extensión xls");
+                    }
+
+                }
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <div id="no-more-tables">
+                <fieldset class="control-group nomargins" style="float: left; width: 100%">
+                    <div class="controls">
+                        <input  id="excelfile" type="file" class="filestyle" data-input="false" tabindex="-1" style="position: absolute; clip: rect(0px, 0px, 0px, 0px);">
+                        <div class="bootstrap-filestyle input-group">
+                            <span class="group-span-filestyle " tabindex="0">
+                                <label for="excelfile" class="btn btn-default ">
+                                    <i class="fa fa-cloud-upload"></i> Seleccionar archivo
+                                    <span id="badge" class="badge"></span>
+                                </label>
+                            </span></div>
+                        <p class="help-text"></p>
+                    </div>
+                </fieldset>
+
+                {#                <input type="file" id="excelfile" />#}
+                <a href="#" onclick="ExportToTable()" class="btn btn-success"><span class="fa fa-save"></span> Registrar marcadas</a>
+{#                <input type="button" id="viewfile" value="Registrar marcadas" onclick="ExportToTable()" />#}
+                <br />
+                <br />
+                <table id="exceltable">
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="modal static" id="recalcularmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Registrando marcadas</h3>
+        </div>
+        <div class="modal-body">
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)' class="progress progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularmodalprogresshint">
+            </div>
+        </div>
+    </div>
+{% endblock %}

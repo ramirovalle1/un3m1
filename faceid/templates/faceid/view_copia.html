@@ -1,0 +1,137 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type='text/javascript' src="/static/face-api/dist/face-api.js?v=1.0.0"></script>
+    <style>
+        body{
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            position: absolute;
+        }
+    </style>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    <div>
+
+    </div>
+    <video id="video" width="720" height="560" autoplay muted></video>
+    <div id="facesContainer" style="position: absolute;"></div>
+{% endblock %}
+
+
+<body>
+
+
+{#<img src="{% url 'mask_feed' %}">#}
+<script>
+    const video = document.getElementById("video");
+    const startVideo = () => {
+        navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
+        navigator.getUserMedia(
+            { video: {}},
+            stream => video.srcObject = stream,
+            err => console.log(err)
+        )
+    }
+
+
+
+    Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('/static/face-api/weights/'),
+        faceapi.nets.faceLandmark68Net.loadFromUri('/static/face-api/weights/'),
+        faceapi.nets.faceRecognitionNet.loadFromUri('/static/face-api/weights/'),
+        faceapi.nets.faceExpressionNet.loadFromUri('/static/face-api/weights/'),
+        faceapi.nets.ageGenderNet.loadFromUri('/static/face-api/weights/'),
+    ]).then(
+        startVideo
+    );
+
+    video.addEventListener('play', () =>{
+        const canvas = faceapi.createCanvasFromMedia(video);
+        document.body.append(canvas);
+        const displaySize = {width: video.width, height: video.height};
+        faceapi.matchDimensions(canvas, displaySize);
+        setInterval(async () =>{
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions();
+            if (detections.length > 0){
+                await extractFaceFromBox(video, detections);
+            }
+
+            //extractFaceFromBox(video, detections[0].detection.box)
+            /*const faceImages = await faceapi.extractFaces(video, detections);
+            const facesContainer = document.getElementById('facesContainer');
+            facesContainer.innerHTML = '';
+            faceImages.forEach(canvas => facesContainer.append(canvas))*/
+
+            const resizedDetections =  faceapi.resizeResults(detections, displaySize);
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+            faceapi.draw.drawDetections(canvas, resizedDetections);
+            faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+            faceapi.draw.drawFaceExpressions(canvas, resizedDetections);
+        }, 100)
+    })
+
+    const extractFaceFromBox = async (video, detections) => {
+        //console.log(detections);
+        const facesContainer = document.getElementById('facesContainer');
+        detections.forEach( async (detection) => {
+            //console.log("_box",detection.detection['_box']);
+            const box = await detection.detection['_box'];
+
+            const regionsToExtract = [
+                new faceapi.Rect( box._x, box._y , box._width , box._height)
+            ]
+
+            const faceImages = await faceapi.extractFaces(video, regionsToExtract);
+            console.log("faceImages:", faceImages.length);
+            faceImages.forEach(image =>{
+
+                //outputImage.src = image.toDataURL();
+                /*const cvs = document.createElement("canvas");
+
+                cvs.width = box._width;
+                cvs.height = box._height;
+                const ctxt = cvs.getContext("2d");
+                ctxt?.drawImage(image, box._x, box._y, box._width, box._height, 0, 0, box._width, box._height);
+                cvs.toBlob((blob) => {
+                    const newImg = document.createElement('img');
+                    const url = URL.createObjectURL(blob);
+                    newImg.onload = function() {
+                        URL.revokeObjectURL(url);
+                    };
+                    newImg.src = image.toDataURL();
+                    //document.body.appendChild(newImg);
+                    facesContainer.append(newImg);
+                }, "image/jpeg");*/
+            });
+
+
+        });
+
+
+
+    }
+
+    const extractFace = async (video, x, y, width, height) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+
+        // Get a screenshot from the video
+        context?.drawImage(image, x, y, width, height, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+            handSavePhoto(blob);
+        }, "image/jpeg");
+    };
+</script>
+</body>
+</html>

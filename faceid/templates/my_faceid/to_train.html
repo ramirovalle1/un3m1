@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type='text/javascript' src="/static/face-api/dist/face-api.js?v=1.0.0"></script>
+    <style>
+        @media only screen and (max-width: 700px) {
+            video {
+                max-width: 100%;
+            }
+        }
+        /*.overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }*/
+    </style>
+{% endblock %}
+{% block atras %}/my_faceid{% endblock %}
+{% block canvas %}
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración de datos faciales</h6>
+            </div>
+        </div>
+    </div>
+    <div class="row px-lg-22 px-sm-8 px-4">
+        <div class="col-lg-6 col-md-6 div_col_left">
+            <h3 class="text-warning">Tips a tener en cuenta para el reconocimiento facial</h3>
+            <ul class="list-unstyled mb-0">
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>No te muevas ni muevas la cámara mientras detectamos el rostro.</b></span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Sacate los anteojos</b> (o cualquier otro accesorio que tape el rostro).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Mantené una expresión neutra</b> (no sonreír o guiñar el ojo, etc.).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Mirá de frente y fijo a la cámara</b> (no a la pantalla).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Chequeá que la iluminación sea adecuada</b> (que no esté oscuro).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>No uses luz dirigida</b> (evitar flash y cualquier tipo de reflejos sobre el rostro).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Utilizá un fondo liso</b> (sin objetos, adornos, personas, ni tramas).</span>
+                </li>
+                <li class="mb-1">
+                    <span class="text-success me-1"><i class="fa fa-check-circle-o fs-4"></i></span>
+                    <span><b>Asegurate de que tu rostro ocupe la mayor parte posible del cuadro.</b></span>
+                </li>
+            </ul>
+        </div>
+        <div class="col-lg-6 col-md-6 div_col_right">
+            <div class="row align-items-center">
+                <div class="col-12 text-center">
+                    <div class="px-lg-8 div_dispositivos">
+                        <select name="listaDeDispositivos" id="listaDeDispositivos"></select>
+                    </div>
+                    <div class="p-0 pt-2 div_video position-relative">
+                        <video muted="muted" id="video" width="100%" height="100%" class="border border-2 border-width-3 border-dark-info rounded-5" style="border-radius: 2em;"></video>
+                        <canvas id="canvas" class="position-absolute top-50 start-50 translate-middle" style="display: none;"></canvas>
+                    </div>
+                    <div class="px-lg-8 pt-2 div_btn">
+                        <button id="btnAddFaceID" class="btn btn-primary">Añadir datos faciales</button>
+                    </div>
+                    <p id="estado"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="application/javascript">
+        const tieneSoporteUserMedia = () => !!(navigator.getUserMedia || (navigator.mozGetUserMedia || navigator.mediaDevices.getUserMedia) || navigator.webkitGetUserMedia || navigator.msGetUserMedia)
+        const _getUserMedia = (...arguments) => (navigator.getUserMedia || (navigator.mozGetUserMedia || navigator.mediaDevices.getUserMedia) || navigator.webkitGetUserMedia || navigator.msGetUserMedia).apply(navigator, arguments);
+
+        // Declaramos elementos del DOM
+        const $video = document.querySelector("#video"),
+            $canvas = document.querySelector("#canvas"),
+            $estado = document.querySelector("#estado"),
+            $btnAddFaceID = document.querySelector("#btnAddFaceID"),
+            $listaDeDispositivos = document.querySelector("#listaDeDispositivos"),
+            $MODEL_URL = '/static/face-api/weights/';
+        let arrObjImages = [];
+        let canCaptureImage = false;
+        let canSendAjax = true;
+        let isTrained = false;
+        let contSend = 0;
+        const limpiarSelect = () => {
+            for (let x = $listaDeDispositivos.options.length - 1; x >= 0; x--)
+                $listaDeDispositivos.remove(x);
+        };
+        const obtenerDispositivos = () => navigator
+            .mediaDevices
+            .enumerateDevices();
+
+        // La función que es llamada después de que ya se dieron los permisos
+        // Lo que hace es llenar el select con los dispositivos obtenidos
+        const llenarSelectConDispositivosDisponibles = () => {
+            limpiarSelect();
+            obtenerDispositivos()
+                .then(dispositivos => {
+                    const dispositivosDeVideo = [];
+                    dispositivos.forEach(dispositivo => {
+                        const tipo = dispositivo.kind;
+                        if (tipo === "videoinput") {
+                            dispositivosDeVideo.push(dispositivo);
+                        }
+                    });
+
+                    // Vemos si encontramos algún dispositivo, y en caso de que si, entonces llamamos a la función
+                    if (dispositivosDeVideo.length > 0) {
+                        // Llenar el select
+                        dispositivosDeVideo.forEach(dispositivo => {
+                            const option = document.createElement('option');
+                            option.value = dispositivo.deviceId;
+                            option.text = dispositivo.label;
+                            $listaDeDispositivos.appendChild(option);
+                        });
+                    }
+                });
+        }
+
+        const extractFaceFromBox = async (video, detections) => {
+            detections.forEach( async (detection) => {
+                console.log("detection: ", detection);
+                const box = await detection['_box'];
+                console.log("box: ", box);
+                const imageDims = await detection['_imageDims'];
+                console.log("imageDims: ", imageDims);
+                const regionsToExtract = [
+                    // new faceapi.Rect( box._x+100, box._y+100, box._width+100, box._height+100)
+                    new faceapi.Rect(box._x-100, box._y-100, imageDims._width, imageDims._height)
+                ]
+                const faceImages = await faceapi.extractFaces(video, regionsToExtract);
+                faceImages.forEach(image =>{
+                    const img = image.toDataURL();
+                    arrObjImages.push(image.toDataURL());
+                });
+            });
+        }
+
+        (function() {
+            // Comenzamos viendo si tiene soporte, si no, nos detenemos
+            if (!tieneSoporteUserMedia()) {
+                alertaWarning("Lo siento. Tu navegador no soporta esta característica");
+                $estado.innerHTML = "Parece que tu navegador no soporta esta característica. Intenta actualizarlo.";
+                $(".div_dispositivos, .div_video, .div_btn").hide();
+                $("#estado").addClass("fs-2");
+                $("#estado").addClass("text-danger");
+                return;
+            }
+            //Aquí guardaremos el stream globalmente
+            let stream;
+
+            const mostrarStream = idDeDispositivo => {
+                _getUserMedia({
+                        video: {
+                            // Justo aquí indicamos cuál dispositivo usar
+                            deviceId: idDeDispositivo,
+                        }
+                    },
+                    (streamObtenido) => {
+                        // Aquí ya tenemos permisos, ahora sí llenamos el select,
+                        // pues si no, no nos daría el nombre de los dispositivos
+                        llenarSelectConDispositivosDisponibles();
+
+                        // Escuchar cuando seleccionen otra opción y entonces llamar a esta función
+                        $listaDeDispositivos.onchange = () => {
+                            // Detener el stream
+                            if (stream) {
+                                stream.getTracks().forEach(function(track) {
+                                    track.stop();
+                                });
+                            }
+                            // Mostrar el nuevo stream con el dispositivo seleccionado
+                            mostrarStream($listaDeDispositivos.value);
+                        }
+
+                        // Simple asignación
+                        stream = streamObtenido;
+
+                        // Mandamos el stream de la cámara al elemento de vídeo
+                        $video.srcObject = stream;
+                        $video.play();
+
+                        //Escuchar el click del botón para tomar la foto
+                        //Escuchar el click del botón para tomar la foto
+                        $btnAddFaceID.addEventListener("click", async function() {
+                            canCaptureImage = true;
+                            canSendAjax = true;
+                            $(".div_dispositivos, .div_btn").hide();
+
+                            //Pausar reproducción
+                            $video.pause();
+                            let coords = $video.getBoundingClientRect();
+                            //console.log(coords);
+                            let width= $video.clientWidth;
+                            let height = $video.clientHeight;
+                            $canvas.style.left = coords.left;
+                            $canvas.style.top = coords.top;
+                            $canvas.style.display = 'block';
+                            $canvas.width = width;
+                            $canvas.height = height;
+                            const displaySize = {width: $video.clientWidth, height: $video.clientHeight};
+                            faceapi.matchDimensions($canvas, displaySize);
+                            //$estado.innerHTML = "Estamos detectando sus rasgos faciales, no realice ninguna otra acción";
+
+                            //$("#estado").addClass("fs-6");
+                            //$("#estado").addClass("text-info");
+                            let intervalEntrenar = setInterval(async () =>{
+                                if (canCaptureImage){
+                                    const detections = await faceapi.detectAllFaces($video, new faceapi.TinyFaceDetectorOptions());
+                                    if (detections.length > 0){
+                                        if (detections.length > 1){
+                                            /*$(".div_dispositivos, .div_btn").hide();
+                                            $('.div_col_left').unblock();
+                                            $estado.innerHTML=`Error, se encontro mas de una rostro (número de rotros ${detections.length})`;*/
+                                            Swal.fire({
+                                                html: `Se encontro mas de una rostro (número de rotros ${detections.length})`,
+                                                text: "Error de recocimiento facial",
+                                                type: 'error',
+                                                showCancelButton: false,
+                                                allowOutsideClick: false,
+                                                confirmButtonColor: '#3085d6',
+                                                cancelButtonColor: '#d33',
+                                                confirmButtonText: 'Continuar',
+                                                cancelButtonText: 'Cancelar'
+                                            }).then((result) => {
+                                                if (result.value) {
+                                                    bloqueointerface();
+                                                    location.reload();
+                                                }
+                                            })
+                                        }else{
+                                            $estado.innerHTML=`(30/${arrObjImages.length}) Leyendo`;;
+                                            if (arrObjImages.length < 30){
+                                                await extractFaceFromBox($video, detections);
+                                            }else{
+                                                $.blockUI({
+                                                    message: '<h6>Procesando rasgos faciales</h6>',
+                                                    css: {
+                                                        backgroundColor: 'transparent',
+                                                        border: '0',
+                                                        zIndex: 9999999
+                                                    },
+                                                    overlayCSS: {
+                                                        backgroundColor: '#fff',
+                                                        opacity: 0.8,
+                                                        zIndex: 9999990
+                                                    }
+                                                });
+                                                console.log(arrObjImages);
+                                                if (canSendAjax && !isTrained && contSend < 1){
+                                                    canSendAjax = false;
+                                                    canCaptureImage = false;
+                                                    contSend += 1;
+                                                    const formData = new FormData();
+                                                    formData.append('images', JSON.stringify(arrObjImages));
+                                                    formData.append('action', 'to_train');
+                                                    $.ajax({
+                                                        type: "POST",
+                                                        url: "{{ request.path }}",
+                                                        data: formData,
+                                                        success: function(data) {
+                                                            $.unblockUI();
+                                                            if (data.result == 'ok') {
+                                                                isTrained = false;
+                                                                canCaptureImage = false;
+                                                                clearInterval(intervalEntrenar);
+                                                                canvas.getContext('2d').clearRect(0, 0, $canvas.width, $canvas.height);
+                                                                //NotificationJG.success(data.mensaje);
+                                                                Swal.fire({
+                                                                    html: data.mensaje,
+                                                                    text: "Se ha completado el recocimiento facial",
+                                                                    type: 'success',
+                                                                    showCancelButton: false,
+                                                                    allowOutsideClick: false,
+                                                                    confirmButtonColor: '#3085d6',
+                                                                    cancelButtonColor: '#d33',
+                                                                    confirmButtonText: 'Continuar',
+                                                                    cancelButtonText: 'Cancelar'
+                                                                }).then((result) => {
+                                                                    if (result.value) {
+                                                                        bloqueointerface();
+                                                                        location.href = "/my_faceid";
+                                                                    }
+                                                                })
+                                                            } else {
+                                                                clearInterval(intervalEntrenar);
+                                                                //NotificationJG.error(data.mensaje);
+                                                                Swal.fire({
+                                                                    html: data.mensaje,
+                                                                    text: "Ocurrio un error",
+                                                                    type: 'error',
+                                                                    showCancelButton: false,
+                                                                    allowOutsideClick: false,
+                                                                    confirmButtonColor: '#3085d6',
+                                                                    cancelButtonColor: '#d33',
+                                                                    confirmButtonText: 'Continuar',
+                                                                    cancelButtonText: 'Cancelar'
+                                                                }).then((result) => {
+                                                                    if (result.value) {
+                                                                        bloqueointerface();
+                                                                        location.reload();
+                                                                    }
+                                                                })
+                                                                isTrained = false;
+                                                                canCaptureImage = false;
+                                                            }
+                                                            //canSendAjax = true;
+                                                        },
+
+                                                        error: function(jqXHR, textStatus, errorThrown) {
+                                                            canSendAjax = false;
+                                                            isTrained = false;
+                                                            $.unblockUI();
+                                                            var msg = '';
+                                                            if (jqXHR.status === 0) {
+                                                                msg='Not connect: Verify Network.';
+                                                            } else if (jqXHR.status == 404) {
+                                                                msg='Requested page not found [404]';
+                                                            } else if (jqXHR.status == 500) {
+                                                                msg='Internal Server Error [500].';
+                                                            } else if (textStatus === 'parsererror') {
+                                                                msg='Requested JSON parse failed.';
+                                                            } else if (textStatus === 'timeout') {
+                                                                msg='Time out error.';
+                                                            } else if (textStatus === 'abort') {
+                                                                msg='Ajax request aborted.';
+                                                            } else {
+                                                                msg='Uncaught Error: ' + jqXHR.responseText;
+                                                            }
+                                                            //smoke.alert("Error al enviar los datos: " + msg);
+                                                            //NotificationJG.error("Error al enviar los datos: " + msg);
+                                                            Swal.fire({
+                                                                html: `Error al enviar los datos: ${msg})`,
+                                                                text: "Error de conexión",
+                                                                type: 'error',
+                                                                showCancelButton: false,
+                                                                allowOutsideClick: false,
+                                                                confirmButtonColor: '#3085d6',
+                                                                cancelButtonColor: '#d33',
+                                                                confirmButtonText: 'Continuar',
+                                                                cancelButtonText: 'Cancelar'
+                                                            }).then((result) => {
+                                                                if (result.value) {
+                                                                    bloqueointerface();
+                                                                    location.reload();
+                                                                }
+                                                            })
+                                                        },
+                                                        dataType: "json",
+                                                        cache: false,
+                                                        contentType: false,
+                                                        processData: false
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const resizedDetections =  faceapi.resizeResults(detections, displaySize);
+                                    $canvas.getContext('2d').clearRect(0, 0, $canvas.width, $canvas.height);
+                                    faceapi.draw.drawDetections($canvas, resizedDetections);
+                                }
+
+                            }, 100);
+                            //Reanudar reproducción
+                            $video.play();
+                        });
+                    }, (error) => {
+                        console.log("Permiso denegado o error: ", error);
+                        alertaWarning("No se puede acceder a la cámara, o no diste permiso.");
+                        $estado.innerHTML = "No se puede acceder a la cámara, o no diste permiso. Intentalo nuevamente";
+                        $(".div_dispositivos, .div_video, .div_btn").hide();
+                        $("#estado").addClass("fs-2");
+                        $("#estado").addClass("text-danger");
+                    });
+
+            }
+
+            Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri($MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri($MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri($MODEL_URL),
+                faceapi.nets.faceExpressionNet.loadFromUri($MODEL_URL),
+                faceapi.nets.ageGenderNet.loadFromUri($MODEL_URL),
+            ]).then(
+                mostrarStream
+            );
+        })();
+    </script>
+{% endblock %}

@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $('#listafunciones a').on('click', function (e) {
+                e.preventDefault()
+                $(this).tab('show');
+                let idh = $(this).attr("idh");
+                let idf = $(this).attr("idf");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_docenteinvitado",
+                    data: {'action': 'detallehorario', 'idh': idh, 'idf': idf},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".horariofuncion").html(data.data);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            actualizarHorario = function() {
+                let control = $(this);
+                let valor = $(this).is(':checked') ? 'S': 'N';
+                let idh = $(this).attr("idh");
+                let idt = $(this).attr("idt");
+                let dia = $(this).attr("nd");
+                let idf = $(this).attr("idf");
+                let fun = $(this).attr("fun");
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_docenteinvitado",
+                    data: {'action': 'actualizarhorario', 'idh': idh, 'idf': idf, 'idt': idt, 'dia': dia, 'valor': valor},
+                    success: function(data) {
+                        if(data.result === 'ok'){
+                            $.unblockUI();
+                            $("#totalhoras").html(data.textohoras);
+                            $(`#totalhorafuncion${fun}`).html(data.horasfuncion);
+                            $("#mensajenovedad").hide();
+
+                            if (data.confirmar === 'S')
+                                $("#mensajehorario").show();
+                            else
+                                $("#mensajehorario").hide();
+
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                type: 'success',
+                                title: `${data.mensaje}`,
+                                showConfirmButton: false,
+                                timer: 5000
+                            });
+                        }else{
+                            $.unblockUI();
+                            control.prop('checked', !control.prop('checked'));
+                            if(data.swalType === 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        control.prop('checked', !control.prop('checked'));
+                        mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $(".confirmar").click(function() {
+                let id = '{{ horario.id|encrypt }}';
+                let url = "/pro_docenteinvitado";
+                let action = "confirmarhorario";
+                let urlDestino = "/pro_docenteinvitado?action=horarios&id={{ docente.id|encrypt }}";
+                let titulo = "Confirmar Horario de Actividades del mes de {{ horario.inicio.month|nombremes|title }}";
+                let mensaje = "¿Está seguro de confirmar el horario de actividades registrado?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            });
+
+            $(".turnosdia").unbind("click.turnosdia");
+            $(".turnosdia").bind("click.turnosdia", actualizarHorario);
+
+            {% if horario.horaplanificada != horario.totalhora or horario.estado == 5 %}
+                $("#mensajehorario").hide();
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_docenteinvitado?action=horarios&id={{ horario.docente.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Registro de Horario de Actividades</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        <div class='row'>
+            <div class="col-sm-6 pb-2">
+                <div>
+                    <b><span>Mes:</span>
+                    <span class="text-primary">{{ horario.inicio.month|nombremes|title }}</span></b>
+                </div>
+            </div>
+            <div class="col-sm-6 pb-2" style="display: flex; flex-direction: column; align-items: flex-end;">
+                <div>
+                    <b><span>Horas de actividades planificadas:</span>
+                    <span id="totalhoras" class="text-primary">{{ horario.horaplanificada }} de {{ horario.totalhora }} horas</span></b>
+                </div>
+            </div>
+        </div>
+        {% if puedeeditar %}
+            <div id="mensajehorario" class='row'>
+                <div class="col-sm-12">
+                    <div class="alert alert-warning" style="text-align: justify">
+                        <strong>Estimado Docente, usted debe dar click en </strong><a href="javascript:;" class='btn btn-success confirmar' data-bs-toggle="tooltip" title="Confirmar horario de actividades"><span class="fa fa-check" ></span> Confirmar</a> <strong>para que el horario sea validado por la Coordinación de Investigación.</strong>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {% if horario.observacion %}
+            <div id="mensajenovedad" class='row'>
+                <div class="col-sm-12">
+                    <div class="alert alert-warning" style="text-align: justify">
+                        <strong>Estimado Docente, el horario de actividades presenta las siguientes novedades: {{ horario.observacion }}.</strong>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="row">
+                    <div class="col-md-5 col-xl-4 ">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="panelsStayOpen-heading{{ docente.id }}">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ docente.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ docente.id }}" disabled>
+                                <span class="fa fa-list-ol"></span>&nbsp;Funciones o actividades&nbsp;
+                                </button>
+                            </h2>
+                            <div id="panelsStayOpen-collapse{{ docente.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ docente.id }}">
+                                <div class="accordion-body">
+                                    <div class="list-group" id="listafunciones" role="tablist">
+                                        {% for funcion in funciones %}
+                                            <a idh="{{ horario.id|encrypt }}" idf="{{ funcion.id|encrypt }}" class="list-group-item list-group-item-action {% if forloop.counter == 1 %}active{% endif %} d-flex justify-content-between align-items-center" data-toggle="list" href="#funcion{{ funcion.id }}" role="tab">{{ funcion.descripcion }} <span id="totalhorafuncion{{ funcion.id }}" class="badge badge-warning badge-pill">{{ funcion.totalhoras }}</span></a>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7 col-xl-8">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="panelsStayOpen-heading{{ horario.id }}horario">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ horario.id }}horario" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ horario.id }}horario" disabled>
+                                <span class="fa fa-table"></span>&nbsp;Horario&nbsp;
+                                </button>
+                            </h2>
+                            <div id="panelsStayOpen-collapse{{ horario.id }}horario" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ horario.id }}horario">
+                                <div class="accordion-body">
+                                    <div class="horariofuncion">
+                                        <div class="table-responsive-xxl">
+                                            <table class="table table-bordered table-striped" id="tbhorarios">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="text-center" style="width: 16%;">Turnos</th>
+                                                        {% for dia in diascab %}
+                                                            <th class="text-center" style="width: 12%;">{{ dia.nombre }}</th>
+                                                        {% endfor %}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for detalleturno in turnos %}
+                                                        <tr>
+                                                            <td class="text-center">{{ detalleturno.turno.comienza|date:"H:i" }} - {{ detalleturno.turno.termina|date:"H:i" }}</td>
+                                                            {% for dia in detalleturno.dias %}
+                                                                {% if puedeeditar %}
+                                                                    <td class="text-center"><input type="checkbox" class="form-check-input turnosdia" id="turno{{ dia.idfuncion }}_{{ dia.numerodia }}_{{ detalleturno.turno.id }}" idh="{{ horario.id|encrypt }}" idt="{{ detalleturno.turno.id|encrypt }}" nd="{{ dia.numerodia|encrypt }}" idf="{{ dia.idfuncion|encrypt }}" fun="{{ dia.idfuncion }}" {% if dia.marcado == 'S' %}checked{% endif %} {% if dia.bloqueado == 'S' %}disabled{% endif %}></td>
+                                                                {% else %}
+                                                                    <td class="text-center">{% if dia.marcado == 'S' %}<i class="fa fa-check text-success"></i>{% endif %}</td>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+{% endblock %}

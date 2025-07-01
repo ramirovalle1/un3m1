@@ -1,0 +1,795 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1" data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            let nf_evidencia = secuenciaevidencia = 0;
+            let nf_actividad = secuenciaactividad = 0;
+            let fechaactual = '{{ fecha|date:"Y-m-d" }}';
+
+            lista_items1 = [];
+            lista_items2 = [];
+
+            $("#tipoinforme, #actividades_aux").addClass("validate[required]");
+
+            $('[data-bs-toggle="tooltip"]').tooltip();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('conclusion', 'conclusion', true);
+            configurarChkEditor('recomendacion', 'recomendacion', true);
+
+            CKEDITOR.instances['conclusion'].on('change', function() {
+                if(CKEDITOR.instances['conclusion'].getData().length > 0)
+                    $("#conclusion_aux").val("OK");
+                else
+                    $("#conclusion_aux").val("");
+            });
+
+            CKEDITOR.instances['recomendacion'].on('change', function() {
+                if(CKEDITOR.instances['recomendacion'].getData().length > 0)
+                    $("#recomendacion_aux").val("OK");
+                else
+                    $("#recomendacion_aux").val("");
+            });
+
+            $(".agregaactividad").click(function() {
+                let idp = $(this).attr('idp');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'agregaractividadinforme', 'idp': idp},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyactividad").html(data.data);
+                            $(".paneltitleactividad").html(data.title);
+                            $("#itemspanelactividad").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".agregaractividaddetalle").click(function() {
+                $("#frmActividadInforme").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmActividadInforme").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    idactividad = $("#actividad").val();
+                    if(!actividadRepetida(idactividad)) {
+                        nf_actividad += 1;
+                        secuenciaactividad += 1;
+
+                        $("#actividades_aux").val("SI");
+
+                        borrar_fila_default_actividad();
+
+                        actividad = $("#actividad").find('option:selected').text();
+                        ponderacion = $("#ponderacion").val();
+                        fechainicio = $("#fechainicio").val();
+                        fechafin = $("#fechafin").val();
+                        cantidadhora = $("#cantidadhora").val();
+                        avance = $("#porcentajeactual").val();
+                        estado = $("#estado").val();
+                        entregable = $("#entregable").val().trim();
+                        codigos_personas = $("#responsable").val();
+                        nombres_personas = $('#responsable option:selected').toArray().map(item => item.text);
+
+                        fechainicio = fechainicio.substring(8,10) + "-" + fechainicio.substring(5,7) + "-" + fechainicio.substring(0, 4);
+                        fechafin = fechafin.substring(8,10) + "-" + fechafin.substring(5,7) + "-" + fechafin.substring(0, 4);
+                        
+                        responsable = "";
+                        for(i=0; i<nombres_personas.length; i++){
+                            responsable = responsable + '<span class="label label-info">'+nombres_personas[i]+'</span>';
+                        }
+
+                        idsresponsables =  codigos_personas.join(",");
+                        observacion = $("#observacion").val().trim();
+                        fechaeditada = $("#fechaeditada").val();
+
+                        nueva = '<tr class="detalleactividades" id="filaactividad_' + nf_actividad.toString() + '" ida="' + idactividad + '" fechainicio="'+fechainicio+'" fechafin="'+fechafin+'" cantidadhora="'+cantidadhora+'" avance="'+avance+'" estado="'+estado+'" responsables="'+idsresponsables+'" entregable="'+entregable+'" observacion="'+observacion+'" fechaeditada="'+fechaeditada+'">' +
+                            '<td style="text-align: right">' + secuenciaactividad.toString() + '</td>' +
+                            '<td style="text-align: justify">' + actividad + '<br>' + responsable + '</td>' +
+                            '<td style="text-align: right">' + ponderacion + '</td>' +
+                            '<td style="text-align: center">' + fechainicio + '</td>' +
+                            '<td style="text-align: center">' + fechafin + '</td>' +
+                            '<td style="text-align: center">' + cantidadhora + '</td>' +
+                            '<td style="text-align: right">' + avance + '</td>' +
+                            '<td style="text-align: center">' + estado + '</td>' +
+                            '<td style="text-align: justify">' + entregable + '</td>' +
+                            '<td style="text-align: justify">' + observacion + '</td>' +
+                            '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_actividad" idf="' + nf_actividad.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                        $("#detalle_actividades").append(nueva);
+                        $("#detalle_actividades").find(".eliminaritem_actividad").tooltip();
+                        $(".eliminaritem_actividad").unbind("click.eliminaritem_actividad");
+                        $(".eliminaritem_actividad").bind("click.eliminaritem_actividad", eliminarItem_actividad);
+                        $('#itemspanelactividad').modal('hide');
+
+                        actualizar_lista_actividad();
+                    }
+                    else{
+                        mensajeWarningSwal("Atención!!!", "La actividad: <b>" + actividad + "</b>, ya ha sido agregada al detalle");
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            });
+
+            agregar_fila_default_actividad = function (){
+                let filadefault = '<tr id="fila_default_actividad">'+
+                              '<td colspan="11" style="text-align: center">NO EXISTEN DETALLES DE ACTIVIDADES</td>'
+                              '</tr>';
+                $("#detalle_actividades").append(filadefault);
+                $("#actividades_aux").val("");
+            };
+
+            borrar_fila_default_actividad = function (){
+                $("#fila_default_actividad").remove();
+            };
+
+            actividadRepetida = function (idactividad){
+                let repetido = false;
+                $(".detalleactividades").each(function() {
+                    if(idactividad == $(this).attr('ida')){
+                        repetido = true;
+                        return false;
+                    }
+                });
+
+                return repetido;
+            };
+
+            eliminarItem_actividad = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaactividad_"+id).remove();
+
+                secuenciaactividad = 0;
+                $("#tbdetallectividades tbody tr").each(function (index) {
+                    secuenciaactividad ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaactividad.toString());
+                    });
+                });
+
+                if(secuenciaactividad == 0)
+                    agregar_fila_default_actividad();
+
+                actualizar_lista_actividad();
+            };
+
+            actualizar_lista_actividad = function (){
+                lista_items1 = [];
+
+                $(".detalleactividades").each(function(){
+                    ida = $(this).attr('ida');
+                    fechainicio = $(this).attr('fechainicio');
+                    fechafin = $(this).attr('fechafin');
+                    cantidadhora = $(this).attr('cantidadhora');
+                    avance = $(this).attr('avance');
+                    estado = $(this).attr('estado');
+                    entregable = $(this).attr('entregable');
+                    responsables = $(this).attr('responsables');
+                    observacion = $(this).attr('observacion');
+                    fechaeditada = $(this).attr('fechaeditada');
+
+                    let item = {
+                        ida: ida,
+                        fechainicio: fechainicio,
+                        fechafin: fechafin,
+                        cantidadhora: cantidadhora,
+                        avance: avance,
+                        estado: estado,
+                        entregable: entregable,
+                        responsables: responsables,
+                        observacion: observacion,
+                        fechaeditada: fechaeditada
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            $(".agregaevidencia").click(function() {
+                if(datos_evidencia_completo()){
+                    nf_evidencia += 1;
+                    secuenciaevidencia += 1;
+
+                    borrar_fila_default_evidencia();
+
+                    nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><input type="date" id="fecha_genera'+nf_evidencia.toString()+'" name="fecha_genera[]" value="'+fechaactual+'" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>'+
+                        '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="150" id="numero_pagina'+nf_evidencia.toString()+'" name="numero_pagina[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia" idf="' + nf_evidencia.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                    $("#detalle_evidencias").append(nueva);
+                    $("#detalle_evidencias").find(".eliminaritem_evidencia").tooltip();
+                    $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#fecha_genera"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#numero_pagina"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_evidencia.toString()).addClass("validate[required]");
+                    $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                    $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+
+                    conectar_change_fileinput_evidencia();
+                }
+            });
+
+            eliminarItem_evidencia = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaevidencia_"+id).remove();
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                if(secuenciaevidencia == 0)
+                    agregar_fila_default_evidencia();
+
+                actualizar_lista_evidenciaarchivo();
+            };
+
+            actualizar_lista_evidenciaarchivo = function (){
+                lista_items2 = [];
+                cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items2.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectar_change_fileinput_evidencia=function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    let id = $(this).get(0).files.length;
+                    //alert(id);
+                    let idf = $(this).attr('idf');
+                    //$("#bgaevidencia_"+idf).html("1");
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizar_lista_evidenciaarchivo();
+                });
+            };
+
+            agregar_fila_default_evidencia = function (){
+                filadefault = '<tr id="fila_default_evidencia">'+
+                              '<td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS</td>'+
+                              '</tr>';
+                $("#detalle_evidencias").append(filadefault);
+            };
+
+            borrar_fila_default_evidencia = function (){
+                $("#fila_default_evidencia").remove();
+            };
+
+            datos_evidencia_completo = function (){
+                var c1e = true, c2e = true, c3e = true;
+
+                $('input[name="descripcion_evidencia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="numero_pagina[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e);
+            };
+
+
+            $(".guardar").click(function () {
+                envioformularioreg("/pro_proyectoinvestigacion", "addinforme", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmAddInforme").validationEngine('attach',{ scroll: false });
+                valido = $("#frmAddInforme").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'addinforme'){
+                        try {
+                            for ( instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmAddInforme")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                        formdata.append("lista_items2", JSON.stringify(lista_items2));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/pro_proyectoinvestigacion?action=informesproyecto&id={{ proyecto.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            };
+            
+            $(".cancelar").click(function () {
+                location.href = "/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=informesproyecto";
+            });
+
+            $(".mostrardistributivo").click(function() {
+                let id = $(this).attr('idp');
+                let idper = $(this).attr('idper');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'mostrardistributivo', 'id': id, 'idper': idper},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodydistributivo").html(data.data);
+                            $(".paneltitledistributivo").html(data.title);
+                            $("#itemspaneldistributivo").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=informesproyecto{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Ingrese todos sus datos de forma correcta</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-5 rounded-3 border-dark-info">
+                <form name="frmAddInforme" id="frmAddInforme">{% csrf_token %}
+                    {# CUERPO DEL FORMULARIO #}
+                    <input type='hidden' name='action' value='addinforme'/>
+                    <input type='hidden' name='id' value='{{ proyecto.id|encrypt }}'/>
+                    <input type='hidden' name='codigoinforme' value='{{ numero }}'/>
+                    <input type='hidden' name='idperiodovigente' value='{% if periodovigente %}{{ periodovigente.id|encrypt }}{% endif %}'/>
+                    <div class="alert alert-info">
+                        <b>Periodo Académico Vigente con Horas de Investigación para {{ proyecto.profesor }}:  {% if periodovigente %}<span class="label label-warning">{{ periodovigente.nombre }}</span>  <a href="javascript:;" class='btn btn-success mostrardistributivo' idp="{{ proyecto.id|encrypt }}" idper="{% if periodovigente %}{{ periodovigente.id|encrypt }}{% endif %}" data-bs-toggle="tooltip" data-bs-placement="top" title="Mostrar Distributivo Investigación Integrantes"><span class="fa fa-list" ></span> Mostrar Distributivo Integrantes</a>{% else %}<span class="label label-important">NINGUNO</span>{% endif %}</b>
+                    </div>
+                    <div id="separator2_encabezado" style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_encabezado" style="padding:0 10px; background: white;">Encabezado del Informe</span></h6>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped">
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Tipo de informe:</strong></td>
+                                        <td>
+                                            <select id="tipoinforme" name="tipoinforme" style="width: 90%;">
+                                                <option value="" selected>---------</option>
+                                                {% for tipo in tiposinformes %}
+                                                    <option value="{{ tipo.id }}">{{ tipo.descripcion }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                        </td>
+                                        <td colspan="6">&nbsp;</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Número:</strong></td>
+                                        <td>{{ numero }}</td>
+                                        <td style="width: 10%;"><strong>Fecha Emisión:</strong></td>
+                                        <td>{{ fecha|date:"d-m-Y" }}</td>
+                                        <td style="width: 10%;"><strong>Para:</strong></td>
+                                        <td>{{ proyecto.apruebainforme }}</td>
+                                        <td style="width: 10%;"><strong>De:</strong></td>
+                                        <td>{{ proyecto.profesor }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Objeto:</strong></td>
+                                        <td colspan="7" style="text-align: justify">Reportar los avances del proyecto {{ proyecto.titulo }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">1. Datos Generales (Perfil del proyecto)</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped">
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Título:</strong></td>
+                                        <td colspan="3" style="text-align: justify">{{ proyecto.titulo }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Código:</strong></td>
+                                        <td style="text-align: justify">{{ proyecto.codigo }}</td>
+                                        <td style="width: 15%;"><strong>Presupuesto:</strong></td>
+                                        <td style="text-align: justify">$ {{ proyecto.presupuesto|floatformat:2|intcomma }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Línea de Investigación:</strong></td>
+                                        <td style="text-align: justify">{{ proyecto.lineainvestigacion.nombre }}</td>
+                                        <td style="width: 15%;"><strong>Sub-líneas de Investigación:</strong></td>
+                                        <td>
+                                            {% for sublinea in proyecto.sublineainvestigacion.all %}
+                                               {{ forloop.counter }}. {{ sublinea.nombre }}<br>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Objetivo General:</strong></td>
+                                        <td colspan="3" style="text-align: justify">{{ proyecto.objetivogeneral|safe }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Fecha de inicio:</strong></td>
+                                        <td style="text-align: justify">{{ fechainicio }}</td>
+                                        <td style="width: 15%;"><strong>Fecha estimada de cierre:</strong></td>
+                                        <td style="text-align: justify">{{ fechafinestimada }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 15%;"><strong>Integrantes:</strong></td>
+                                        <td colspan="3">
+                                            {% for integrante in integrantes %}
+                                                {{ integrante.persona.nombre_completo_inverso }}, {{ integrante.get_funcion_display }}<br>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">2. Antecedentes</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped">
+                                <tbody>
+                                    <tr>
+                                        <td><strong>2.1</strong></td>
+                                        <td style="text-align: justify">
+                                            Mediante {{ resolucionaprueba.numero }} de fecha {{ fecharesolucion }} se dispone lo siguiente:
+                                            {{ resolucionaprueba.resuelve|safe }}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>2.2</strong></td>
+                                        <td style="text-align: justify">
+                                            Con fecha {{ fechanotificacion }}, la Dirección de Investigación y Posgrado notifica a
+                                            {{ proyecto.profesor }}, que el proyecto {{ proyecto.titulo }}
+                                            ha sido aprobado para su ejecución, tomando como fecha de inicio el mes de {{ mesinicio }},
+                                            por lo que debe suscribir el contrato correspondiente.
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>2.3</strong></td>
+                                        <td style="text-align: justify">
+                                            El equipo investigador estará conformado por:
+                                            <br>
+                                            <b>Director: </b>{{ proyecto.profesor }}
+                                            {% if codirector %}
+                                                <br>
+                                                <b>Co-director:</b>
+                                                {% for codirector in codirector %}
+                                                    {{ codirector.persona.nombre_completo_inverso }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                            {% if investigadores %}
+                                                <br>
+                                                <b>Investigadores asociados:</b>
+                                                {% for investigador in investigadores %}
+                                                    {{ investigador.persona.nombre_completo_inverso }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                            {% if asistentes %}
+                                                <br>
+                                                <b>Asistentes de investigación:</b>
+                                                {% for asistente in asistentes %}
+                                                    {{ asistente.persona.nombre_completo_inverso }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                            {% if colaboradores %}
+                                                <br>
+                                                <b>Investigadores colaboradores:</b>
+                                                {% for colaborador in colaboradores %}
+                                                    {{ colaborador.persona.nombre_completo_inverso }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">3. Motivación Técnica (Administrativa, financiera o académica)</span></h6>
+                    </div>
+                    <div id="separator2_cronograma" style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left;"><span id="separator2title_cronograma" style="padding:0 10px;">3.1 Actividades Realizadas</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped" id="tbdetallectividades">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 3%; text-align: center;">#</th>
+                                        <th style="width: 31%; text-align: center">Actividad/Responsables</th>
+                                        <th style="width: 7%; text-align: center">Ponderación (%)</th>
+                                        <th style="width: 7%; text-align: center">Fecha Inicio</th>
+                                        <th style="width: 7%; text-align: center">Fecha Fin</th>
+                                        <th style="width: 7%; text-align: center">Horas</th>
+                                        <th style="width: 7%; text-align: center">Avance (%)</th>
+                                        <th style="width: 8%; text-align: center">Estado</th>
+                                        <th style="width: 12%; text-align: center">Entregable Esperado</th>
+                                        <th style="width: 14%; text-align: center">Observaciones</th>
+                                        <th style="width: 3%"><a href="javascript:;" id="btnagregaractividad" idp="{{ proyecto.id|encrypt }}" class="btn btn-success btn-mini agregaactividad" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Actividad"><i class="fa fa-plus"></i> </a></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detalle_actividades">
+                                    <tr id="fila_default_actividad">
+                                        <td colspan="11" style="text-align: center">NO EXISTEN DETALLES DE ACTIVIDADES</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="actividades_aux" value="">
+                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">4. Conclusiones</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <div class="input-group">
+                                <div class="label-text col-md-2 col-sm-2 col-12"  style="display: table;height: 30px;">
+                                    <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                                        <label for="conclusion" style="padding-right: 10px;">Conclusiones:</label>
+                                    </div>
+                                </div>
+                                <div class="control-group col-md-10 col-sm-10 col-12" style="float: left; width: 100">
+                                    <textarea name="conclusion" id="conclusion" rows="4"></textarea>
+                                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="conclusion_aux" value="">
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">5. Recomendaciones</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <div class="input-group">
+                                <div class="label-text col-md-2 col-sm-2 col-12"  style="display: table;height: 30px;">
+                                    <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                                        <label for="recomendacion" style="padding-right: 10px;">Recomendaciones:</label>
+                                    </div>
+                                </div>
+                                <div class="control-group col-md-10 col-sm-10 col-12" style="float: left; width: 100">
+                                    <textarea name="recomendacion" id="recomendacion" rows="4"></textarea>
+                                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="recomendacion_aux" value="">
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">6. Anexos</span></h6>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped" id="tbdetalleevidencias">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 3%; text-align: center;">#</th>
+                                        <th style="width: 49%; text-align: center;">Descripción</th>
+                                        <th style="width: 20%; text-align: center;">Archivo</th>
+                                        <th style="width: 15%; text-align: center;">Fecha Generación</th>
+                                        <th style="width: 10%; text-align: center;"># Páginas</th>
+                                        <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaevidencia" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Evidencia"><i class="fa fa-plus"></i> </a></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detalle_evidencias">
+                                    <tr id="fila_default_evidencia">
+                                        <td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# CUERPO DEL FORMULARIO #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </form>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelactividad" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i>&nbsp;<span class="paneltitleactividad">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyactividad">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregaractividaddetalle"> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspaneldistributivo" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i>&nbsp;<span class="paneltitledistributivo">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodydistributivo">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

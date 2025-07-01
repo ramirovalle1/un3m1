@@ -1,0 +1,139 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        cambiohorario = true;
+        var idt = 0;
+        $(function() {
+
+            $("#id_desde, #id_hasta").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); cambiohorario=true; });
+
+            $("#id_segmento, #id_profesor, #id_desde, #id_hasta").addClass("validate[required]");
+
+            {% if puede_modificar_tipoprofesor %}
+                $("#id_tipoprofesor").change(function() {
+                    cambiohorario=true;
+                    idt = $(this).val();
+                });
+                idt = $("#id_tipoprofesor").val();
+            {% endif %}
+
+            $("#conflicto_cerrar").click(function() {
+                $("#conflicto").modal("hide");
+            });
+
+            $("#continuar_guardando").click(function() {
+                bloqueointerface();
+                cambiohorario = false;
+                envioformulario();
+            });
+
+            ItemsDisplay = function (item) {
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+            $("#id_profesor_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=Profesor&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_profesor").attr({"value":(evt.params.data.id)});
+            });
+
+        });
+    </script>
+{% endblock %}
+    {% block atras %}/niveles?action=materias&id={{ materia.nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/niveles{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editprofesor'/>
+    <input type='hidden' name='id' value='{{ id }}'/>
+{% endblock %}
+{% block formback %}/niveles?action=materias&id={{ materia.nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block formdestination %}/niveles?action=materias&id={{ materia.nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block extraalerts %}
+    <div class="modal static" id="conflicto" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Conflicto del docente</h3>
+        </div>
+        <div class="modal-body" id="conflicto_body">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="continuar_guardando"> Continuar guardando</a>
+            <a href="javascript:;" class="btn btn-info" id="conflicto_cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block antesguardar %}
+        if (cambiohorario){
+            var fi = $("#id_desde").val();
+            var ff = $("#id_hasta").val();
+            $.ajax({
+                type: "POST",
+                url: "/niveles",
+                data: {'action': 'actualizar_horario_pm','id':{{ id }},'fi':fi, 'ff':ff, 'idt':idt},
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al obtener los datos.");
+                    return false;
+                },
+                success: function (data) {
+                    if (data.result == "ok") {
+                        if (data.existeconflicto) {
+                            valid = false;
+                            $("#conflicto_body").html(data.segmento);
+                            $.unblockUI();
+                            $("#conflicto").modal({backdrop:'static', width: 1000}).modal('show');
+                        }
+                        else{
+                            cambiohorario=false
+                            envioformulario();
+                        }
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                        return false;
+                    }
+                }
+            });
+        };
+{% endblock %}

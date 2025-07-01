@@ -1,0 +1,295 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script>
+
+        $(document).ready(function () {
+            $(".fancybox").fancybox();
+        });
+
+        $(function () {
+
+            $(".filterable tr:has(td)").each(function () {
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox").keyup(function () {
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable tr:hidden").show();
+                $.each(s, function () {
+                    $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            });
+
+            {% if habilitado_ingreso_calificaciones %}
+                $(".borrarsesioningreso").click(function () {
+                    bloqueointerface();
+                    $.post("/pro_planificacion", {'action': 'cerrar_habilitacion'}, function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            document.location.reload();
+                        }
+                    });
+                });
+
+            {% else %}
+                $('#envioclave').click(function () {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'envioclave', 'id': '{{ profesor.id|encrypt }}'},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                smoke.alert("Se ha generado y enviado correctamente la clave para ingreso de calificaciones.");
+                            } else {
+                                smoke.alert("Error al generar la clave.");
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al generar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+                $('#ingresoclave').click(function () {
+                    bloqueointerface();
+                    clave = $('#clave').val();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'verificacionclave', 'id': '{{ profesor.id|encrypt}}', 'clave': clave},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                location.href = 'pro_planificacion?action=notasmoodle&id={{ materia.id|encrypt }}&sel={{ sel }}';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al verificar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+            {% endif %}
+
+            $(".copia_entrevista").click(function () {
+                var id = $(this).attr('idc');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_admision",
+                    data: {'action': 'copiaraentrevista', 'id': id},
+                    success: function (data) {
+                         $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#itemspanel .panelbody').html(data.data);
+                            $('#itemspanel .paneltitle').html('');
+                            $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_admision?action=grupoexamen&id={{ grupo.cohorte.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body">
+            <form id="form2" class="form-horizontal form-modal" autocomplete="off" method="post"
+                  enctype="multipart/form-data" action="{{ request.path }}">
+                {% csrf_token %}
+                <div class="row-fluid panelbody">
+                </div>
+            </form>
+        </div>
+    </div>
+    {% if not materia.cerrado %}
+        <div class='row-fluid'>
+            <div class='span9'>
+                <h4>{{ title }}</h4>
+                <h5>{{ grupo }}</h5>
+                {% if habilitado_ingreso_calificaciones %}
+                    {% if grupo.cohorte.procesoabierto %}
+                        <a class="btn btn-success confirmacionmodal tu"
+                           nhref="/adm_admision?action=extraernotasmoodle&id={{ grupo.id|encrypt }}"
+                           href="javascript:;"><i class="fa fa-save"></i> Importar notas de Moodle</a>
+                        {% if grupo.cohorte.id == 142 %}
+                            <a class="btn btn-info copia_entrevista tu"
+                               idc="{{ grupo.id|encrypt }}"
+                               href="javascript:;"><i class="fa fa-file"></i> Copiar a Entrevista</a>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class='span3'>
+                {#                {% if habilitado_ingreso_calificaciones and utiliza_validacion_calificaciones %}#}
+                {#                    <a class="btn btn-warning borrarsesioningreso" href="javascript:;"><i class="fa fa-close"></i> Deshabilitar edición de calificaciones</a>#}
+                {#                    <strong>La edición de calificaciones caduca a las : 23:59:59 pm</strong>#}
+                {#                {% endif %}#}
+            </div>
+        </div>
+        {#        {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones %}#}
+        {#            <div class='row-fluid'>#}
+        {#                <div class='span12'>#}
+        {#                    <div class="alert alert-danger">#}
+        {#                        <div class="form-horizontal">#}
+        {#                            <b>Clave:</b> <input class="input-control input-small" id="clave" type="text" value="">#}
+        {#                            <a  href="javascript:;" class="btn btn-info tu" id="ingresoclave" title="Ingreso de clave"><i class="fa fa-key"></i></a>#}
+        {#                            <span style="margin-left: 20px">Debe generar una clave para poder importar las calificaciones cada vez que ingrese al sistema, la misma sera enviada a su correo electronico registrado en su hoja de vida.#}
+        {#                            <a href="javascript:;" class="btn btn-success btn-mini tu" id="envioclave" title="Envio de clave al correo"><i class="fa fa-envelope"></i> Generar</a>#}
+        {#                            </span>#}
+        {#                        </div>#}
+        {#                    </div>#}
+        {#                </div>#}
+        {#            </div>#}
+        {#        {% endif %}#}
+    {% endif %}
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row-fluid'>
+            <div class='span12'>
+                {#                <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">#}
+                <table class="table table-bordered table-striped filterable">
+                    <thead>
+                    <th style="width: 30px;text-align: center;">N°</th>
+                    <th>Foto</th>
+                    <th style="width: 350px">Estudiante</th>
+                    {% for c in grupo.categorias_moodle_curso %}
+                        <th style="text-align: center; color: #017f2b">SGA {{ c.0 }}</th>
+                        <th style="text-align: center">MOOD {{ c.0 }}</th>
+                    {% empty %}
+                        <th></th>
+                    {% endfor %}
+                    <th style="width: 70px">Estado</th>
+                    </thead>
+                    <tbody>
+                    {% for ins in inscritos %}
+                        <tr>
+                            <td style="text-align: center;">
+                                {% if numeropagina == 1 %}
+                                    {{ forloop.counter }}
+                                {% else %}
+                                    {% with contador=numerofilasguiente|sumar_pagineo:forloop.counter %}
+                                        {{ contador }}
+                                    {% endwith %}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;">
+                                {% if ins.inscripcion.inscripcionaspirante.persona.foto %}
+                                    <a title="{{ ins.inscripcion.inscripcionaspirante.persona.nombre_completo }}"
+                                       href='{{ ins.inscripcion.inscripcionaspirante.persona.foto.foto.url }}'
+                                       class="fancybox" rel="group"><img
+                                            src="{{ ins.inscripcion.inscripcionaspirante.persona.foto.foto.url }}"
+                                            width="30px"></a>
+                                {% else %}
+                                    {% if ins.inscripcion.inscripcionaspirante.persona.sexo_id == 1 %}
+                                        <img src="/static/images/iconos/mujer_small.png" width="30px">
+                                    {% else %}
+                                        <img src="/static/images/iconos/hombre_small.png" width="30px">
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ ins.inscripcion.inscripcionaspirante.persona.nombre_completo_inverso }}<br/>
+                                <b>C.I:</b> {{ ins.inscripcion.inscripcionaspirante.persona.cedula }}
+                            </td>
+                            {% with notas=grupo|args:ins.inscripcion.inscripcionaspirante.persona|call:'notas_de_moodle' %}
+                                {% if notas %}
+                                    {% for x in notas %}
+                                        {% with notasga=ins|args:x.1|call:'campo' %}
+                                            <td style="text-align: right; color: #333333; {% if notasga|floatformat:2 != x.0|floatformat:2 %}background: rgba(252,234,187,1);{% else %}background: rgb(205, 219, 234);{% endif %}">{{ notasga|floatformat:2 }}</td>
+                                            <td style="text-align: right">
+                                                <b>{% if x.0 %}
+                                                    {{ x.0 }}
+                                                {% else %}
+                                                    0.00
+                                                {% endif %}</b>
+                                            </td>
+                                        {% endwith %}
+                                    {% endfor %}
+                                {% else %}
+                                    <td colspan="{{ grupo.categorias_moodle_curso_count.0.0|suma:grupo.categorias_moodle_curso_count.0.0 }}"
+                                        style="text-align: center; font-size: 14px; font-weight: bold; color:#902b2b">
+                                        NO REGISTRA CALIFICACIONES
+                                    </td>
+                                {% endif %}
+                            {% endwith %}
+                            <td style="text-align: center">
+                                {% if ins.estado == 2 %}
+                                    <span class='label label-success'>APROBADO</span>
+                                {% endif %}
+                                {% if ins.estado == 3 %}
+                                    <span class='label label-important'>REPROBADO</span>
+                                {% endif %}
+
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 20 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li><a class="bloqueo_pantalla"
+                                   href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page=1">1</a>
+                            </li>
+                            <li>
+                                <a href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}"
+                                   class="active bloqueo_pantalla">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {% if pagenumber == page.number %}class='active'{% endif %}><a class="bloqueo_pantalla"
+                                                                                               href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                            </li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li>
+                                <a href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}"
+                                   class="active bloqueo_pantalla">...</a></li>
+                            <li><a class="bloqueo_pantalla"
+                                   href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {% if pagenumber == page.number %}class='active'{% endif %}><a class="bloqueo_pantalla"
+                                                                                               href="/adm_admision?action=notasmoodle&idc={{ grupo.cohorte.id|encrypt }}&id={{ grupo.id|encrypt }}&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

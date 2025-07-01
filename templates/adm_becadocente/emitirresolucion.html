@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function() {
+            let borrar = {% if resolucion %}false{% else %}true{% endif %};
+
+            $("#resultado").addClass("validate[required]");
+            $("#motivo").addClass("validate[required]");
+
+            $("select").select2({minimumResultsForSearch: 5 });
+        
+            $("#resultado").change(function () {
+                if(borrar){
+                    $("#motivo").val('');
+                }else{
+                    borrar = true;
+                }
+
+                if($(this).val() == '2'){
+                    $("#fila_motivo").show();
+                    $("#motivo").addClass("validate[required]");
+                }else{
+                    $("#fila_motivo").hide();
+                    $("#motivo").removeClass("validate[required]");
+                }
+            });
+
+            $(".guardar").click(function () {
+                envioformularioreg("/adm_becadocente", "emitirresolucion", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmEmitirResolucion").validationEngine('attach',{ scroll: false });
+                valido = $("#frmEmitirResolucion").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'emitirresolucion'){
+                        try {
+                            for ( instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmEmitirResolucion")[0]);
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}&id="+data.id;
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                location.href = "/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}";
+                {#mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Revisión sin haber guardado la información?", false, "/adm_becadocente", "", "", "/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}");#}
+            });
+
+            {% if resolucion %}
+                $("#resultado").val('{{ resolucion.resultado }}').trigger('change');
+            {% else %}
+                $("#resultado").val('0').trigger('change');
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <form name="frmEmitirResolucion" id="frmEmitirResolucion">{% csrf_token %}
+        <input type="hidden" name="action" value="emitirresolucion">
+        <input type="hidden" name="id" value="{{ postulacion.id|encrypt }}">
+        <div class='col-lg-12 col-sm-12 col-12'>
+            {# TITULO #}
+            <div class="row">
+                <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                    <div class="headtitle">
+                        <h3 class="texto-blue">{{ title }}</h3>
+                        <h6>Postulación del docente</h6>
+                    </div>
+                </div>
+            </div>
+            {# TITULO #}
+            {% if faltacarta %}
+                <div class='row-fluid'>
+                    <div class="alert alert-warning">
+                        <strong>Atención!!! El docente no ha cargado el requisito # 5 {{ requisitocarta }}</strong>
+                    </div>
+                </div>
+            {% endif %}
+            {# CUERPO DEL FORMULARIO #}
+            <div class="card">
+  	            <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-5">
+                    {# FILA DATOS DEL DOCENTE #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbdatossolicitante">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="10">Datos del Solicitante</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 8%;"><strong>Identificación:</strong></td>
+                                        <td>{{ postulacion.profesor.persona.identificacion }}</td>
+                                        <td style="width: 8%;"><strong>Profesor:</strong></td>
+                                        <td>{{ postulacion.profesor.persona.nombre_completo_inverso }}</td>
+                                        <td style="width: 8%;"><strong>Categoría:</strong></td>
+                                        <td>{{ postulacion.profesor.nivelcategoria.nombre }}</td>
+                                        <td style="width: 8%;"><strong>Dedicación:</strong></td>
+                                        <td>{{ postulacion.profesor.dedicacion.nombre }}</td>
+                                        <td style="width: 8%;"><strong>Facultad:</strong></td>
+                                        <td>{{ postulacion.profesor.coordinacion.nombre }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DATOS DEL DOCENTE #}
+                    {# FILA DATOS DE LA POSTULACION #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbdatossolicitud">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="8">
+                                            Datos de la Postulación
+                                            {% if postulacion.tiene_informe_juridico %}
+                                                <a target="_blank" href="{{ postulacion.informe_juridico.archivofirmado.url }}" class="btn btn-info tu" title="Descargar Informe jurídico"><i class="fa fa-download"></i> Informe Jurídico</a>&nbsp;
+                                            {% endif %}
+                                            <a target="_blank" href="{{ postulacion.informe_otorgamiento.archivofirmado.url }}" class="btn btn-success tu" title="Descargar Informe Otorgamiento"><i class="fa fa-download"></i> Informe Otorgamiento</a>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Fecha:</strong></td>
+                                        <td>{{ postulacion.fechasolicitud|date:"d-m-Y" }}</td>
+                                        <td style="width: 10%;"><strong>Estado actual:</strong></td>
+                                        <td><span class="{{ postulacion.estado.clase }} tu" title="{{ postulacion.estado.observacion }}">{{ postulacion.estado.descripcion }}</span></td>
+                                        <td style="width: 10%;"><strong>Tipo estudios:</strong></td>
+                                        <td>{{ postulacion.get_tipoestudio_display }}</td>
+                                        <td style="width: 10%;"><strong>Nombre del programa:</strong></td>
+                                        <td>{{ postulacion.programa }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Título a obtener:</strong></td>
+                                        <td colspan="3">{{ postulacion.tituloobtener }}</td>
+                                        <td style="width: 10%;"><strong>Universidad:</strong></td>
+                                        <td colspan="3">{{ postulacion.institucion.nombre }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>País:</strong></td>
+                                        <td>{{ postulacion.pais.nombre }}</td>
+                                        <td style="width: 10%;"><strong>Provincia:</strong></td>
+                                        <td>{{ postulacion.provincia.nombre }}</td>
+                                        <td style="width: 10%;"><strong>Ciudad:</strong></td>
+                                        <td>{{ postulacion.canton.nombre }}</td>
+                                        <td style="width: 10%;"><strong>Inicio / Fin estudios:</strong></td>
+                                        <td>{{ postulacion.inicio|date:"d-m-Y" }} / {{ postulacion.fin|date:"d-m-Y" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Modalidad:</strong></td>
+                                        <td>{{ postulacion.modalidad.nombre }}</td>
+                                        <td colspan="2" style="width: 10%;"><strong>¿Dispone tema o proyecto para titulación?:</strong></td>
+                                        <td>{% if postulacion.tienetematitulacion %}SI{% else %}NO{% endif %}</td>
+                                        <td colspan="3">&nbsp;</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>Tema o Proyecto:</strong></td>
+                                        <td colspan="3">{% if postulacion.tematitulacion %}{{ postulacion.tematitulacion }}{% else %}NINGUNO{% endif %}</td>
+                                        <td style="width: 10%;"><strong>Línea Investigación:</strong></td>
+                                        <td colspan="3">{% if postulacion.tematitulacion %}{{ postulacion.lineainvestigacion.nombre }}{% else %}NINGUNA{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>¿Requiere ausentarse de UNEMI?:</strong></td>
+                                        <td>{% if postulacion.ausentismo %}SI{% else %}NO{% endif %}</td>
+                                        <td style="width: 10%;"><strong>Tipo Permiso:</strong></td>
+                                        <td>{% if postulacion.ausentismo %}{{ postulacion.get_tipopermiso_display }}{% else %}NINGUNO{% endif %}</td>
+                                        <td style="width: 10%;"><strong>Tiempo permiso(meses):</strong></td>
+                                        <td>{% if postulacion.ausentismo %}{{ postulacion.tiempomes }}{% endif %}</td>
+                                        <td style="width: 10%;"><strong>Tipo licencia:</strong></td>
+                                        <td>{% if postulacion.ausentismo %}{{ postulacion.get_tipolicencia_display }}{% else %}NINGUNA{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 10%;"><strong>¿Puede impartir clases mientras estudia?:</strong></td>
+                                        <td>{% if postulacion.imparteclase %}SI{% else %}NO{% endif %}</td>
+                                        <td style="width: 10%;"><strong>Presupuesto:</strong></td>
+                                        <td>$ {{ postulacion.presupuesto|floatformat:2|intcomma }}</td>
+                                        <td colspan="4">&nbsp;</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DATOS DE LA POSTULACION #}
+                    {# FILA REQUISITOS #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbrequisitos">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="6">Listado de Requisitos</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="width: 3%; text-align: center">#</th>
+                                        <th style="width: 40%; text-align: center">Nombre del requisito</th>
+                                        <th style="width: 10%; text-align: center">Estado</th>
+                                        <th style="width: 10%; text-align: center">Archivo</th>
+                                        <th style="width: 15%; text-align: center">Cumplimiento</th>
+                                        <th style="width: 22%; text-align: center">Observación</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detalle in requisitos %}
+                                        <tr>
+                                            <td style="text-align: center">
+                                                <b>{{ forloop.counter }}</b>
+                                            </td>
+                                            <td>
+                                                {{ detalle.requisito.descripcion|safe }}
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                {% if detalle.archivo %}
+                                                    <a target="_blank" href="{{ detalle.archivo.url }}" class="btn btn-info tu" title="Descargar Documento"><i class="fa fa-download"></i> Descargar</a>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                {% if detalle.estado == 2 %}
+                                                    <i class="fa fa-check-circle tu" title="Si cumple" style="color: green;"></i>
+                                                {% elif detalle.estado == 4 %}
+                                                    <i class="fa fa-times tu" title="No cumple" style="color: red"></i>
+                                                {% else %}&nbsp;{% endif %}
+                                            </td>
+                                            <td style="text-align: justify">
+                                                {{ detalle.observacion|default_if_none:'' }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA REQUISITOS #}
+                    {# FILA OTROS DOCUMENTOS #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbotrosdocumentos">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="6">Listado de Otros Documentos</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="width: 3%; text-align: center">#</th>
+                                        <th style="width: 40%; text-align: center">Nombre del documento</th>
+                                        <th style="width: 10%; text-align: center">Estado</th>
+                                        <th style="width: 10%; text-align: center">Archivo</th>
+                                        <th style="width: 15%; text-align: center">Cumplimiento</th>
+                                        <th style="width: 22%; text-align: center">Observación</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detalle in documentos %}
+                                        <tr>
+                                            <td style="text-align: center">
+                                                <b>{{ forloop.counter }}</b>
+                                            </td>
+                                            <td>
+                                                {{ detalle.documento.descripcion|safe }}
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                {% if detalle.archivofirmado %}
+                                                    <a target="_blank" href="{{ detalle.archivofirmado.url }}" class="btn btn-info tu" title="Descargar Documento"><i class="fa fa-download"></i> Descargar</a>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                {% if detalle.estado == 2 %}
+                                                    <i class="fa fa-check-circle tu" title="Si cumple" style="color: green;"></i>
+                                                {% elif detalle.estado == 4 %}
+                                                    <i class="fa fa-times tu" title="No cumple" style="color: red"></i>
+                                                {% else %}&nbsp;{% endif %}
+                                            </td>
+                                            <td style="text-align: justify">
+                                                {{ detalle.observacion|default_if_none:'' }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA OTROS DOCUMENTOS #}
+                    {# FILA DATOS DEL PRESUPUESTO #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbdatossolicitante">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="{{ colspancab }}">Presupuesto de Beca {% if secretariocomite %}<a href="/adm_becadocente?action=editpresupuesto&id={{ postulacion.id|encrypt }}" class="btn btn-warning tu" title="Editar Presupuesto"><i class="fa fa-edit"></i> Editar</a>{% endif %}</th>
+                                    </tr>
+                                    <tr>
+                                        <th rowspan="2" style="text-align: center; width: 25%;">Rubros</th>
+                                        <th rowspan="2" style="text-align: center; width: 6%;">Valor Unitario</th>
+                                        <th rowspan="2" style="text-align: center; width: 1%;">..</th>
+                                        {% for anio in anios %}
+                                            <th colspan="2" style="text-align: center;">Periodo {{ forloop.counter }}</th>
+                                        {% endfor %}
+                                        <th rowspan="2" style="text-align: center; width: 6%;">Total</th>
+                                    </tr>
+                                    <tr>
+                                        {% for anio in anios %}
+                                            <th style="text-align: center; width: 4%;">Cant</th>
+                                            <th style="text-align: center; width: 5%">Año {{ anio }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detalle in rubros %}
+                                        <tr>
+                                            <td style="text-align: justify">
+                                                {{ detalle.rubro.descripcion }}
+                                            </td>
+                                            <td style="text-align: right">
+                                                $ {{ detalle.valorunitario|floatformat:2|intcomma }}
+                                            </td>
+                                            <td style="text-align: center">..</td>
+                                                {% for anio in anios %}
+                                                    {% with detalleanio=detalle|args:anio|call:"detalle_anio" %}
+                                                    <td style="text-align: right">
+                                                        {{ detalleanio.cantidad }}
+                                                    </td>
+                                                    <td style="text-align: right">
+                                                        $ {{ detalleanio.subtotal|floatformat:2|intcomma }}
+                                                    </td>
+                                                    {% endwith %}
+                                                {% endfor %}
+                                            <td style="text-align: right">
+                                                <strong>$ {{ detalle.total_rubro|floatformat:2|intcomma }}</strong>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="2" style="font-weight: bold">Totales:</td>
+                                        <td>...</td>
+                                        {% for anio in anios %}
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: right">
+                                                {% with totalanio=presupuesto|args:anio|call:"total_anio" %}
+                                                    <strong>$ {{ totalanio|floatformat:2|intcomma }}</strong>
+                                                {% endwith %}
+                                            </td>
+                                        {% endfor %}
+                                        <td style="text-align: right">
+                                            <span class="label label-info">
+                                            <strong>$ {{ postulacion.presupuesto|floatformat:2|intcomma }}</strong>
+                                                </span>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DATOS DEL PRESUPUESTO #}
+                    {# FILA VALIDACIÓN DE SOLICITUD #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbvalidaciongeneral">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="4">Resultado de la Resolución</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if resolucion %}
+                                        <tr>
+                                            <td style="width: 10%;">N° Resolución:</td>
+                                            <td>{{ resolucion.numero }}</td>
+                                            <td style="width: 10%;">Fecha:</td>
+                                            <td>{{ resolucion.fecha|date:"d-m-Y" }}</td>
+                                        </tr>
+                                    {% endif %}
+                                    <tr>
+                                        <td style="width: 10%;">Resultado:</td>
+                                        <td style="width: 90%;" colspan="3">
+                                            {% if postulacion.puede_revisar_comite %}
+                                                <select id="resultado" name="resultado" style="width: 200px">
+                                                    <option value="" selected>---------</option>
+                                                    <option value="1">FAVORABLE</option>
+                                                    <option value="2">NO FAVORABLE</option>
+                                                </select>
+                                                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                            {% else %}
+                                                <span class="label label-{{ solicitud.color_estado }}">{{ solicitud.get_estado_display }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr id="fila_motivo">
+                                        <td style="width: 10%;">Motivo:</td>
+                                        <td style="width: 90%;" colspan="3">
+                                            <textarea name="motivo" rows="3" id="motivo">{% if resolucion %}{{ resolucion.motivo }}{% endif %}</textarea>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA VALIDACIÓN DE SOLICITUD #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </div>
+            </div>
+            {# CUERPO DEL FORMULARIO #}
+        </div>
+    </form>
+{% endblock %}

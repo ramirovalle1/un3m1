@@ -1,0 +1,181 @@
+<style>
+    table.table thead th, table.table thead td {
+        padding: 0;
+        border-bottom: 0;
+        background-color: #fff;
+        font-size: 12px;
+    }
+
+    table.table tbody th, table.table tbody td {
+        padding: 2px 10px 2px 10px;
+        border-bottom: 0;
+        vertical-align: middle;
+        font-size: 11px;
+    }
+
+    .favoritos .dataTables_wrapper .dataTables_filter {
+        display: none;
+    }
+
+</style>
+<div class="row">
+    <div class="col-md-12">
+        <div class="input-group mb-2">
+            <input id="input-search-misfavoritos" type="text" class="form-control" placeholder="Buscar por query o base afectada..." aria-label="Buscar" aria-describedby="button-search-misfavoritos" name="s">
+            <div class="input-group-append">
+                <button class="btn btn-primary" type="submit" id="button-search-misfavoritos"><i class="fa fa-search"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mb-2">
+    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+        <div class="table-responsive favoritos">
+            <table class='table table-bordered tabla_paginada_favoritos table-padding0'>
+                <thead class="table-light">
+                <tr>
+                    <th>&nbsp;FECHA EJECUCIÓN</th>
+                    <th>BASE AFECTADA</th>
+                    <th style="text-align: center;">QUERY</th>
+                    <th style="text-align: center;">DESCRIPCIÓN</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for lq in logqueryfavoritos %}
+                    <tr id="row-{{ lq.id }}">
+                        <td style="text-align: left">
+                            {{ lq.logquery.fecha_creacion|date:"d-m-Y" }} {{ lq.logquery.fecha_creacion|time:'h:i a' }}
+                            {% if persona.usuario.is_superuser %}
+                                <br><label class="label fs-6">{{ lq.logquery.usuario_creacion }}</label>
+                            {% endif %}
+                        </td>
+                        <td>{{ lq.logquery.baseafectada }}</td>
+                        <td style="text-align: left;">
+                            <div class="btn-group btn-group-sm float-end" role="group">
+                                <a class="btn btn-default tu" title="Copiar" onclick="copyToClipboard(this, '{{ lq.id }}')"><i class="fa fa-clipboard"></i></a>
+                                <a class="btn btn-default" title="Insertar" onclick="copyAllQuery('{{ lq.id }}')"><i class="fa fa-keyboard-o"></i></a>
+                                {% if persona.usuario.is_superuser or persona.usuario.id == 32363 %}
+                                    <a class="btn btn-default text-black-50" onclick="deleteadmin('{{ lq.id }}')" title="Eliminar"><i class="fa fa-minus"></i></a>
+                                {% endif %}
+                            </div><br><p id="query-data-{{ lq.id }}">{{ lq.logquery.query }}</p>
+                        </td>
+                        <td style="text-align: left;">{{ lq.descripcion }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">NO EXISTEN REGISTROS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+
+
+    $(function () {
+        const tabla_paginada_favoritos = $('.tabla_paginada_favoritos').DataTable({
+            responsive: false,
+            ordering: false,
+            paging: true,
+            searching: true,
+            language: {
+                "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+            },
+            bInfo: true,
+            dom: 'Bfrtip',
+            buttons: [],
+            columnDefs: [
+                {
+                    targets:0,
+                    width:"20%",
+                    className:"text-center",
+                },
+                {
+                    targets:1,
+                    width:"20%",
+                    className:"text-center",
+                },
+                {
+                    targets:2,
+                    width:"40%",
+                },
+                {
+                    targets:3,
+                    width:"20%",
+                }
+            ]
+
+        });
+
+        $('.tabla_paginada_favoritos tbody').on('click', 'tr', function () {
+            var data = tabla_paginada_favoritos.row(this).data();
+        });
+
+       $("#input-search-misfavoritos").keyup(function () {
+           tabla_paginada_favoritos.search($(this).val().trim()).draw();
+       });
+    });
+
+        copyAllQuery = (id) => {
+            debugger;
+            var data = $("#query-data-"+id).text()
+            pegarCampo(data);
+            $("#itemspanel4").modal('hide');
+        }
+
+        copyToClipboard = (self, id) => {
+            $(self).find('.fa-clipboard').removeClass('fa-clipboard').addClass('fa-check').css('color', 'green');
+            navigator.clipboard.writeText($("#query-data-"+id).text());
+            setTimeout(function () {
+                $(self).find('.fa-check').removeClass('fa-check').addClass('fa-clipboard').css('color', 'black');
+            }, 1000)
+        }
+
+        deleteadmin = (pk) => {
+            Swal.fire({
+                title: `¿Estás por eliminar este registro?`,
+                text: "Esta acción es irreversible",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    let csrf = $("#itemspanel4 input[name='csrfmiddlewaretoken']").val();
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: csrf,
+                            action: 'delfavoritos_admin',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result === true) {
+                            debugger;
+                            $("#row-"+pk).remove();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            })
+
+        }
+
+</script>

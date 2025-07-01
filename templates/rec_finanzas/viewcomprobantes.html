@@ -1,0 +1,486 @@
+{% extends 'base.html' %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+     <script type="text/javascript">
+        $(document).ready(function () {
+            $(".fancybox").fancybox();
+        });
+        $(function () {
+
+            $("select").select2({minimumResultsForSearch: 20});
+
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var estado = $("#idestadoscomp").val()
+                if (term.length > 0) {
+                    bloqueointerface();
+                    if (estado != 0){
+                        bloqueointerface()
+                        location.href = "{{ request.path }}?action=comprobantespagos&s=" + term+ "&estado=" + estado;
+                    }else{
+                    location.href = "{{ request.path }}?action=comprobantespagos&s=" + term;
+                    }
+                } else{
+                    if (estado != 0){
+                        bloqueointerface()
+                        location.href = "{{ request.path }}?action=comprobantespagos&estado=" + estado;
+                    }
+                }
+                return false;
+            };
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('.reporteccomp').click(function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var estado = $("#idestadoscomp").val()
+                if (term.length > 0) {
+                    bloqueointerface();
+                    if (estado != 0){
+                        bloqueointerface()
+                        window.open("{{ request.path }}?action=comprobantesxlsx&s=" + term+ "&estado=" + estado);
+                    }else{
+                    window.open("{{ request.path }}?action=comprobantesxlsx&s=" + term);
+                    }
+                } else{
+                    if (estado != 0){
+                        bloqueointerface()
+                        window.open("{{ request.path }}?action=comprobantesxlsx&estado=" + estado);
+                    } else {
+                        window.open("{{ request.path }}?action=comprobantesxlsx");
+                    }
+                }
+                return false;
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $('#idestadoscomp').change(function(){
+                busqueda();
+            });
+            $(".tl").tooltip({position: "center up"});
+
+            $('.historial').click(function(){
+                let id = $(this).attr('idd');
+                bloqueointerface();
+                $.ajax({
+                    type:'GET',
+                    url:'{{ request.path }}',
+                    data: {'action':'historialcomprobantes','id':id},
+                    success: function(data){
+                        $.unblockUI();
+                        if (data.result == 'ok'){
+                            $(".paneltitle").html('Historial comprobante de pago')
+                            $("#itemspanel .modal-body").html(data.data);
+                            $('#itemspanel').modal({backdrop: 'static', width: '80%'}).modal('show');
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        NotificationJG.error('Error de conexión.')
+                    },
+                    dataType:'json'
+                });
+            });
+
+            $(".checkbox-all").click(function () {
+                $(".checkbox-ind").prop('checked', $(this).prop('checked'));
+            });
+
+        });
+
+        function comprobanteAprobrRech(id, tipo,texto) {
+            Swal.fire({
+                title: `${texto} el comprobante de pago`,
+                text:'Esta acción es irreversible',
+                input: 'textarea',
+                inputAttributes: {
+                    autocapitalize: 'off',
+                    required:true,
+                    placeholder:'Observación.....',
+                    row:3
+                },
+                showCancelButton: true,
+                confirmButtonText: 'Guardar',
+                showLoaderOnConfirm: true,
+                preConfirm: (login) => {
+                    if (login == null || login == '' || login==undefined){
+                        return  Swal.showValidationMessage(
+                                `Llenar el campo`
+                            )
+                    }
+
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                    bloqueointerface()
+
+                if (result.value != '' ) {
+                    if(result.dismiss){
+                        $.unblockUI();
+                        return false;
+                    }
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ request.path }}',
+                        data: {'action': 'aprecomprobantepago', 'id': id, 'tipo': tipo, 'observacion': result.value},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok'){
+                                NotificationJG.success(data.mensaje)
+                                location.reload()
+                            } else{
+                                NotificationJG.error(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            NotificationJG.error("Error de conexión.");
+                        },
+                        dataType: 'json'
+                    })
+                    ;
+                }else{
+                     $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                }
+            });
+        }
+
+        function comprobanteAprobrRechMasivo(tipo,texto,obser=''){
+            const checkboxes = document.querySelectorAll('.checkbox-ind');
+            lista_items1 = []
+
+            // Verificar si al menos uno está seleccionado
+            let isChecked = false;
+            checkboxes.forEach(function (checkbox) {
+                if (checkbox.checked) {
+                    isChecked = true;
+                    lista_items1.push(checkbox.id)
+                }
+            });
+
+            // Si no hay ningún checkbox seleccionado, mostrar una alerta y prevenir el envío del formulario
+            if (!isChecked) {
+                NotificationJG.warning('Debes seleccionar al menos un registro');
+                return;
+            }
+            Swal.fire({
+                title: `${texto} el comprobante de pago`,
+                text:'Esta acción es irreversible',
+                input: 'textarea',
+                inputValue:`${obser}`,
+                inputAttributes: {
+                    autocapitalize: 'off',
+                    required:true,
+                    placeholder:'Observación.....',
+                    row:3
+                },
+                showCancelButton: true,
+                confirmButtonText: 'Guardar',
+                showLoaderOnConfirm: true,
+                preConfirm: (login) => {
+                    if (login == null || login == '' || login==undefined){
+                        return  Swal.showValidationMessage(
+                                `Llenar el campo`
+                            )
+                    }
+
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                    bloqueointerface()
+
+                if (result.value != '' ) {
+                    if(result.dismiss){
+                        $.unblockUI();
+                        return false;
+                    }
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ request.path }}',
+                        data: {'action': 'aprecomprobantepagomasivo', 'lista_items1': lista_items1, 'tipo': tipo, 'observacion': result.value},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok'){
+                                NotificationJG.success(data.mensaje)
+                                location.reload()
+                            } else{
+                                NotificationJG.error(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            NotificationJG.error("Error de conexión.");
+                        },
+                        dataType: 'json'
+                    })
+                    ;
+                }else{
+                     $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                }
+            });
+        }
+
+
+
+     </script>
+{% endblock %}
+{% block atras %}{{ request.path}}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Comprobantes</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12 pb-2">
+            </div>
+        </div>
+        <form method="GET">
+            <input type="hidden" name="action" value="{{ action }}">
+            <div class="row">
+
+                <div class="col-lg-6 col-md-4 col-3">
+                    <div class="input-group mb-2" style="margin-left: 5px">
+                        <select name="estadoscomp" id="idestadoscomp" class="form-control" style="width: 100%">
+                            <option value="0">---------</option>
+                            <option value="1" {% if estado == 1 %}selected{% endif %}>Pendientes</option>
+                            <option value="2" {% if estado == 2 %}selected{% endif %}>Validados</option>
+                            <option value="4" {% if estado == 4 %}selected{% endif %}>Recaudados</option>
+                            <option value="3" {% if estado == 3 %}selected{% endif %}>Rechazados</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-6 col-md-4 col-8">
+                    <div class="input-group mb-2">
+                        <input class='form-control' type='text' id='searchinput' name="s" value='{{ s }}' autocomplete="off" placeholder="Apellidos, cédula o código"/>
+                        <div class="input-group-append">
+                            <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()" id="button-addon2"><i
+                                    class="fa fa-search"></i></a>
+                            {% if url_vars %}
+                                <a title="Ver todo" href="{{ request.path }}?action=comprobantespagos" class="btn btn-default tr">
+                                    <i class="fas fa-sync-alt"></i>
+                                </a>
+                            {% endif %}
+                            <a href="javascript:;" class="btn btn-success btn-sm reporteccomp" title="Reporte"><i class="fa fa-file-excel"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div class="row">
+            <div class="col-sm-6">
+                {% if perms.sagest.puede_validar_comprobante_pago or perms.sagest.puede_recaudar_comprobante_pago %}
+                    <a href="javascript:void(0);"
+                       onclick="comprobanteAprobrRechMasivo(2,'Rechazar')"
+                       class="btn btn-danger btn-sm">Rechazar</a>
+                {% endif %}
+                {% if perms.sagest.puede_validar_comprobante_pago %}
+                    <a href="javascript:void(0);"
+                       onclick="comprobanteAprobrRechMasivo(1,'Validar','Validado, pendiente por recaudar.')"
+                       class="btn btn-success btn-sm">Aprobar</a>
+
+                {% endif %}
+                {% if perms.sagest.puede_recaudar_comprobante_pago %}
+                    <a href="javascript:void(0);"
+                       onclick="comprobanteAprobrRechMasivo(3,'Recaudar','Su pago ha sido recaudado.')"
+                       class="btn btn-info btn-sm">Recaudar</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <table class='tabla_responsive table table-bordered table-striped' style="width: 100%">
+                    <thead>
+                    <tr>
+                        <th>
+                            <input type="checkbox" class="checkbox-all">
+                        </th>
+                        <th style="text-align: left;">Detalle</th>
+                        <th style="text-align: left; width: 300px">Rubros</th>
+                        <th style="width: 150px;">Detalle Pago</th>
+                        <th style="width: 200px">Fechas</th>
+                        <th style="width: 100px">Estado</th>
+                        <th style="width: 100px">Comprobante</th>
+                        <th style="width: 100px"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for list in listado %}
+                        <tr>
+                        <td>
+                            {% if list.estados == 1 %}
+                                <input type="checkbox" class="checkbox-ind" id="{{ list.id|encrypt }}">
+                            {% elif list.estados == 2 %}
+                                <input type="checkbox" class="checkbox-ind" id="{{ list.id|encrypt }}">
+                            {% endif %}
+                        </td>
+                            <td class="text-left" style="word-wrap: break-word">
+                                {{ list.persona.nombre_completo|title }} - {{ list.persona.cedula }}<br>
+                                <b style="word-wrap: break-word">{{ list.matricula.inscripcion.carrera }}</b><br>
+                            </td>
+                            <td class="text-left">
+                                {% if list.rubroscomprobantealumno.count > 1 %}
+                                    <div class="border-bottom  " id="headingThree{{ list.pk }}">
+                                        <h3 class="mb-0 fw-bold">
+                                            <a href="#" class="d-flex align-items-center text-inherit text-decoration-none" data-bs-toggle="collapse" data-bs-target="#collapseThree{{ list.pk }}" aria-expanded="false" aria-controls="collapseThree{{ list.pk }}">
+       <span class="me-auto">
+       Ver rubros
+       </span>
+                                                <span class="collapse-toggle ms-4">
+       <i class="fa fa-plus text-primary"></i>
+       </span>
+                                            </a>
+                                        </h3>
+                                    </div>
+                                    <div id="collapseThree{{ list.pk }}" class="collapse" aria-labelledby="headingThree{{ list.pk }}" data-bs-parent="#accordionExample">
+                                        {% for rubros in list.rubroscomprobantealumno %}
+                                            <div class="py-1 fs-6">
+                                                ({{ rubros.rubro.id }}) {{ rubros.rubro }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    {% for rubros in list.rubroscomprobantealumno %}
+                                        <div class="py-1 fs-6">
+                                            ({{ rubros.rubro.id }}) {{ rubros.rubro }}
+                                        </div>
+                                    {% endfor %}
+                                {% endif %}
+{#                                {% if list.rubroscomprobantealumno %}#}
+{#                                    {% for rubros in list.rubroscomprobantealumno %}#}
+{#                                        ({{ rubros.rubro.id }}) {{ rubros.rubro }}#}
+{#                                    {% endfor %}#}
+{#                                {% else %}#}
+{#                                    N/A#}
+{#                                {% endif %}#}
+                            </td>
+                            <td class="text-left">
+                                Valor Pago: <b> {{ list.valor|floatformat:2 }}</b><br>
+                                Valor Rubro: <b> {{ list.valor_rubros_asignados|floatformat:2 }}</b><br>
+                                {% if list.cuentabancaria %}<span class="badge bg-primary">{{ list.cuentabancaria }}</span><br>{% endif %}
+                                {% if list.referenciapapeleta %}Ref: <span class="badge bg-primary">{{ list.referenciapapeleta }}</span><br>{% endif %}
+                                {% if list.tipocomprobante == 1 %}
+                                    <span class="badge badge-pill bg-success">{{ list.get_tipocomprobante_display }}</span>
+                                {% elif list.tipocomprobante == 2 %}
+                                    <span class="badge badge-pill bg-info">{{ list.get_tipocomprobante_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-left">
+                                Fecha de Pago: {{ list.fechapago|date:'d-m-Y' }}<br>
+                                Fecha de Creación: {{ list.fecha_creacion|date:'d-m-Y H:i' }}
+                            </td>
+                            <td class="fs-6" style="text-align: center;">
+                                {% if list.estados == 1 %}
+                                    <span class="badge bg-secondary ">{{ list.get_estados_display }}</span>
+                                {% elif list.estados == 2 %}
+                                    <span class="badge bg-success ">{{ list.get_estados_display }}</span>
+                                {% elif list.estados == 3 %}
+                                    <span class="badge bg-danger ">{{ list.get_estados_display }}</span>
+                                {% elif list.estados == 4 %}
+                                    <span class="badge bg-info ">{{ list.get_estados_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;">
+                                {% if list.typefile != '.pdf' %}
+                                   <a data-fancybox="image" class="btn tu" title="Ver Comprobante" href="{{ list.comprobantes.url }}">
+                                        <i class="fa fa-image"></i>
+                                    </a>
+                                {% else %}
+                                    <a data-fancybox="iframe" class="btn tu" title="Ver Comprobante" href="{{ list.comprobantes.url }}">
+                                        <i class="fa fa-file-pdf text-danger"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+                            <td class="text-center" style="width: 150px">
+                                <a href="javascript:void(0);" title="Historial" idd="{{ list.pk|encrypt }}" class="btn btn-info btn-sm historial"><i class="fa fa-list"></i></a>
+                                <a target="_blank" href="/rec_finanzas?action=rubros&id={{ list.persona.pk }}" class="btn btn-success btn-sm" title="Ir a rubros"><i class="fa fa-money"></i></a>
+                                {% if list.estados == 1 and perms.sagest.puede_validar_comprobante_pago %}
+                                    <a href="javascript:void (0);" title="Aprobar" onclick="comprobanteAprobrRech('{{ list.pk|encrypt }}',1,'Validar')" class="btn btn-success btn-sm"><i class="fa fa-check"></i></a>
+                                    <a href="javascript:void (0);" title="Rechazar" onclick="comprobanteAprobrRech('{{ list.pk|encrypt }}',2,'Rechazar')" class="btn btn-danger btn-sm"><i class="fa fa-trash-o"></i></a>
+                                {% elif list.estados == 2 and perms.sagest.puede_recaudar_comprobante_pago %}
+
+                                    <a href="javascript:void (0);" title="Aprobar" onclick="comprobanteAprobrRech('{{ list.pk|encrypt }}',3,'Recaudar')" class="btn btn-success btn-sm"><i class="fa fa-money-bill"></i></a>
+                                    <a href="javascript:void (0);" title="Rechazar" onclick="comprobanteAprobrRech('{{ list.pk|encrypt }}',2,'Rechazar')" class="btn btn-danger btn-sm"><i class="fa fa-trash-o"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer border-top-0">
+                <div class="col-lg-12">
+                    <nav style="margin-bottom: 7px">
+                        {% if paging.num_pages > 5 %}
+                            <ul class="pagination justify-content-center mb-0">
+                                {% if paging.primera_pagina %}
+                                    <li class="page-item">
+                                        <a class="page-link bloqueo_pantalla" href="?action=comprobantespagos&page=1{{ url_vars }}">1</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a href="?action=comprobantespagos&page={{ paging.ellipsis_izquierda }}{{ url_vars }}"
+                                           class="active page-link bloqueo_pantalla">...</a></li>
+                                {% endif %}
+                                {% for pagenumber in paging.paginas %}
+                                    <li {% if pagenumber == page.number %}class='active page-item '
+                                        {% else %}class='page-item'{% endif %}>
+                                        <a href="?action=comprobantespagos&page={{ pagenumber }}{{ url_vars }}"
+                                           class="page-link bloqueo_pantalla">{{ pagenumber }}</a>
+                                    </li>
+                                {% endfor %}
+                                {% if paging.ultima_pagina %}
+                                    <li class="page-item">
+                                        <a href="?action=comprobantespagos&page={{ paging.ellipsis_derecha }}{{ url_vars }}"
+                                           class="active page-link bloqueo_pantalla">...</a></li>
+                                    <li class="page-item">
+                                        <a href="?action=comprobantespagos&page={{ paging.num_pages }}{{ url_vars }}"
+                                           class="page-link bloqueo_pantalla">{{ paging.num_pages }}</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        {% else %}
+                            <ul class="pagination justify-content-center mb-0">
+                                {% for pagenumber in paging.page_range %}
+                                    <li {% if pagenumber == page.number %}class='active page-item'
+                                        {% else %}class="page-item"{% endif %}>
+                                        <a class="page-link bloqueo_pantalla"
+                                           href="?action=comprobantespagos&page={{ pagenumber }}{{ url_vars }}">{{ pagenumber }}</a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Modal -->
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="paneltitle">Historial de Comprobantes</h4>
+                </div>
+                <div class="modal-body">
+
+                </div>
+                <div class="modal-footer" style="text-align: center">
+                    <a href="javascript:;" class="btn btn-info" data-bs-dismiss="modal"> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

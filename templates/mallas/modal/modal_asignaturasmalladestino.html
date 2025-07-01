@@ -1,0 +1,298 @@
+{% load sga_extras %}
+
+{% block heading %}
+    <script type="text/javascript">
+        var asignaturaseleccionadageneral = [];
+        $(function () {
+            selectorasignaturas = $(".selectorasignaturas");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorasignaturas:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalasignaturas").html(`Asignaturas Seleccionados: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorasignaturas.prop('checked', true);
+                     $(".calificacion").removeAttr('disabled')
+                    $(".similitud").removeAttr('disabled')
+                } else {
+                    selectorasignaturas.prop('checked', false);
+                     $(".calificacion").attr('disabled','disabled')
+                    $(".similitud").attr('disabled', 'disabled')
+                }
+                actulizarvalor();
+            });
+
+            selectorasignaturas.change(function () {
+                actulizarvalor();
+                var id=$(this).attr('rid')
+                if($(this).prop('checked')){
+                    $("#c"+id).removeAttr('disabled')
+                    $("#s"+id).removeAttr('disabled')
+                }else{
+                    $("#c"+id).attr('disabled','disabled')
+                    $("#s"+id).attr('disabled','disabled')
+                }
+
+            });
+
+            $("#ingresarasignaturas").click(function () {
+                var ids;
+                var seleccion;
+                var seleccionados = $(".selectorasignaturas:checked");
+                ids = '';
+                seleccionados.each(function () {
+                    if (ids.length > 0) {
+                        ids += ",";
+                    }
+                    seleccion=$(this).attr('rid')
+                    ids += seleccion+","+$("#c"+seleccion).val()+","+$("#s"+seleccion).val();
+                });
+                if (ids.length > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/mallas",
+                        data: {'action': "addhomologacionasignaturas",
+                                'id': '{{ asignaturaorigen.id }}',
+                                'ids': ids,
+                                'idmalladestino':{{malladestino.id}},},
+                        success: function (data) {
+                            if (data.result === 'ok') {
+                                setTimeout($.unblockUI, 1);
+                                NotificationJG.success('ASIGNATURAS GUARDADAS', 'Aviso!', 10000);
+                                traertabla();
+                                $('#modalasignaturas').modal('hide');
+                            } else {
+                                setTimeout($.unblockUI, 1);
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            setTimeout($.unblockUI, 1);
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+
+                } else {
+                    smoke.alert("Debe seleccionar al menos una asignatura");
+                }
+            });
+
+            selectorasignaturas.prop("checked", false);
+
+            $('.calificacion').on('keypress', function (e){
+                if (e.which !== 8 && e.which !== 0 && (e.which < 48 || e.which > 57) && e.which!==46) {
+                    return false;
+                }if($(this).val()>10){
+                    return false;
+                }
+            });
+            $('.similitud').on('keypress', function (e){
+                if (e.which !== 8 && e.which !== 0 && (e.which < 48 || e.which > 57) && e.which!==46) {
+                    return false;
+                }if($(this).val()>10){
+                    return false;
+                }
+            });
+        });
+
+    </script>
+    <script>
+        $(".filterable tr:has(td)").each(function () {
+            var t = $(this).text().toLowerCase();
+            $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+        });
+
+        $("#FilterTextBox").keyup(function () {
+            var s = $(this).val().toLowerCase().split(" ");
+            $(".filterable .asignaturas:hidden").show();
+            if ($(this).val()==""){
+                $("#todos").show()
+            }else{
+                $("#todos").hide()
+            }
+            $.each(s, function () {
+                $(".filterable .asignaturas:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+
+            });
+            $(".filterable3 .asignaturas:hidden").show();
+        });
+        function eliminarajaxs(pk,origen, nombre, accion, malladestino) {
+            Swal.fire({
+                title: `Estás por eliminar este registro:\n ${nombre}`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: $("input[name=csrfmiddlewaretoken]").val(),
+                            action: accion,
+                            id: pk,
+                            origen:origen,
+                            malladestino:malladestino,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        if (data.error === false) {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.success('REGISTRO ELIMINADO', 'Aviso!', 10000);
+                            $('#ocultar'+pk).css('display','none');
+                            $('#ocultared'+pk).css('display','none');
+                            $('#checkver'+pk).css('display','initial');
+                            $("#c"+pk).attr('disabled','disabled').val('')
+                            $("#s"+pk).attr('disabled','disabled').val('')
+                            traertabla();
+
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            })
+        }
+        function traertabla() {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/mallas",
+                data: {
+                    'action': "tablahomologacion",
+                    'iddestino': {{ malladestino.id }},
+                    'origen': {{ asignaturaorigen.malla.id }},
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('#contenidomalla').html(data.data);
+                        $('.homologar').css('display','initial')
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+        function ActualizarAsignatura(id_asignaturamalladestino, id_asignaturaorigen, id_malladestino){
+              bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "/mallas",
+                data: {
+                    'action': "edithomologacionasignaturas",
+                     'id': id_asignaturamalladestino,
+                     'origen':id_asignaturaorigen,
+                     'malladestino':id_malladestino,
+                     'calificacion':$("#c"+id_asignaturamalladestino).val(),
+                     'similitud':$("#s"+id_asignaturamalladestino).val(),
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.error === false) {
+                         NotificationJG.success('Edición Guardada', 'Aviso!', 10000);
+                        traertabla();
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+    <style>
+    .estilotabla {
+        border-collapse: collapse;
+        border-bottom: 1px solid #ddd;
+    }
+    .estilocabdeta {
+        display: block;
+        height: 280px;
+        overflow-y: scroll
+    }
+
+    th, td {
+        box-sizing: border-box;
+    }
+
+</style>
+{% endblock %}
+<h5>{{ asignaturaorigen }}</h5>
+<label class="label label-warning"> {{ malladestino }} </label>
+<br>
+<b id="totalasignaturas">Asignaturas Seleccionadas: 0</b>
+<input type="search" style="text-transform: uppercase; margin-bottom: 0px"
+       class="input-block-level" placeholder="BUSCAR ASIGNATURAS..." id="FilterTextBox"
+       name="FilterTextBox">
+<table class='table table-striped table-bordered filterable estilotabla' cellpadding="0" cellspacing="0">
+    <tbody class="estilocabdeta" style="width: 100%">
+    <tr>
+        <td style="text-align: center">
+            <input type="checkbox" id="todos">
+        </td>
+        <td style="text-align: center">
+            Asignaturas
+        </td>
+        <td style="text-align: center">Calificación</td>
+        <td style="text-align: center">Porcentaje de Similitud %</td>
+    </tr>
+    {% for asignaturamalladestino in asignaturasdestino %}
+        <tr class="asignaturas">
+            {% with uso_destino_asignatura=asignaturamalladestino|args:asignaturaorigen|call:'asignatura_homologada' %}
+                {% if uso_destino_asignatura %}
+                     <td style="text-align: center; width: 10%">
+                        <a class="btn btn-danger btn-mini" id="ocultar{{ asignaturamalladestino.id }}" href="javascript:;" onclick="eliminarajaxs('{{ asignaturamalladestino.id }}','{{ asignaturaorigen.id }}','{{ asignaturamalladestino.asignatura.nombre }}', 'deletehomologacionasignaturas', {{ malladestino.id }} )" title="Eliminar"><i class="fa fa-trash"></i></a>
+                        <a href="javascript:void(0);" onclick="ActualizarAsignatura('{{ asignaturamalladestino.id }}','{{ asignaturaorigen.id }}', '{{ malladestino.id }}')" title="Actualizar Calificación y Porcentaje" id="ocultared{{ asignaturamalladestino.id }}" class="btn btn-primary btn-mini"><i class="fa fa-edit"></i></a>
+                        <input class="selectorasignaturas" style="display: none;" type="checkbox"  id="checkver{{ asignaturamalladestino.id }}" rid="{{ asignaturamalladestino.id }}">
+                     </td>
+                {% else %}
+                    <td style="text-align: center; width: 10%">
+                        <input type="checkbox" class="selectorasignaturas" rid="{{ asignaturamalladestino.id }}">
+                    </td>
+                {% endif %}
+                <td style="text-align: left; width: 800px">
+                    <b>{{ asignaturamalladestino.asignatura.nombre }}</b>
+                </td>
+                <td style="text-align: center; width: 10%"><input {% if not uso_destino_asignatura %} disabled {% endif %} class="calificacion" name="calificacion" type="text"  id="c{{ asignaturamalladestino.id }}" value="{{ uso_destino_asignatura.calificacion }}" style="width: 50px; text-align: center" placeholder="00.0" required></td>
+                <td style="text-align: center; width: 10%"><input {% if not uso_destino_asignatura %} disabled {% endif %} class="similitud" name="similitud" type="text" id="s{{ asignaturamalladestino.id }}" value="{{ uso_destino_asignatura.similitud }}" style="width: 50px; text-align: center" placeholder="0" required></td>
+            {% endwith %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+
+<a href="javascript:;" id="ingresarasignaturas" class="btn btn-success"><i
+        class="fa fa-plus-circle"></i> INGRESAR ASIGNATURAS</a>

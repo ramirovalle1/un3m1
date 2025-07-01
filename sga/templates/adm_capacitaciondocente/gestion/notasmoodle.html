@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script>
+
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+        });
+
+        $(function() {
+
+            $('._notas').on('blur', function (e) {
+                let obj = this;
+                var [value, row, max, pk] = [parseFloat($(this).val()), parseInt($(this).data('row')), parseInt($(this).attr('max')), $(this).data('pk')];
+                if (value >= 0){
+                    if (value > max) {
+                        $(obj).val(max);
+                        value = max;
+                    }
+
+                    $.post('{{ request.path }}', {'action': 'updategrade', 'id': pk, 'value': value}, function (e) {
+                        e.result === 'ok' && updatefinalgrade(row);
+                        console.log(e);
+                    });
+                } else {
+                    $('#_htnotas' + pk).html('Solo se admiten valores entre 0 y ' + max).show();
+                    $(this).val(0);
+                    updatefinalgrade(row);
+                    setTimeout(function (e) {
+                        $('#_htnotas' + pk).html('').hide();
+                    }, 6000)
+                }
+
+                $(obj).val(value.toFixed(1));
+            });
+
+            $(".filterable tr:has(td)").each(function(){
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox").keyup(function(){
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable tr:hidden").show();
+                $.each(s, function(){
+                    $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            });
+        });
+
+        function traerAlumnos(id){
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': 'traeralumnosmoodle', 'id':id},
+                success: function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                        var indice = 0;
+                        var cantidad = parseInt(data.cantidad);
+                        var inscritos = data.inscritos;
+                        recalculo(inscritos, indice, (cantidad-1));
+                    } else {
+                        Swal.fire(data.mensaje, "Notas Alumnos", 'error');
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                    Swal.fire("Error al obtener los datos", "Notas Alumnos", 'error');
+                },
+                dataType: "json"
+            });
+        }
+
+        function fallorecalculo(nombrepersona,err){
+            $.unblockUI();
+            $("#recalcularmodal").modal("hide");
+            Swal.fire(`Fallo al recalcular los resultados de ${nombrepersona} error: ${err}`, "Notas Alumnos", 'error');
+        }
+
+        function terminarecalculo(){
+            $("#recalcularmodal").modal("hide");
+            Swal.fire({
+                title: 'Importación Exitosa',
+                text: "Aula Virtual",
+                type: 'success',
+                showCancelButton: false,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                confirmButtonText: 'Ok'
+            }).then((result) => {
+                if (result.value) {
+                    location.reload();
+                }
+            })
+        }
+
+        var intentos = 0;
+
+        function recalculo(lista, elemento, cantidad){
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad+1)) * elemento + '%';
+            if (elemento>cantidad){
+                terminarecalculo();
+            } else {
+                var nombrepersona = inscrito.participante__apellido1 + ' ' + inscrito.participante__apellido2 + ' ' + inscrito.participante__nombres;
+                $("#recalcularmodalprogresshint").html('<i class="fa fa-user"></i> '+nombrepersona);
+                $("#progressbar").css({'width': cp});
+                $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {"action": "traernotaindividual", "id": inscrito.id, "idinstructor": '{{ instructor.id }}'},
+                    success: function(data) {
+                        console.log(data)
+                        if (data.result=='ok'){
+                            intentos = 0;
+                            recalculo(lista, elemento+1, cantidad)
+                        } else {
+                            intentos += 1;
+                            if (intentos>=3){
+                                fallorecalculo(nombrepersona,data.mensaje);
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function() {
+                        intentos += 1;
+                        if (intentos>=3){
+                            fallorecalculo(nombrepersona,"error");
+                        } else {
+                            recalculo(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+        const updatefinalgrade = (row) => {
+            let final = 0;
+            $('input[data-row="'+ row +'"]').each(function () { final += parseInt(this.value)});
+            $('#total_nota' + row).html(final.toFixed(2));
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=instructor&id={{instructor.capeventoperiodo.id}}{% endblock %}
+{% block canvas %}
+
+    <div class="modal fade static" id="recalcularmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">MIGRAR NOTAS MOODLE</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)' class="progress progress-primary progress-striped active">
+                        <div class="bar" style="font-weight: bold; width: 0;" id="progressbar" aria-valuenow="25"></div>
+                    </div>
+                    <b>
+                    <div id="recalcularmodalprogresshint"></div>
+                    </b>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+
+
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Periodo: {{ evento.periodo }}</h6>
+                <h6>Planificación: {{ evento.capevento }}</h6>
+                <h6>Fecha: {{ evento.fechainicio|date:"d-m-Y" }} - {{ evento.fechafin|date:"d-m-Y" }}</h6>
+                <a class="btn btn-primary btn-large tu" onclick="traerAlumnos('{{ instructor.id }}')" href="javascript:;"><i class="fa fa-cloud-download"></i> Importar Notas de Moodle</a>
+
+            </div>
+        </div>
+    </div>
+
+
+    <div class="container-fluid">
+        <div class='card mb-4'>
+        <div class='card-body border-top border-6 rounded-3 border-dark-info'>
+            <table class='tabla_responsive table table-bordered table-striped' >
+                <thead>
+                <tr>
+                    <th style="width: 200px;">Inscrito</th>
+                    <th style="width: 50px;text-align: center;">Foto</th>
+                    {% for t in tareas %}
+                        <th style="width: 50px; text-align: center; vertical-align: middle">{{ t.modelo }}</th>
+                    {% endfor %}
+                    <th style="width: 50px;text-align: center">Nota</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for lista in inscritos %}
+                    <tr>
+                        <td>{{ lista.participante.nombre_completo_inverso|upper }}</td>
+                        <td style="text-align: center;">
+                            {% if lista.participante.tiene_foto %}
+                                <a title="{{ lista.participante.nombre_completo }}" href='{{ lista.participante.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ lista.participante.foto.foto.url }}" width="30px"></a>
+                            {% endif %}
+                        </td>
+
+                        {% if tareas %}
+                            {% for t in tareas %}
+                            {% with get_nota=lista|args:t.id|args:instructor.capeventoperiodo.id|call:'get_nota_individual' %}
+                                <td style="text-align: center">
+                                    {% if not persona.usuario.is_superuser %}
+                                        {{ get_nota.nota|default_if_none:""}}
+                                    {% else %}
+                                        <input style="border:0;" type="number" data-pk="{{ get_nota.pk }}" data-row="{{ lista.pk }}" class="_notas" value="{{ get_nota.nota }}" min="{{ t.modelo.notaminima }}" max="{{ t.modelo.notamaxima }}">
+                                        <small id="_htnotas{{ get_nota.pk }}" class="help-text text-danger text-left" style="display: none; font-size: 10px;"></small>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                        {% endfor %}
+
+{#                            <td style="text-align: center; color: #0c0c0c; font-size: 14px; font-weight: bold" id="total_nota{{ lista.id }}">#}
+{#                            {% with notafinal=lista|args:instructor.capeventoperiodo.id|args:instructor.pk|call:'nota_total_evento_porinstructor' %}#}
+{#                                {{ notafinal|floatformat:2 }}#}
+{#                            {% endwith %}#}
+{#                            </td>#}
+
+                            <td style="text-align: center; color: #0c0c0c; font-size: 14px; font-weight: bold" id="total_nota{{ lista.id }}">
+                            {% with notafinal=lista|args:instructor.capeventoperiodo.id|args:instructor.pk|call:'nota_total_porinstructor' %}
+                                {{ notafinal|floatformat:2 }}
+                            {% endwith %}
+                            </td>
+
+                        {% else %}
+                            <td style="text-align: center; font-size: 14px; font-weight: bold; color:#902b2b"><i class="fa fa-info-circle"></i> NO REGISTRA CALIFICACIONES</td>
+                        {% endif %}
+
+                    </tr>
+                {% endfor %}
+                {% if not inscritos %}
+                    <tr>
+                        <td colspan="11">
+                            NO EXISTEN INSCRITOS
+                        </td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+
+
+{% endblock %}

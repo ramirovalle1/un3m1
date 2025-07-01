@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        var eListadoEstudiantes = [];
+        $(function (){
+
+            $("#id_itinerario").change(function (){
+                $('#id_empresa').empty().append('<option value=""></option>').val(0).trigger("change");
+                $('.calendario').empty()
+                $('#calendarmsj').show()
+                $('.ocultar').removeAttr('hidden')
+                 $('.box-content-reserva').empty()
+                $("#box-detalle").show()
+            })
+
+            $("#id_itinerario").select2({
+                 width:'100%',
+                 placeholder:"Seleccionar una rotación"
+             }).on('select2:select', function (e){
+                 bloqueointerface();
+                 $.get(window.location.pathname, {'action': 'listadodatos', 'bandera': 1, 'iditinerario': $(this).val(), 'idsupervisor': '{{ supervisor.id }}'},
+                     function (data) {
+                         $.unblockUI();
+                         if (data.result === true) {
+                             for (elemento in data.lista) {
+                                 $('#id_empresa').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                             }
+                         } else {
+                             control.val(0).trigger("change");
+                             alertaDanger(data.mensaje);
+                         }
+                 }, 'json');
+            })
+
+            $("#id_empresa").select2({
+                 width:'100%',
+                 placeholder:"Seleccionar una rotación"
+             }).on('select2:select', function (e){
+                 bloqueointerface();
+                 $.get(window.location.pathname, {'action': 'listadodatos', 'bandera': 2, 'idempresa': $(this).val(), 'iditinerario': $("#id_itinerario").val(), 'idsupervisor': '{{ supervisor.id }}'},
+                     function (data) {
+                         if (data.result === true) {
+                             $('.tbdetalle').html(data.data);
+                             if (data.cantidad > 0){
+                                 CargarCalendario('admcalendariosalud',$("#id_empresa").val());
+                                 $('.ocultar').attr('hidden','hidden');
+                             }else{
+                                 $.unblockUI();
+                                 alertaInfo('No existen estudiantes para continuar con el registro.');
+                             }
+                         } else {
+                             control.val(0).trigger("change");
+                             alertaDanger(data.mensaje);
+                             $.unblockUI();
+                         }
+
+                 }, 'json');
+            });
+
+            $.fn.select2.defaults.set('language', 'es');
+
+         });
+
+        function CargarCalendario(action,id,movimiento,mes,anio,diasreserva){
+            var control = $(this);
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{request.path}}",
+                data: {'action': action,
+                    'idservicio':id,
+                    'mover': movimiento,
+                    'mes': mes,
+                    'anio':anio,
+                    'diasreserva':diasreserva
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('.calendario').html(data.data);
+                        $('#calendarmsj').hide()
+                        $('.box-content-reserva').empty()
+                        $("#box-detalle").show()
+                        $('#cantidadetudiantes').html(eListadoEstudiantes.length);
+                        if (eListadoEstudiantes.length > 0 && parseInt($("#id_horario").val()) > 0) {
+                            $("#estudiantes").val(JSON.stringify(eListadoEstudiantes));
+                            $("#submit1").removeAttr('disabled');
+                        }else{
+                            $("#submit1").attr('disabled', 'disabled');
+                        }
+                    } else {
+                        control.val(0).trigger("change");
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    control.val(0).trigger("change");
+                    alertaDanger("Error de conexion.");
+                },
+                dataType: "json"
+            });
+
+        }
+        function CargarDatos(fecha, box, dia){
+            if (eListadoEstudiantes.length > 0){
+                    $(".calendar__disponible").removeClass('calendar__disponible-active')
+                    $('.btn_extra').empty()
+                    $("#cal" + box).addClass('calendar__disponible-active')
+                     bloqueointerface();
+                    $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {
+                        'action': 'admaddvisitasupervisor',
+                        {#'listaid[]': lista,#}
+                        'fecha': fecha,
+                        'box': box,
+                        'dia': dia,
+                        'iditinerario': $('#id_itinerario').val(),
+                        'idempresa': $('#id_empresa').val(),
+                        'iddistributivo': '{{ detalledistributivo.id }}',
+                    },
+                    success: function (data) {
+                        $.unblockUI()
+                        if (data.result === true) {
+                            $('.box-content-reserva').html(data.data);
+                            $('.form-box').show()
+                            $('.box-reserva').hide()
+                            $('#cantidadetudiantes').html(eListadoEstudiantes.length);
+                            if (eListadoEstudiantes.length > 0 && parseInt($("#id_horario").val()) > 0) {
+                                $("#estudiantes").val(JSON.stringify(eListadoEstudiantes));
+                                $("#submit1").removeAttr('disabled');
+                            }else{
+                                $("#submit1").attr('disabled', 'disabled');
+                            }
+                        } else if(data.agendado === true) {
+                            RemplazarTexto('','','',box,data.mensaje)
+                        } else {
+                            alertaDanger(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI()
+                        alertaDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            }else{
+                alertaWarning("Por favor, seleccionar al menos un estudiante para continuar.");
+            }
+        }
+        function RemplazarTexto(fecha_actual,fecha_selec,mes,box,mensaje=false) {
+            let text = "Fecha no está disponible para supervisar. Puede registrar únicamente en el mes vigente (" + mes + ") de la fecha actual y hasta un plazo máximo de 5 dias de finalizar el mes."
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            $(".box-content-reserva").empty()
+            $('#box-detalle').show().addClass('card').css('border', '0px')
+            $('.mensaje').html(`<div class="swal2-icon swal2-info swal2-animate-info-icon mt-0 mb-1" style="display: flex;"></div><h2 class="text-secondary"><strong>Alerta!</strong></h2><p class="text-secondary lh-1 p-4 py-0">${text}</p>`)
+        }
+    </script>
+    <style>
+        .sinmargen{
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .box{
+        position: relative;
+        height: 100%;
+        width: 100%;
+        background-color: #0b2f44;
+        border-radius: 5px;
+        display: inline-block;
+        text-align: center;
+        }
+        .box img{
+          width: 100%;
+          height: 100%;
+        }
+        @supports(object-fit: cover){
+        .box img{
+          height: 100%;
+          object-fit: cover;
+          object-position: center center;
+        }
+    }
+    </style>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=viewsupervisiontutor&id={{ detalledistributivo.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-12'>
+             <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Adicionar registro de supervisión de prácticas pre profesionales.</h6>
+            </div>
+        </div>
+    </div>
+    <div class="row" style="justify-content: space-between;margin-left: calc(var(--bs-gutter-x) * -.5)!important;">
+        <div class="col-lg-4 col-md-5 col-sm-12">
+            <div class="card">
+{#                <div class="box-content-img">#}
+{#                </div>#}
+                <div class="card-body border-5 rounded-3 text-secondary mb-2">
+                    <a style="float: right" class="btn btn-success" href="{{ request.path }}?action=viewsupervisiontutor&id={{ detalledistributivo.pk|encrypt }}"><i class="fas fa-list-ul"></i> Supervisiones</a>
+                    <h5 style="color: #182F44; margin-bottom: 2px"><b>Parámetros para registro de supervisión</b></h5>
+                    <p class="mb-2" style="font-size: 14px; color: #8f8f8f; line-height: 16px">Recuerde seleccionar todos los campos solicitados.</p>
+                    <div class="sinmargen">
+                        <label for="id_itinerario"><i class="fas fa-university"></i> Rotación:</label>
+                        <select name="itinerario" id="id_itinerario">
+                            <option value=""></option>
+                            {% for i in listadoitinerarios %}
+                                <option value="{{ i.0 }}">{{ i.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="sinmargen ">
+                        <label for="id_empresa"><i class="fas fa-hospital-alt"></i> Empresa/Centro salud: </label>
+                        <select name="empresa" id="id_empresa">
+                            <option value=""></option>
+                        </select>
+                    </div>
+                    <div class="tbdetalle sinmargen">
+                        <div class="box-reserva text-center" id="box-detalle" style="height: 200px;">
+                            <div class="mensaje p-4 py-0">
+                                <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una empresa</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-7 col-sm-12">
+            <div class="box-reserva text-center" id="calendarmsj" style="height: 400px;">
+                <div class="p-4 py-0">
+                    <h4 class="text-secondary">El calendario se habilitará una vez seleccionado todos los campos requeridos</h4>
+                </div>
+            </div>
+            <div class="calendario">
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-12 col-sm-12">
+            <div class="box-cabecera">
+                    <h5 style="color: #182F44; margin-bottom: 2px"><b>Detalles de supervisión</b></h5>
+                    <p style="font-size: 14px; color: #8f8f8f; line-height: 14px">Seleccione un horario y describa el objeto de la visita. Es importante <strong>seleccionar uno o varios estudiantes y el turno</strong> para su registro.</p>
+                </div>
+                <form id="form2" class="form-box" autocomplete="off" method="POST" enctype="multipart/form-data" action="{{ request.path }}">
+                    {% csrf_token %}
+                    <div class="box-content-reserva">
+                    </div>
+                </form>
+            <div class="box-reserva text-center" id="box-detalle" style="height: 335px;">
+                <div class="mensaje p-4 py-0">
+                    <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una fecha</h4>
+                </div>
+                <div class="btn_extra pt-2"></div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

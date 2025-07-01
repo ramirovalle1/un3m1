@@ -1,0 +1,271 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        var lista_items1 = [];
+        $(function(){
+            $("#id_tipobien").addClass("validate[required]");
+            $("#id_fechainicio, #id_fechafin").datepicker({format:"dd-mm-yyyy"}).on("changeDate", function(ev){ $(this).datepicker("hide"); });
+            $("#id_descripcion, #id_nombre").css({"text-transform": "uppercase"});
+
+
+              $("#id_cliente").attr({"value": "0"});
+
+            $("#itemsadicionar").click(function() {
+                $("#id_nombre").val("");
+                $("#id_valor").val("0.0000");
+                $("#id_porcientorecargo").val("0");
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                $("#itemspanel").modal({backdrop:"static", width: "700px"}).modal("show");
+            });
+
+            $("#rubrospanel_cerrar").click(function() {
+                $("#rubrospanel").modal('hide');
+                $.unblockUI();
+            });
+
+            conectar_adicionar = function() {
+                $(".btn-cobrar").unbind();
+
+                $(".btn-cobrar").click(function () {
+                    var tid = $(this).attr("tid");
+                    var nombre = $(this).attr("nombre");
+                    var valor = parseFloat($("#vr"+tid).val());
+                    var recargo = parseFloat($("#recargo"+tid).val());
+                    var iva = $("#iva"+tid).val();
+                    var fecha = $("#fe"+tid).val();
+                    var tieneiva = false;
+                    if (iva == 1){
+                        tieneiva = ' ';
+                    }
+                    if (iva == 3){
+                        tieneiva = '14%';
+                    }
+                    if (iva == 2){
+                        tieneiva = '12%';
+                    }
+                    $("#incompleto, #incompletovalores, #alertasalida").hide();
+                    if (valor > 0  ) {
+                        if ($('.eliminaritem').length == 0){
+                            $("#itemsbody").empty();
+                        }
+                        $("#itemsbody").append("<tr id='fila_"+tid+"' >" +
+                                "<td>"+nombre+"</td>" +
+                                "<td style='text-align: right'>$ "+valor.toFixed(2)+"</td>" +
+                                "<td style='text-align: center'>"+tieneiva+"</td>" +
+                                "<td style='text-align: center'>"+recargo+"%</td>" +
+                                "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' id='ac_"+tid+"' title='Eliminar'  nombre='"+tid+"' valor='"+valor.toFixed(2)+"' iva='"+iva+"'  recargo='"+recargo+"' ><i class='fa fa-remove'></i></a></td>" +
+                                "</tr>");
+                        tooltips();
+                        $(".eliminaritem").unbind("click.eliminarItem");
+                        $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+                        $(".iva").unbind("click.ac_iva");
+                        $(".iva").bind("click.ac_iva", ac_iva);
+                        $(".recargo").unbind("click.recargo");
+                        $(".recargo").bind("click.recargo", recargos);
+                        $("#id_nombre").attr("disabled", false).val("");
+                        $("#id_valor").val("0.0000");
+                        $("#id_porcientorecargo").val("0");
+                        actualizar_lista();
+                        ac_valor();
+                        if ($(this).attr('id') == 'itemspanel_adicionarcerrar'){
+                            $("#itemspanel").modal("hide");
+                        }
+                    } else {
+                        $("#incompleto").show();
+                    }
+                });
+            };
+
+
+            validanumeros = function(){
+                $(".otrosrubrosinput").blur(function(){
+                    numerico($(this), 0,0,2);
+                });
+            };
+
+            conectar_adicionar();
+
+            $("#addrubro").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/rec_contratos",
+                    data: {'action': 'segotros'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#rubrospanel_rubros").html(data.html);
+                            $("#rubrospanel").modal({"backdrop":"static", "width": "800px"}).modal("show");
+                            $("#rubrospanel").find(".selectorfecha").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+                            validanumeros();
+                            conectar_adicionar();
+                            eliminarItem();
+                            $(".filterable tr:has(td)").each(function(){
+                                var t = $(this).text().toLowerCase();
+                                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+                            });
+                            $("#FilterTextBox").unbind().val('');
+                            $("#FilterTextBox").keyup(function(){
+                                var s = $(this).val().toLowerCase().split(" ");
+                                $(".filterable tr:hidden").show();
+                                $(".filterable tr:visible .indexColumn:not(:contains('" + s + "'))").parent().hide();
+                                $(".filterable3 tr:hidden").show();
+                            });
+
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+
+
+            });
+
+            $(".otrosrubrosinput").blur(function(){
+                numerico($(this), 0, 0, 2);
+            });
+
+            $("#itemspanel_cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+            });
+
+            $("#id_valor, #id_monto").blur(function(){
+                numerico($(this), 0, 0, 2);
+            });
+
+            $("#id_porcientorecargo, #id_meses").blur(function(){
+                numerico($(this), 0, 100, 0);
+            });
+
+            $("#id_diacobro").blur(function(){
+                numerico($(this), 1, 31,0);
+            });
+
+            $(".iva").blur(function () {
+                actualizar_lista();
+            });
+
+            ac_valor = function () {
+                var sum = 0;
+                $(".eliminaritem").each(function(){
+                    sum += parseFloat($(this).attr("valor"));
+                });
+                $("#id_monto").val(sum.toFixed(2));
+            };
+
+            $("#id_monto").val('');
+
+            actualizar_lista = function(){
+                lista_items1 = [];
+                var valor = 0;
+                $(".eliminaritem").each(function(){
+                    var item = {
+                        nombre: $(this).attr("nombre"),
+                        recargo: $(this).attr("recargo"),
+                        iva: $(this).attr("iva"),
+                        valor: parseFloat($(this).attr("valor"))
+                    };
+                    valor += parseFloat($(this).attr("valor"));
+                    lista_items1.push(item);
+                });
+            };
+
+            eliminarItem = function() {
+                var id = $(this).attr("nombre");
+                $("#fila_"+id).remove();
+                if ($('.eliminaritem').length == 0){
+                    $("#itemsbody").html('<tr><td colspan="10"> NO EXISTEN DETALLES DE CONTRATOS REGISTRADOS</td></tr>');
+                }
+                actualizar_lista();
+                ac_valor();
+            };
+
+            ac_iva = function(){
+                var id = $(this).attr("detalle");
+                $("#ac_"+id).attr({"find": !!$(this).is(":checked")});
+                actualizar_lista();
+            };
+
+            recargos = function(){
+                var id = $(this).attr("detalle");
+                $("#ac_"+id).attr({"uso": !!$(this).is(":checked")});
+                actualizar_lista();
+            };
+
+
+            tipo_formulario($("#form2"));
+
+            $(".eliminaritem").unbind("click.eliminarItem");
+            $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+            tipo_formulario($("#form2"));
+            actualizar_lista();
+            ac_valor();
+            eliminarItem();
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/rec_contratos{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/rec_contratos{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/rec_contratos{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <table class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th>Nombre</th>
+                <th style="width: 100px; text-align: center">Valor</th>
+                <th style="width: 100px; text-align: center">IVA</th>
+                <th style="width: 100px; text-align: center">% Recargo</th>
+                <th style="width: 40px; text-align: center"></th>
+            </tr>
+            </thead>
+            <tbody id="itemsbody" class="datatable">
+            {% for detallec in detalles %}
+                <tr id='fila_{{ detallec.rubro.id }}' >
+                    <td>{{ detallec.rubro }}</td>
+                    <td style='text-align: right'>$ {{ detallec.valor }}</td>
+                    <td style='text-align: center'>{{ detallec.iva.descripcion }}</td>
+                    <td style='text-align: center'>{{ detallec.porcientorecargo }}%</td>
+                    <td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' id='ac_{{ detallec.rubro.id }}' title='Eliminar'  nombre='{{ detallec.rubro.id }}' valor='{{ detallec.valor }}' iva='{{ detallec.iva.id }}' recargo='{{ detallec.porcientorecargo }}' ><i class='fa fa-remove'></i></a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+            <tr>
+                <td colspan="10"><a href="javascript:;" id="addrubro" class="btn btn-info btn-mini"><i class="fa fa-plus"></i> Adicionar</a></td>
+            </tr>
+            </tfoot>
+        </table>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edit'/>
+    <input type='hidden' name='id' value='{{ contrato.id }}'/>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="rubrospanel">
+        <div class="modal-header">
+            <h3 id="paneltitle">Conceptos de Cobro</h3>
+        </div>
+        <div class="modal-body">
+            <input type="text" id="FilterTextBox" class="input-block-level">
+            <div style="max-height: 400px; overflow: auto">
+                <table id="rubrospanel_rubros" class="table table-bordered table-striped table-condensed filterable">
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" id="rubrospanel_cerrar" class="btn btn-info">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block formback %}/rec_contratos{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

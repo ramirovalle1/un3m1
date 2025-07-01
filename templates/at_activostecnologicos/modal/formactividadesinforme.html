@@ -1,0 +1,234 @@
+{% load sga_extras %}
+<input type="hidden" name="id" id="id_grupo" value="{{ idgrupo|encrypt }}"/>
+<input type="hidden" name="action" value="addactividadinforme"/>
+
+<div class="row">
+    {% for field in form %}
+        {% if field.field.widget.attrs.separator %}
+            {% if field.field.widget.attrs.blanklinebefore %}
+            {% endif %}
+            <div style="width: 100%; height: max-content">
+                <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                </span>
+                </h6>
+            </div>
+        {% endif %}
+        <div id="fieldset_{{ field.name }}" class="col-lg-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %} col-sm-9 col-8"
+             style="float: left;">
+            <label class="control-label pr-2" for="id_{{ field.name }}">
+                <b>{{ field.label }}&nbsp;:</b></label>
+            <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+                {{ field }}
+                <p class="help-text">{{ field.help_text }} </p>
+                <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0 errorMessage"></p>
+            </div>
+        </div>
+    {% endfor %}
+    <div class="mt-4 col-sm-3 col-lg-2 col-4" style="text-align: right">
+        <button type="submit" id="submit" class="btn btn-success w-100"><i class="fa fa-check-circle"></i> Guardar</button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-12">
+        <table class="table table-bordered table-responsive tabla_paginada" width="100%" id="id_requisitos">
+            <thead class="table-light">
+            <tr>
+                <th class="text-center">&nbsp;<b><i class="fa fa-file-text"></i> Actividad
+                    (<b id="total">{{ filtro|length }}</b>)</b></th>
+                <th class="text-center w-15">&nbsp;<i class="fa fa-eye"></i> ¿Mostrar?</th>
+                <th class="text-center w-5"><i class="fa fa-cogs"></i></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for list in filtro %}
+                <tr id="box_{{ list.id }}">
+                    <td class="text-center">
+                        <input type="text" name="descripcion_" class="descedit" id="{{ list.id }}" value="{{ list.descripcion }}" actual="{{ list.descripcion }}">
+{#                        <h5 class="text-secondary">{{ list.descripcion }}</h5>#}
+                    </td>
+                    <td class="text-center w-15">
+                        <input type="checkbox" {% if list.activo %}checked{% endif %} name="mostrar" class="activar"
+                               id="activo_{{ list.id }}" data-id="{{ list.id }}">
+                    </td>
+                    <td class="text-center w-5">
+                        <a href="javascript:void(0);"
+                           onclick="eliminarajaxl('{{ list.id }}', '{{ list }}','delactividadinforme')"
+                           class="btn btn-mini btn-outline-danger"><i class="fa fa-trash"></i></a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <h6 class="text-danger">*<i class="fa fa-info-circle"></i> Los requisitos registrados se visualizaran en el
+            servicio.*</h6>
+    </div>
+</div>
+<script>
+    var total ={{ filtro|length }};
+    var iter = false;
+
+    $(function () {
+        CheckActivation()
+        $('#cerrar').click(function () {
+            if (iter) {
+                location.reload()
+            }
+        });
+         $('.descedit').on('blur', function (e){
+                send_value_ajax('editactividadinforme', $(this));
+            });
+    });
+
+    $(document).ready(function () {
+        const tabla_paginada = $('.tabla_paginada').DataTable({
+            responsive: false,
+            {#scrollX: true,#}
+            ordering: false,
+            paging: true,
+            searching: false,
+            pageLength: 5,
+            bInfo: false,
+            dom: 'Bfrtip',
+            language: {
+                "url": '/static/js/i18n/Spanish.json'
+            },
+            buttons: []
+        });
+        $('.tabla_paginada tbody').on('click', 'tr', function () {
+            var data = tabla_paginada.row(this).data();
+        });
+    });
+
+    function send_value_ajax(action, elemento) {
+        bloqueointerface()
+        $.ajax({
+            type: 'POST',
+            url: '{{ request.path }}',
+            data: {
+                'action': action,
+                'idgrupo':'{{ idgrupo|encrypt }}',
+                'id': elemento.attr('id'),
+                'name':elemento.attr('name'),
+                'val': elemento.val()
+            },
+            success: function (data) {
+                $.unblockUI();
+                 if (data.result === true) {
+                     iter=true
+                        alertaSuccess(data.mensaje)
+                    } else {
+                        alertaDanger(data.mensaje);
+                         elemento.val(elemento.attr('actual'));
+                    }
+            },
+            error: function () {
+                alertaDanger("Error de conexión.");
+            },
+            dataType: "json"
+        });
+    }
+
+    //Actualizar estados de checks
+    function CheckActivation() {
+        $('.activar').click(function () {
+            var id = $(this).attr('data-id');
+            var check = $(this).is(':checked');
+            var name = $(this).attr('name');
+            ActualizarEstado(id, 'editactividadinforme', check, name)
+        });
+    }
+
+    function ActualizarEstado(id, action, check, name) {
+        bloqueointerface();
+        $.ajax({
+            type: "POST",
+            url: "{{ request.path }}",
+            data: {'action': action, 'id': id, 'val': check, 'name': name},
+            success: function (data) {
+                if (data.result === true) {
+                    $.unblockUI();
+                    alertaSuccess(data.mensaje)
+                } else {
+                    $.unblockUI();
+                    CheckError(check, id)
+                    alertaDanger(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                CheckError(check, id)
+                alertaInfo("Error al enviar los datos.");
+            },
+            dataType: "json"
+        });
+        iter = true
+    }
+
+    function CheckError(check, id) {
+        if (check) {
+            $("#activo_" + id).prop('checked', false);
+        } else {
+            $("#activo_" + id).prop('checked', true);
+        }
+    }
+
+    function limpiar(id) {
+        $('#box_' + id).empty()
+        total -= 1
+        iter = true
+        $('#total').text(`${total}`)
+        if (total == 0) {
+            $('.tabla_paginada tbody').append($('<tr>', {}).append(
+                $('<td>', {'class': 'text-center dataTables_empty', 'colspan': 5}).append($('<p>', {
+                    'class': 'text-secondary',
+                    'text': `Ningún dato disponible en esta tabla`,
+                })),
+            ))
+        }
+    }
+
+    /*Actualizar Tabla con nuevos elementos*/
+    function ActualizarTabla(data) {
+        $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_${data.id}`, 'rol': 'row', 'class': 'odd'}).append(
+            $('<td>', {'class': 'text-center'}).append($('<input>', {
+                'type': 'text',
+                'class': 'descedit',
+                'name': 'descripcion_',
+                'actual':`${data.descripcion}`,
+                'id':`${data.id}`,
+                'value': `${data.descripcion}`,
+            })),
+            $('<td>', {'class': 'text-center'}).append($('<input>', {
+                'class': 'activar',
+                'type': 'checkbox',
+                'checked': data.mostrar,
+                'data-id': `${data.id}`,
+                'id': `activo_${data.id}`,
+                'name': `mostrar`,
+            })),
+            $('<td>', {'class': 'text-center'}).append($('<a>', {
+                'class': 'btn btn-mini btn-outline-danger',
+                'href': 'javascript:void(0);',
+                'onclick': `eliminarajaxl('${data.id}', '${data.descripcion}','delactividadinforme')`,
+                'html': `<i class="fa fa-trash"></i>`
+            })),
+        ));
+        total += 1
+        iter = true
+        $("#id_descripcion").val('')
+        $("#id_opcional").prop('checked', false);
+        $("#id_archivo").prop('checked', false);
+        $('#total').text(`${total}`)
+        $('#id_requisitos tr .dataTables_empty').hide()
+        $('.errorMessage').empty()
+         $('.descedit').on('blur', function (e){
+                send_value_ajax('editactividadinforme', $(this));
+            });
+        CheckActivation()
+    }
+</script>

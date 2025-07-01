@@ -1,0 +1,336 @@
+{% extends 'th_personal/basepersonal.html' %}
+{% load sga_extras %}
+{% block heading_ext %}
+    <script type="text/javascript">
+        function reportemensual() {
+            $("#reportemensual").modal({backdrop: 'static', width: '500px'}).modal('show');
+        }
+        $(function () {
+            busqueda = function () {
+                bloqueointerface();
+                var term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length > 0) {
+                    location.href = "/th_personal?action=listadocontratosfirmados&s=" + term;
+                } else {
+                    location.href = "/th_personal?action=listadocontratosfirmados"
+                }
+            };
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $("#id_fini, #id_ffin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide');});
+            $("#id_fini, #id_ffin").addClass("validate[required]");
+
+            $("#detallearchivohistorial_cerrar").click(function () {
+                $("#detallearchivohistorial").modal("hide");
+            });
+            $(".informacionhistorialarchivoscontratos").click(function () {
+                var id = $(this).attr('idt');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/th_personal",
+                    data: {'action': 'historialarchivopersonal', 'id': id},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#detallearchivohistorial_body").html(data.html);
+                            $("#detallearchivohistorial").modal({
+                                "backdrop": "static",
+                                "width": "1000px"
+                            }).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+            $("#generar_reportemensual").click(function () {
+                var f_inicio = $('#id_fini').val();
+                var f_fin = $('#id_ffin').val();
+
+                if (f_inicio && f_fin) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'GET',
+                        url: '{{ request.path }}',
+                        data: {'action': 'consultatotalcontratos', 'finicio': f_inicio, 'ffin': f_fin},
+                        dataType: "json",
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.state) {
+                                smoke.confirm(`¿Está a punto de descargar ${data.totinformes} archivos de contratos?.`, function (e) {
+                                        if (e) {
+                                            openwindow('GET', '{{ request.path }}', {
+                                                action: 'bajarconsolidadocontratoszip',
+                                                finicio: f_inicio,
+                                                ffin: f_fin,
+                                            }, '_blank');
+                                        }
+                                    },
+                                    {ok: "Si, deseo continuar", cancel: "Cancelar"}
+                                );
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error");
+                        },
+                    });
+
+
+                } else {
+                    smoke.alert('Complete los parametros')
+                }
+            });
+            $(".recharzar_contrato_firmado").click(function(){
+                var id = $(this).attr("idi2");
+                smoke.confirm("¿Está seguro de rechazar el contrato firmado por el personal?", function(e){
+                    if (e){
+                        $.blockUI({message: null});
+                        $.post("/th_personal", {"action":'rechazarcontratofirmado', "id": id}, function(data) {
+                            if (data.result=='ok') {
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }, "json");
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block content %}
+    <form method="GET" id="form-filters" enctype="multipart/form-data" style="align-items: end">
+        <div class="form-row">
+            <input type="hidden" name="action" value="{{ action }}"/>
+            <input type="hidden" name="idp" value="{{ idp|encrypt }}"/>
+            <div class="col pe-2 pb-1 ">
+                Reporte:
+                <div class=" ">
+                    <a class='btn btn-light' href="{{ request.path }}?action=bajarconsolidadocontratoszipfinalizados"
+                       target="_blank">
+                        <i class="fa fa-download"></i> Consolidado
+                    </a>
+                </div>
+            </div>
+            <div class="col pe-2 pb-1">
+                <i class="fa fa-search tu" title="Criterio"></i> Criterio:
+                <div class="input-group text-left">
+                    <input class="form-control" type='text' id='searchinput' value='{{ s }}' autocomplete="off"
+                           name="s" placeholder="Buscar por funcionario o contrato" style="width: 60%"/>
+                    <div class="input-group-append">
+                        <button class="btn btn-primary" type="submit" id="button-addon2"><i
+                                class="fa fa-search"></i></button>
+                        {% if url_vars %}
+                            <a href="{{ request.path }}?action=detalleconstataciones&idp={{ idp|encrypt }}"
+                               id='allresults' class='btn btn-default'><span class="fa fa-refresh "></span></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div id="no-more-tables">
+        <table class='table table_primary ' cellpadding="0" cellspacing="0">
+            <thead>
+            <tr>
+                <th style="width: 2%;text-align: center;"></th>
+                <th style="width: 30%;text-align: center;">Servidor</th>
+                <th style="width: 10%;text-align: center;">Nº contrato</th>
+                <th style="width: 10%;text-align: center;">Fecha</th>
+                <th style="width: 5%;text-align: center;">Info.</th>
+                <th style="width: 10%;text-align: center;">Estado</th>
+                <th style="width: 10%;text-align: center;">Archivo</th>
+                <th style="width: 5%;text-align: center;">¿Aprobado?</th>
+                <th style="width: 3%;text-align: center;"></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for inscrito in listadoinscritos %}
+                <tr>
+                    <td style="text-align: center">{{ forloop.counter }}</td>
+                    <td class="text-secondary align-middle w-25">
+                        <div class="mb-3" style="max-width: 540px;">
+                            <div class="row g-0">
+                                <div class="col-md-3 text-center"
+                                     style="display: flex; align-items: center; align-content: center; justify-content: center">
+                                    <img src="{{ inscrito.persona.get_foto }}" alt=""
+                                         class="img-fluid rounded-circle"
+                                         width="60px">
+                                </div>
+                                <div class="col-md-9">
+                                    <div class="">
+                                        <small class="card-text" title="Nombre completo"
+                                               data-bs-toggle="tooltip"><i
+                                                class="fa fa-user"></i> {{ inscrito.persona.nombre_completo_minus }}
+                                        </small><br>
+                                        <small class="card-text" title="Cédula" data-bs-toggle="tooltip"><i
+                                                class="fa fa-address-card"></i> {{ inscrito.persona.cedula }}
+                                        </small><br>
+                                        <small class="card-text">
+                                            {% if inscrito.persona.telefono %} <i class="fa fa-phone"></i>
+                                                {{ inscrito.persona.telefono }}
+                                                <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ inscrito.persona.telefono }}&text=Hola {{ list.persona }}'
+                                                   target="_blank" class="btn btn-mini btn-success tu"
+                                                   title="Enviar mensaje por whatsapp">
+                                                    <i class="fa fa-whatsapp"></i>
+                                                </a>
+                                            {% endif %}
+                                        </small><br>
+                                        <small class="card-text" title="Correo electronico"
+                                               data-bs-toggle="tooltip">
+                                            <i class="fa fa-envelope"></i>
+                                            {% if inscrito.persona.emailinst %}
+                                                {{ inscrito.persona.emailinst }}
+                                            {% else %}
+                                                {{ inscrito.persona.email }}
+                                            {% endif %}
+                                        </small>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+
+                    <td style="text-align: center;">{{ inscrito.numerodocumento }}</td>
+                    <td style="text-align: center;">{{ inscrito.fecha_creacion|date:"d-m-Y" }}</td>
+
+                    <td style="text-align: center;">
+                        <a class="btn btn-info btn-mini"
+                           onclick="formModal({{ inscrito.id }},{{ inscrito.id }},'Información','historialarchivopersonal')"
+                           href="javascript:void(0);"
+                           title="Detalles"><i class="fa fa-list"></i></a>
+                    </td>
+
+                    <td style="text-align: center;">
+                        {% if inscrito.contrato_firmado_estado %}
+                            {% if inscrito.contrato_firmado_estado_label == 1 %}
+                                <span class="label label-info">
+                                        {{ inscrito.contrato_firmado_estado }}
+                                      </span>
+                            {% endif %}
+                            {% if inscrito.contrato_firmado_estado_label == 2 %}
+                                <span class="label label-info">
+                                        {{ inscrito.contrato_firmado_estado }}
+                                      </span>
+                            {% endif %}
+                            {% if inscrito.contrato_firmado_estado_label == 3 %}
+                                <span class="label label-success">
+                                        {{ inscrito.contrato_firmado_estado }}
+                                      </span>
+                            {% endif %}
+                            {% if inscrito.contrato_firmado_estado_label == 4 %}
+                                <span class="label label-important">
+                                        {{ inscrito.contrato_firmado_estado }}
+                                      </span>
+                            {% endif %}
+                            {% if inscrito.contrato_firmado_estado_label == 5 %}
+                                <span class="label label-warning">
+                                        {{ inscrito.contrato_firmado_estado }}
+                                      </span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {#                                {% if inscrito.contrato_firmado_director  %}#}
+                        <a href="{{ inscrito.contrato_firmado_director }}" target="_blank"><img
+                                src="/static/images/pdf.png" width="18" height="18" align="absmiddle"></a>
+                        {#                                {% endif %}#}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if inscrito.estado %}
+                            <i class="fa fa-check"></i>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if inscrito.contrato_firmado_estado %}
+                            <div class="dropbottom">
+                                {% if inscrito.contrato_firmado_estado_label == 2 %}
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                       aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                    </a>
+                                    <ul class="dropdown-menu pull-right" style="text-align: left">
+                                        <li><a
+                                                onclick="formModal({{ inscrito.id }},{{ inscrito.id }},'Adicionar archivo firmado por director','addarchivocontratofirmadodirector')"
+                                                href="javascript:void(0);" class="dropdown-item"><i
+                                                class="fa fa-plus-circle"></i> Adicionar contrato firmado</a></li>
+                                    </ul>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </td>
+
+                </tr>
+            {% empty %}
+                <tr>
+                    <td style="text-align: center;" colspan="11">
+                        NO EXISTEN CONTRATOS PENDIENTES POR FIRMAR
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer">
+        {% include 'paginacionb4.html' %}
+    </div>
+
+{% endblock %}
+{% block moreblock_ext %}
+     <div class="modal fade static" id="detallearchivohistorial" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Contratos</h3>
+        </div>
+        <div class="modal-body" id="detallearchivohistorial_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detallearchivohistorial_cerrar" class="btn btn-info"> Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="reportemensual" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle"><i class="fa fa-file-pdf-o"></i> Descargar consolidado contratos</h4>
+        </div>
+        <div class="modal-body" style="text:center ;max-height: calc(100% - 120px);
+    overflow-y: scroll;">
+            Fecha Desde:  <input placeholder="Fecha desde" type="text" value="" name="id_fini" id="id_fini" style="width: 100px">
+            <br>
+            <br>
+            Fecha Hasta:  <input placeholder="Fecha hasta" type="text" value="" name="id_ffin" id="id_ffin" style="width: 100px">
+
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success" id="generar_reportemensual"><i class="fa fa-download"></i>
+                Generar</a>
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i class="fa fa-window-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+
+{% endblock %}

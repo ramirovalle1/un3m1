@@ -1,0 +1,255 @@
+{% load sga_extras %}
+<style>
+    table.table#example tbody td:nth-child(5) {border-left: 1px solid black;border-left-color: #f0f0f0;}
+    table.table#example tbody td:nth-child(6) {border-left: 1px solid black;border-left-color: #f0f0f0;}
+    table.table#example tbody td:nth-child(7) {border-left: 1px solid black;border-left-color: #f0f0f0;}
+</style>
+<script>
+
+    function __getSum(obj) {
+        return $(obj).map((index, element) => parseInt(element.innerHTML)).get().reduce((x, numero) => x + numero, 0);
+    }
+
+    $(function() {
+        var h =$(window).height() - 332;
+        var table = $('#example').DataTable({
+            "sPaginationType": "full_numbers",
+            "sDom": 'T<"clear">lfrtip',
+            "paging":   false,
+            "ordering": false,
+            "info":     false,
+            "searching": false,
+            {#                "scrollY": h,#}
+            "order": [[ 1, 'asc' ]],
+            "columnDefs": [{ "visible": false,"targets": 1 }],
+            "drawCallback": function ( settings ) {
+                var api = this.api();
+                var rows = api.rows( {page:'current'} ).nodes();
+                var last=null;
+                var contador = 1;
+                api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                    if ( last !== group ) {
+                        contador = contador + 1;
+
+                        {% if es_decano %}
+                            /* para calcular la fila de resumenes */
+                            let coordinacion_id = $(group).attr('id');
+                            let sumTotal = __getSum('.total-' + coordinacion_id);
+                            let sumFirma = __getSum('.firmados-' + coordinacion_id);
+                            let sumRevis = __getSum('.revisados-' + coordinacion_id);
+                            let sumAprob = __getSum('.aprobados-' + coordinacion_id);
+                            let sumPorce = __getSum('.porcentaje-' + coordinacion_id);
+                            let sumFalta = __getSum('.faltantes-' + coordinacion_id);
+
+                            let __porce = sumPorce / $('.porcentaje-' + coordinacion_id).length
+                            let __class = sumPorce > 99 ? 'success' : (__porce >= 60) && (__porce <= 99) ? 'warning' : 'danger';
+
+                            /*let p = `<div class="progress"><div class="progress-bar progress-bar-striped bg-${__class}" role="progressbar" style="font-weight: bold;width: ${__porce < 60 ? 59 : __porce}%" aria-valuenow="100.0" aria-valuemin="0" aria-valuemax="100">${__porce.toFixed(2)} %</div></div>`*/
+                            let p = `<span class="text-${__class}">${__porce.toFixed(2)} %</span>`;
+                            let a = `<a title="Descargar informes consolidados de la facultad" href="?action=descargarplanificados&idfac=${coordinacion_id}&numeromes={{ meselec }}&anio={{ anioselected }}"><strong>${sumTotal}</strong></a>`
+
+                            $(rows).eq( i ).before(
+                                `<tr>
+                                    <td colspan="2" height="10" bgcolor="#000000"><strong>${group}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${a}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${sumFirma}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${sumRevis}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${sumAprob}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${sumFalta}</strong></td>
+                                    <td style="text-align: center;vertical-align: middle;" height="10" bgcolor="#000000"><strong>${p}</strong></td>
+                                 </tr>`
+                            );
+                        {% else %}
+                            $(rows).eq( i ).before(`<tr><td colspan="8" height="10" bgcolor="#000000"><strong>${group}</strong></td></tr>`);
+                        {% endif %}
+
+                        last = group
+                    }
+                });
+                $('[data-toggle="tooltip"]').tooltip();
+            }
+        });
+
+    });
+    $(function () {
+        $(".id_mestotal").click(function(){
+            var idmes = $(this).attr('idm');
+            var ida = $(this).attr('ida');
+            $("#itemspaneldetalleinforme").modal('hide');
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/adm_criteriosactividadesdocente",
+                data: {'action': 'detalleinformetotal', 'idmes': idmes, 'idanio': ida},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $(".panelbodydetalleinforme").html(data.data);
+                        $("#itemspaneldetalleinforme").modal({backdrop: 'static', width: '1000px'}).modal('show');
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    alertaDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+
+        });
+        $(".descargarzip").click(function(){
+            var codigo = $(this).attr('idcod');
+            var idtipo = $(this).attr('idtipo');
+            openwindow('POST', '/adm_criteriosactividadesdocente', {'action': 'descargainformesxtipo', 'csrfmiddlewaretoken': '{{ csrf_token }}', 'codigo': codigo, 'idtipo': idtipo, 'numeromes': {{ meselec }} }, '_blank');
+        });
+
+
+        $(".generarinforme").click(function(){
+             var idmes = $(this).attr('idm');
+             var ida = $(this).attr('ida');
+             var anual = $(this).attr('anual');
+             openwindow('POST' ,'/adm_criteriosactividadesdocente', {action:'generainformefirmar','idmes': idmes, 'idanio': ida,'anual': anual}, '_blank');
+        });
+    });
+
+</script>
+<div class="col-sm-12">
+    <div class="col-sm-12 d-flex justify-content-between">
+        <div class="btn-group " role="group">
+            {% for mes in listadomeses %}
+                <a href="#" idm="{{ mes.month }}" ida="{{ mes.year }}" class="id_mestotal btn btn-{% if mes.month == meselec %}success{% else %}default{% endif %} bloqueo_pantalla py-2">
+                    <i class="fa fa-calendar"></i> <strong>{{ mes|nombremes|upper }}</strong>
+                </a>
+            {% endfor %}
+        </div>
+
+    {% for mes in listadomeses %}
+        {% if mes.month == meselec %}
+          <script>
+                var todosFaltantesCero = true;  // Variable para verificar si todos los faltantes son 0
+
+                {% for dis in listadodistributivo %}
+                    {% with faltantes=dis.total_profesores|restanumeros:dis.profesores_apro_informe %}
+                        {% if dis.todos_informes_firmados %}
+                                var faltantes = {{ faltantes }};
+                                if (faltantes !== 0) {
+                                    todosFaltantesCero = false;  // Si algún faltante no es 0, cambia a false
+                                }
+                        {% endif %}
+                    {% endwith %}
+                {% endfor %}
+                // Mostrar el botón si todos los faltantes son 0
+                if (todosFaltantesCero) {
+                    document.getElementById("botonReporte").style.display = "block";
+                }
+            </script>
+                     <div class="dropbottom" style="text-align: right;display: none;" id="botonReporte"  >
+                        <button href="#" class="btn btn-success" style="padding-top: 1em!important;padding-bottom: 1em!important;" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
+                                 Reportes <i class="fa fa-ellipsis-v" style="font-size:9px"></i>
+                        </button>
+                        <ul class="dropdown-menu" x-placement="right-start" style="position: absolute; inset: 0px auto auto 0px; margin: 0px; transform: translate(845px, 173px);" data-popper-placement="bottom-end">
+                            <li class="dropdown-item">
+                                <a type="button" class="dropdown-item generarinforme" idm="{{ mes.month }}" anual="mes" ida="{{ mes.year }}" href="javascript:void(0)">
+                                   Reporte mensual
+                                </a>
+                            </li>
+                            <li class="dropdown-item">
+                                <a type="button" class="dropdown-item generarinforme" href="javascript:void(0)" anual="periodo" idm="{{ mes.month }}" ida="{{ mes.year }}">
+                                    Reporte por periodo
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+        {% endif %}
+    {% endfor %}
+    </div>
+</div>
+<table class='table table_primary ' id="example">
+    <thead class="table-light">
+    <tr>
+        <th style="border:0!important;">#</th>
+        <th style="text-align: center;">FACULTAD</th>
+        <th style="text-align: center;width: 500px">CARRERA</th>
+        <th style="text-align: center;">PLANIFICADOS</th>
+        <th style="text-align: center;">DOCENTE</th>
+        <th style="text-align: center;">DIRECTOR</th>
+        <th style="text-align: center;">DECANO</th>
+        <th style="text-align: center;">FALTANTE</th>
+        <th style="text-align: center;width: 150px"></th>
+    </tr>
+    </thead>
+    <tbody id="detalle_evidencias">
+    {% for dis in listadodistributivo %}
+        <tr id="fila_default_evidencia">
+            <td style="text-align: center">{{ forloop.counter }}</td>
+            <td style="text-align: left">
+                <span id="{{ dis.coordinacion_id }}">
+                    <a href="javascript:;" class="descargarzip" idcod="{{ dis.coordinacion_id }}" idtipo="1"><i class="fa fa-file-zip-o"></i></a>
+                    {{ dis.coordinacion__nombre }}
+                    {% with coordinador=periodolec|args:dis.coordinacion_id|args:1|call:"responsable_periododoscoor" %}
+                        <p class="h6" style="color: #7C7C7C;"><i class="fa fa-user fa-1x"></i> {{ coordinador|default:'' }}</p>
+                    {% endwith %}
+                </span>
+            </td>
+            <td style="text-align: left;;width: 800px">
+                {% if dis.profesores_apro_informe > 0 %}
+                    <a href="javascript:;" class="descargarzip" idcod="{{ dis.carrera_id }}" idtipo="2"><i class="fa fa-file-zip-o"></i></a>
+                {% endif %}
+                {{ dis.carrera__nombre }}
+                {% if dis.carrera__modalidad == 1 %}
+                    PRESENCIAL
+                {% endif %}
+                {% if dis.carrera__modalidad == 2 %}
+                    SEMIPRESENCIAL
+                {% endif %}
+                {% if dis.carrera__modalidad == 3 %}
+                    EN LÍNEA
+                {% endif %}
+                {% if dis.carrera__modalidad == 4 %}
+                    HÍBRIDA
+                {% endif %}
+                {% with coordinadorcarrera=periodolec|args:dis.carrera_id|args:1|call:"coordinador" %}
+                    <span style="font-size: 10px;font-weight: bold"><i class="fa fa-user fa-1x"></i> {{ coordinadorcarrera.persona|default:'' }}</span>
+                {% endwith %}
+            </td>
+            <td style="text-align: center;width: 25px">
+                <a href="?action=descargarplanificados&idfac={{ dis.coordinacion_id }}&idcarr={{ dis.carrera_id }}&numeromes={{ meselec }}&anio={{ anioselected }}"><strong class="total-{{ dis.coordinacion_id }}">{{ dis.total_profesores }}</strong></a>
+            </td>
+            <td style="text-align: center;width: 25px">
+                <span class="firmados-{{ dis.coordinacion_id }}">{{ dis.profesores_fir_informe }}</span>
+            </td>
+            <td style="text-align: center;width: 25px">
+                <span class="revisados-{{ dis.coordinacion_id }}">{{ dis.profesores_rev_informe }}</span>
+
+            </td>
+            <td style="text-align: center;width: 25px">
+                <span class="aprobados-{{ dis.coordinacion_id }}">{{ dis.profesores_apro_informe }}</span>
+            </td>
+            <td style="text-align: center;width: 25px">
+                {% with faltantes=dis.total_profesores|restanumeros:dis.profesores_apro_informe %}
+                    <b><span class="faltantes-{{ dis.coordinacion_id }}" {% if faltantes > 0 %}style="color: #f41d34"{% endif %}>{{ faltantes }}</span></b>
+                {% endwith %}
+            </td>
+            <td style="text-align: center;width: 25px">
+                <div class="progress">
+                    {% with porcentaje=dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe %}
+                        {% if porcentaje > 99 %}
+                            <div class="progress-bar progress-bar-striped bg-success" role="progressbar" style="font-weight: bold;width: {{ dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe }}%" aria-valuenow="100.0" aria-valuemin="0" aria-valuemax="100">{{ dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe|floatformat:"2" }} %</div>
+                        {% endif %}
+                        {% if porcentaje >= 60 and porcentaje <= 99 %}
+                            <div class="progress-bar progress-bar-striped bg-warning" role="progressbar" style="font-weight: bold;width: {{ dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe }}%" aria-valuenow="100.0" aria-valuemin="0" aria-valuemax="100">{{ dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe|floatformat:"2" }} %</div>
+                        {% endif %}
+                        {% if porcentaje < 60 %}
+                            <div class="progress-bar progress-bar-striped bg-danger" role="progressbar" style="font-weight: bold;width: 59%" aria-valuenow="100.0" aria-valuemin="0" aria-valuemax="100">{{ dis.total_profesores|calculaporcentaje:dis.profesores_apro_informe|floatformat:"2" }} %</div>
+                        {% endif %}
+                        <span class="porcentaje-{{ dis.coordinacion_id }} d-none">{{ porcentaje }}</span>
+                    {% endwith %}
+                </div>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+

@@ -1,0 +1,520 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript">
+        var materias_seleccionadas = [];
+        function formModal(id, text, action, idpreins=0, idturno=0, footer = true, dimension = false) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idpreins': idpreins,
+                    'idturno': idturno,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function validar_turnoseleccion(id, text, text2, action, idpreins, idturno, habilita_matricula) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'validarturnoseleccion',
+                    'ido': id,
+                    'id': idpreins,
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        console.log('habilita_matricula');
+                        console.log(habilita_matricula);
+                        console.log(habilita_matricula.toLowerCase());
+                        if (habilita_matricula.toLowerCase() === "true"){
+                            formModal(id, text, 'seleccionasignaturaitinerario', idpreins, idturno, false, 'modal-lg');
+                        }else{
+                            $.unblockUI();
+                            inscribirppp(id, 'Al confirmar, usted será inscrito para sus prácticas pre profesionales en '+text2+'.', 'inscribirpracticapp', idpreins, idturno, false)
+                        }
+                    } else {
+                        $.unblockUI();
+                        if (data.sincupo === true){
+                            mensajeWarningSwal("", data.message);
+                            {#location.reload();#}
+                        }else{
+                            mensajeWarningSwal("", data.message);
+                        }
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function obtener_lista_materias(idinscripcion, idpreins, idnivel, idmateria, paralelo) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'obtenerlistamaterias',
+                    'idinscripcion': idinscripcion,
+                    'idpreins': idpreins,
+                    'idnivel': idnivel,
+                    'idmateria': idmateria,
+                    'paralelo': paralelo,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        materias_seleccionadas = data.listado;
+                        console.log('despues ___ materias_seleccionadas: ');
+                        console.log(materias_seleccionadas);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function inscribirppp_matricular(id, text, action, idpreins, idturno, cobro, idinscripcion, idnivel, tipo_matricula, idmateria, paralelo, matriculacion=false) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'obtenerlistamaterias',
+                    'idinscripcion': idinscripcion,
+                    'idpreins': idpreins,
+                    'idnivel': idnivel,
+                    'idmateria': idmateria,
+                    'paralelo': paralelo,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        materias_seleccionadas = data.listado;
+                        if (materias_seleccionadas.length > 0){
+                            Swal.fire({
+                                title: '¿Estás seguro de ejecutar la acción?',
+                                text: text,
+                                type: 'warning',
+                                showCancelButton: true,
+                                confirmButtonColor: '#3085d6',
+                                cancelButtonColor: '#d33',
+                                confirmButtonText: 'Si, ejecutar!',
+                                cancelButtonText: 'Cancelar'
+                            }).then((result) => {
+                                if (result.value) {
+                                    bloqueointerface();
+                                    $.ajax({
+                                        type: 'POST',
+                                        url: '{{ reques.path }}',
+                                        {#async: false,#}
+                                        data: {
+                                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                                            action: action,
+                                            id: idinscripcion,
+                                            idpreins: idpreins,
+                                            idturno: idturno,
+                                            cobro: cobro,
+                                            idconfig: id,
+                                            nivel: idnivel,
+                                            tipo_matricula: tipo_matricula,
+                                            idmateria: idmateria,
+                                            materias: JSON.stringify(materias_seleccionadas),
+                                            practicas: JSON.stringify([]),
+                                            paralelo: paralelo,
+                                            matriculacion: matriculacion,
+
+                                        },
+                                        dataType: "json",
+                                        beforeSend: function () {
+                                        }
+                                    }).done(function (data) {
+                                        setTimeout($.unblockUI, 1);
+                                        if (data.result === 'ok') {
+                                            var mensaje = 'Se ha inscrito correctamente!';
+                                            if (matriculacion){
+                                                console.log('data.valorpagar');
+                                                console.log(data.valorpagar);
+                                                console.log(parseInt(data.valorpagar));
+                                               if (!data.valorpagar || parseInt(data.valorpagar) === 0) {
+                                                    mensaje = 'Se ha inscrito y matriculado correctamente.';
+                                               }
+                                                else{
+                                                    mensaje = 'Se ha inscrito y matriculado correctamente, valor a pagar '+data.valorpagar+'.';
+                                               }
+                                            }
+                                            Swal.fire( mensaje, '', 'success' ).then(function () {
+                                                bloqueointerface();
+                                                location.href = "{{ request.path }}"
+                                            });
+                                        } else {
+                                            Swal.fire(data.mensaje);
+                                        }
+                                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                                        setTimeout($.unblockUI, 1);
+                                        Swal.fire({
+                                                    text: 'Error al intentar conectar con el servidor',
+                                                    type: 'error',
+                                                    icon: 'error'
+                                                });
+                                    }).always(function () {
+                                    });
+                                }
+                            })
+                        }else{
+                            Swal.fire('No se encontraron las asignaturas programadas a matricular en este periodo.');
+                        }
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function inscribirppp(id, text, action, idpreins, idturno, matriculacion=false) {
+            Swal.fire({
+                title: '¿Estás seguro de ejecutar la acción?',
+                text: text,
+                type: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, inscribir!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                console.log(result);
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        {#async: false,#}
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: action,
+                            idpreins: idpreins,
+                            idturno: idturno,
+                            idconfig: id,
+                            matriculacion: matriculacion,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                        }
+                    }).done(function (data) {
+
+                        if (data.result === 'ok') {
+                            var mensaje = 'Se ha inscrito correctamente!';
+                            Swal.fire( mensaje, '', 'success' ).then(function () {
+                                bloqueointerface();
+                                location.href = "{{ request.path }}"
+                            });
+                        } else {
+                            Swal.fire(data.mensaje);
+                        }
+                        setTimeout($.unblockUI, 1);
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        Swal.fire({
+                                    text: 'Error al intentar conectar con el servidor',
+                                    type: 'error',
+                                    icon: 'error'
+                                });
+                    }).always(function () {
+                    });
+                }
+            })
+        }
+
+    </script>
+    {# BUSCADOR #}
+    <style>
+        #idbuscadoroferta {
+            width: 30%;
+            padding: 3px 15px;
+            float: right;
+            -webkit-border-radius: 20px;
+            border-radius: 20px;
+            margin-top: -4px;
+            background: #f1f1f1;
+            color: #8A8E8F;
+        }
+        .etiqueta-secondary {
+            width: 100%;
+            background-color: #D3DEE8!important;
+            color: #1F354A!important;
+            border-color:#D3DEE8!important;
+            font-weight: 400!important;
+            border-radius: 20px!important;
+            padding: 5px 18px 5px 18px!important;
+        }
+
+        {#.etiqueta-secondary:hover {#}
+        {#    background-color: #1F354A!important;#}
+        {#    border-color:#1F354A!important;#}
+        {#    color: white!important;#}
+        {# }#}
+    </style>
+    <script>
+        $(function () {
+
+            $('#idbuscadoroferta').keyup(function () {
+                var _this = this;
+                var searchText = $(this).val();
+                $('.optionSelectCard > .action-menu-entry').each(function () {
+                    var currentLiText = $(this).text().toUpperCase(), showCurrentLi = currentLiText.indexOf(searchText.toUpperCase()) !== -1;
+                    if (converToAscii($(this).text().toLowerCase()).indexOf(converToAscii($(_this).val().toLowerCase())) === -1) {
+                        $(this).hide();
+                        console.log('lo oculta');
+                    } else {
+                        $(this).show();
+                        console.log('lo muestra');
+                    }
+                });
+            });
+        })
+    </script>
+    {# BUSCADOR #}
+{% endblock %}
+{% block atras %}/alu_practicassaludinscripcion{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-fullscreen" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Gestiona tu inscripción en las instituciones disponibles en el periodo actual para realizar tus horas de prácticas pre profesionales.</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class='row px-3'>
+        <div class='col col-md-3'>
+            <div class="card mb-4">
+                <div class="p-0 card-body">
+                    <div class="pt-16 rounded-top-md" style="background: url(/static/images/aok/banner-tarjeta3.png) 0% 0% / cover no-repeat;"></div>
+                    <div class="text-center">
+                        {% if persona.foto %}
+                            <img onerror="this.onerror=null;this.src='./image.png'" class="mt-n12 rounded-circle avatar-xl mb-3 border border-4 border-white" alt="" style="width: 12em; height: 12em;" src="https://sga.unemi.edu.ec{{ persona.foto.foto.url }}">
+                        {% else %}
+                            <img onerror="this.onerror=null;this.src='./image.png'" class="mt-n12 rounded-circle avatar-xl mb-3 border border-4 border-white" alt="" style="width: 12em; height: 12em;" src="/static/images/iconos/{% if persona.sexo.id == 2 %}hombre.png{% else %}mujer.png{% endif %}">
+                        {% endif %}
+                        <h4 class="mb-0">Bienvenid{% if persona.sexo.id == 1 %}a{% else %}o{% endif %}, {{ persona.nombre_completo }}</h4>
+                    </div>
+                    <div class="p-4">
+                        <div class="d-flex border-bottom py-1 mt-0">
+                            <span><i class="fa fa-user"></i></span> <span class="text-dark px-2 fs-6 text-muted">{% if persona.cedula %}Cédula: {{ persona.cedula }}{% else %}Pasaporte: {{ persona.pasaporte }}{% endif %}</span>
+                        </div>
+                        <div class="d-flex border-bottom py-1 mt-0">
+                            <span><i class="fa fa-envelope"></i></span> <span class="text-dark px-2 fs-6 text-muted">Email: {{ persona.email }}</span>
+                        </div>
+                        <div class="d-flex border-bottom py-1 mt-0">
+                            <span><i class="fa fa-phone"></i></span> <span class="text-dark px-2 fs-6 text-muted">Telf.: {{ persona.telefono }}</span>
+                        </div>
+                        <div class="d-flex border-bottom py-1 mt-0">
+                            <span><i class="fa fa-envelope"></i></span> <span class="text-dark px-2 fs-6 text-muted">Email inst.: {{ persona.emailinst }}</span>
+                        </div>
+                        <div class="d-flex border-bottom py-1 mt-0">
+                            <span><i class="fa fa-map-marker"></i></span> <span class="text-dark px-2 fs-6 text-muted">Ciudad: {{ persona.canton.nombre }}</span>
+                        </div>
+                        <div class="d-flex border-bottom py-1 mt-0 mb-4">
+                            <span><i class="fa fa-map-marker"></i></span> <span class="text-dark px-2 fs-6 text-muted">Dirección: {{ persona.direccion_corta }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class='col col-md-9'>
+            <div class="card mb-4">
+            <div class="card-body border-6 rounded-3 border-dark-info">
+                <div class='col-lg-12'>
+                <h5 class="mb-0 texto-blue fw-bold"><strong>{{ detalle.itinerariomalla.nombreitinerario }}</strong></h5>
+                <h5 class="mb-0 texto-gris">Ofertas habilitadas: {{ totalofertas }}</h5>
+                {% if turno %}
+                    <h5 class="texto-gris">Turno selección: <span class="tu" {% if turno.etiqueta %} title="{{ turno.etiqueta }}"{% endif %}>{{ turno.orden }}</span></h5>
+                {% endif %}
+                </div>
+                <div class='row'>
+                    <div class='col-xl-12 col-lg-12 col-md-12 col-12'>
+                        <div class="row">
+                            <div class="input-group mb-2">
+                                <input class="form-control" id="idbuscadoroferta" type="text" placeholder="&#xF002 Buscar..." style="font-family:Arial, FontAwesome">
+                            </div>
+                        </div>
+                        <div class="row row-cols-lg-3 row-cols-md-3 row-cols-sm-2 row-cols-1 optionSelectCard">
+                            {% for o in ofertas %}
+                            <div class="col mb-3 action-menu-entry">
+                                <div class="card rounded-3 px-3 py-3">
+                                    <div class="sidebar" style="width: 100%;">
+                                        <h5 class="mb-0 texto-blue fw-bold">
+                                            {% if o.asignacionempresapractica %}
+                                                <strong>Empresa asignada:</strong>
+                                                {{ o.asignacionempresapractica|default_if_none:""|upper }}
+                                            {% else %}
+                                                {% if o.otraempresaempleadora %}
+                                                    <strong>Otra Empresa Empleadora:</strong>
+                                                    {{ o.otraempresaempleadora|upper }}
+                                                {% else %}
+                                                    <span class="text-important">NO SE ASIGNÓ UNA EMPRESA O CAMPO "OTRA EMPRESA" VACÍO</span>
+                                                {% endif %}
+                                            {% endif %}
+                                            {% if o.get_tipoinstitucion_display %} <i class="fas fa-info-circle tu text-info" title="Tipo: {{ o.get_tipoinstitucion_display|title }}">
+                                            </i> {% endif %}
+                                            {% if o.dia > 0 %}<br><strong>Día académico:</strong> {{ o.get_dia_display|title }}{% endif %}
+
+                                            <br><strong>Cupos disponibles:</strong>
+                                            {%  with color=o|call:"color_dinamico_cupos"%}
+                                            <span title="Total inscritos: {{ o.cantidad_inscritos_oferta }}" class="badge rounded-pill bg-{% if color == 1 %}info{% elif color == 2 %}warning{% elif color == 3 %}danger{% endif %} tu">{{ o.cupo|resta:o.cantidad_inscritos_oferta }}</span>
+                                            {% endwith %}
+
+                                            <br>
+                                            {% if o.tutorempresa %}
+                                                <strong>Tutor Emp:</strong>
+                                                {{ o.tutorempresa|default_if_none:""|lower|title }}<br>
+                                            {% endif %}
+                                            {% if o.tutorunemi %}
+                                                <strong>Tutor Académico:</strong>
+                                                {{ o.tutorunemi|default_if_none:""|lower|title }}
+                                            {% endif %}
+                                            {% if o.supervisor %}
+                                                <strong>Supervisor:</strong>
+                                                {{ o.supervisor|default_if_none:""|lower|title }}<br>
+                                            {% endif %}
+                                            {% if o.fechainicio %}<b>F.Desde/Hasta: </b>
+                                                {{ o.fechainicio|date:"d-m-Y" }} / {{ o.fechafin|date:"d-m-Y" }}
+                                            {% endif %}
+                                            {% if o.periodoppp %}
+                                                <i class="fas fa-hourglass-half tu text-info" title="Periodo Evidencia: {{ o.periodoppp.nombre }}"></i><br>
+                                            {% endif %}
+                                        </h5>
+
+                                        {% if o.estado == 2 and o.cupo > 0 and o.cantidad_inscritos_oferta < o.cupo %}
+
+                                            <a href="javascript:void(0)"
+                                               onclick="validar_turnoseleccion('{{ o.id }}','Inscripción a {{ detalle.itinerariomalla.nombre }}','{{ o.asignacionempresapractica }}','inscribirpracticapp', '{{ detalle.id }}', {% if turno %}'{{ turno.id }}'{% else %}'0'{% endif %}, '{{ habilita_matricula_salud }}')"
+                                               class="btn btn-cian-secondary w-100 py-1 mt-2">
+                                                Inscribir
+                                            </a>
+
+                                        {% else %}
+                                            {% if o.cupo|resta:o.cantidad_inscritos_oferta <= 0 %}
+                                                <span class="btn etiqueta-secondary w-100 py-1 mt-2"> Sin cupo </span>
+                                            {% else %}
+                                                <span class="btn etiqueta-secondary w-100 py-1 mt-2">{{ o.get_estado_display|title }}</span>
+                                            {% endif %}
+                                        {% endif %}
+
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="row px-2 row-cols-lg-12 row-cols-md-12 row-cols-sm-12 row-cols-12">
+                            {% if not ofertas and seleccionempresa%}
+                                <div class="alert alert-warning" role="alert">
+                                    <h5 class="mb-0 texto-blue fw-bold">
+                                        No existen ofertas disponibles de acuerdo a la <strong>EMPRESA ANTES SELECCIONADA</strong>:<br><br>
+                                        {% with emp=seleccionempresa|first %}
+                                            {% if emp.asignacionempresapractica %}
+                                                <strong>Empresa:</strong>
+                                                {{ emp.asignacionempresapractica|default_if_none:""|upper }}
+                                            {% else %}
+                                                {% if emp.otraempresaempleadora %}
+                                                    <strong>Empresa Empleadora:</strong>
+                                                    {{ emp.otraempresaempleadora|upper }}
+                                                {% else %}
+                                                    <span class="text-important">NO SE ASIGNÓ UNA EMPRESA O CAMPO "OTRA EMPRESA" VACÍO</span>
+                                                {% endif %}
+                                            {% endif %}
+                                            {% if emp.get_tipoinstitucion_display %} <i class="fas fa-info-circle tu text-info" title="Tipo: {{ emp.get_tipoinstitucion_display|title }}">
+                                            </i> {% endif %}<br>
+                                            {% with pext=emp.practicaspreprofesionalesinscripcionextensionsalud_set.first %}
+                                                {% if pext.dia %}
+                                                    <strong>Día académico:</strong> {{ pext.get_dia_display }}
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% endwith %}
+                                        <br><p class="texto-gris">Si considera que existe un error, comunicarse con la <strong>Coordinación de Pasantías y Prácticas Preprofesionales de la Unidad de Ciencias de la Salud</strong>.</p>
+                                    </h5>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <a style="float: right; !important" href="/alu_practicassaludinscripcion" class="btn btn-default mb-2"><i class="fa fa-arrow-left"></i> Volver</a>
+                    </div>
+                </div>
+
+
+
+            </div>
+        </div>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <style>
+        #app {padding-left: 1.5rem !important;padding-right: 1.5rem !important}
+        .table_striped thead th:nth-child(2), .table_striped thead td:nth-child(2) {text-align: left !important;padding-left: 15px}
+        .table_primary thead th:first-child, .table_primary thead td:first-child {width: 20px;background-color: #1c3247}
+        .table_success thead th:first-child, .table_primary thead td:first-child {width: 20px;background-color: #468847}
+        .table_warning thead th:first-child, .table_warning thead td:first-child {width: 20px;background-color: #fe9900}
+        html {
+            scroll-behavior: smooth;
+        }
+
+        .btn-success {background-color: #15ca9a !important}
+    </style>
+    <script>
+        var rubricas = [{% for x in rubricas %}{{ x.id }}{% if not forloop.last %},{% endif %}{% endfor %}];
+
+        $(function() {
+            $("#guardar").click(function() {
+                var lista = "";
+                var fallo = false;
+                {#for (r in rubricas){#}
+                {#    if(!$("input[name='opcion_"+rubricas[r]+"']").is(':checked')){#}
+                {#        mensajeWarning("Favor de seleccionar una opción.")#}
+                {#        return false;#}
+                {#    }#}
+                {#    var rubrica = rubricas[r];#}
+                {#    var selectedVal = "1";#}
+                {#    var selected = $("input[type='radio'][name='opcion_"+rubrica+"']:checked");#}
+                {#    if (selected.length > 0) {#}
+                {#        selectedVal = selected.val();#}
+                {#    }#}
+                {#    lista += rubrica+":"+selectedVal+";";#}
+                {# }#}
+
+                var mejoras = $("#mejoras").val();
+                var formacion = $("#formacion").val();
+                var nommejorascab = $("#nommejorascab").val();
+                var nommejoras = $("#nommejoras").val();
+                var nomcontinuacab = $("#nomcontinuacab").val();
+                var nomcontinua = $("#nomcontinua").val();
+                $('.respuesta').each(function(){
+                    if (($(this).val() == "0") || mejoras.trim().length < 2  || nommejorascab == "0" || nommejoras == "0"){
+                        mensajeWarning("Por favor, completar todos los campo del formulario.")
+                        fallo = true;
+                        return false;
+                    }
+                     var idrp = $(this).attr("idrp");
+                     var valor = $(this).val();
+
+                     var justificacion = '';
+                     var justificationElement = $('.justificacion[idrp="' + idrp + '"]');
+                     if (justificationElement.length > 0) {
+                         if (justificationElement.val().trim().length < 2){
+                             mensajeWarning("Por favor, complete la justificación para la opción seleccionada.");
+                            fallo = true;
+                            return false;
+                         }
+                         justificacion = justificationElement.val();
+                     }
+                     lista += idrp + ":" + valor + (justificacion ? ":" + justificacion : "") + ";";
+                });
+
+
+                if (lista.length > 0){
+                    lista = lista.substring(0, lista.length-1);
+                }
+
+
+
+                if (!fallo){
+                    {% if materia %}
+                        var idm = {{ materia.id }};
+                    {% else %}
+                        var idm = 0;
+                    {% endif %}
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_personaevaluacion",
+                        data: {'action': 'evaluarposgrado', 'lista': lista, 'idp': '{{ profesor.id }}', 'idm': idm, 'nommejoras': nommejoras,'nomcontinua': nomcontinua, 'tipo': '{{ tipoinstrumento }}',  'accionmejoras': mejoras, 'formacioncontinua': formacion },
+                        error: function () {
+                            $.unblockUI();
+                            {#smoke.alert("Error al enviar los datos.");#}
+                            NotificationJG.error("Error al enviar los datos.");
+                        },
+                        success: function (data) {
+                            if (data.result == "ok") {
+                                location.href = '/pro_personaevaluacion';
+                            } else {
+                                $.unblockUI();
+                                mensajeWarning(data.mensaje)
+                            }
+                        }
+                    });
+                    {# } else {#}
+                    {#    mensajeWarning("Debe completar todos los campos del formulario.")#}
+                }
+
+            });
+            $('#nommejorascab').change(function(){
+                $('#nommejoras').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#nommejorascab").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_personaevaluacion",
+                        data: {'action': 'listasubmejoras', 'id': id,'tipoins': '{{ tipoinstrumento }}'},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#nommejoras').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeWarning(data.mensaje)
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeWarning("Error de conexion.")
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+            $('#nomcontinuacab').change(function(){
+                $('#nomcontinua').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#nomcontinuacab").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_personaevaluacion",
+                        data: {'action': 'listacontinua', 'id': id,'tipoins': '{{ tipoinstrumento }}'},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#nomcontinua').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeWarning(data.mensaje)
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeWarning("Error de conexion.")
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+        });
+
+        function toggleJustification(selectElement) {
+                var currentRow = selectElement.closest('tr');
+                var nextRow = currentRow.nextElementSibling;
+                if (nextRow && nextRow.classList.contains('justificacion-row')) {
+                    nextRow.remove();
+                }
+
+                // If the selected value is less than 5 and greater than 0, add a justification row
+                if (selectElement.value < 3 && selectElement.value > 0) {
+                    var justificationRow = document.createElement('tr');
+                    justificationRow.className = 'justificacion-row';
+                    justificationRow.innerHTML = '<td colspan="4"><h5>Justificación</h5><textarea class="input-block-level justificacion" idrp="' + selectElement.getAttribute('idrp') + '" ></textarea></td>';
+                    currentRow.parentNode.insertBefore(justificationRow, currentRow.nextSibling);
+                }
+            }
+
+        function infoobservacion(id, action, text, flag) {
+            bloqueointerface()
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': '{{ profesor.id }}',
+                    'flag': flag
+                },
+                success: function (data) {
+                    $.unblockUI()
+                    if (data.result == 'ok') {
+                        $('.panelbody1').html(data.data);
+                        $('#itemspanel1 .paneltitle').html(text.toUpperCase());
+//                        $('#titlemodal1').html(data.title);
+                        $("#itemspanel1").modal({backdrop: 'static', width: '900px', height: '600px'}).modal('show');
+                    } else {
+                        mensajeWarning(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI()
+                    alertaDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+
+    </script>
+{% endblock %}
+{% block atras %}/pro_personaevaluacion{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Profesor: {{ profesor }}</h6>
+                {% if materia %}
+                    <h6>Carrera: {{ materia.asignaturamalla.malla.carrera|title }}</h6>
+                    <h6>Módulo: {{ materia.asignatura.nombre|lower|capfirst }} - {{ materia.paralelo }}</h6>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+
+
+
+        {% for rubrica in rubricas %}
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <div class="table-responsive-xxl">
+                        <h3 class="fw-bolder">{{ rubrica.nombre }} {{ rubrica.tipo_criterio_evaluacion }}</h3>
+                        <table class="table table_primary table-striped">
+                            <thead class="table-light">
+                            <tr>
+                                <th style="border:0!important;"></th>
+                                <th colspan="5">Caracteristicas:<br>
+                                    {% for c in rubrica.mis_caracteristicas %}{{ c.caracteristica.nombre }}
+                                        {% if not forloop.last %}, {% endif %}{% endfor %}</th>
+                            </tr>
+                            <tr>
+                                <th style="border:0!important;"></th>
+                                <th style="text-align: center">N°</th>
+                                <th style="text-align: center">Pregunta</th>
+                                <th style="text-align: center">Calificación</th>
+                                <th style="text-align: center">Evidencia de pregunta</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for rubricapregunta in rubrica.mis_preguntas %}
+                                <tr>
+                                    <td></td>
+                                    <td style="text-align: center; vertical-align: middle">
+                                        {% if rubricapregunta.preguntacaracteristica.tipocolor == 1 %}
+                                            <a style="color: #ffaa46; font-size: 18px" href="#"
+                                               title="Tareas y foros"><i class="fa fa-circle"></i></a>
+                                        {% elif rubricapregunta.preguntacaracteristica.tipocolor == 2 %}
+                                            <a style="color: #e53f3c; font-size: 18px" href="#"
+                                               title="Plan analítico/sílabo"><i class="fa fa-circle"></i></a>
+                                        {% elif rubricapregunta.preguntacaracteristica.tipocolor == 3 %}
+                                            <a style="color: #29baf9; font-size: 18px" href="#"
+                                               title="Clases grabadas"><i class="fa fa-circle"></i></a>
+                                        {% elif rubricapregunta.preguntacaracteristica.tipocolor == 4 %}
+                                            <a style="color: #006dcc; font-size: 18px" href="#"
+                                               title="Asistencias"><i class="fa fa-circle"></i></a>
+                                        {% elif rubricapregunta.preguntacaracteristica.tipocolor == 5 %}
+                                            <a style="color: #19cb98; font-size: 18px" href="#"
+                                               title="Resumen de horas"><i class="fa fa-circle"></i></a>
+                                        {% endif %}
+{#                                        {{ rubricapregunta.orden }}#}
+                                    </td>
+                                    <td style="text-align: justify">
+                                        {{ rubricapregunta.orden }}.- {{ rubricapregunta.preguntacaracteristica.pregunta|lower|capfirst }} | <b>{{ rubricapregunta.preguntacaracteristica.caracteristica.nombre|title|truncatechars:12 }}</b>
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle">
+                                        <select class="input-medium respuesta" idrp="{{ rubricapregunta.id }}"
+                                                onchange="toggleJustification(this)" style="margin-bottom: 0px">
+                                            <option value="0">-------</option>
+                                            {% if rubrica.texto_nosatisfactorio %}
+                                                <option value="1">{{ rubrica.texto_nosatisfactorio }}</option>
+                                            {% endif %}
+                                            {% if rubrica.texto_basico %}
+                                                <option value="2">{{ rubrica.texto_basico }}</option>
+                                            {% endif %}
+                                            {% if rubrica.texto_competente %}
+                                                <option value="3">{{ rubrica.texto_competente }}</option>
+                                            {% endif %}
+                                            {% if rubrica.texto_muycompetente %}
+                                                <option value="4">{{ rubrica.texto_muycompetente }}</option>
+                                            {% endif %}
+                                            {% if rubrica.texto_destacado %}
+                                                <option value="5">{{ rubrica.texto_destacado }}</option>
+                                            {% endif %}
+                                        </select>
+                                    </td>
+                                    {% if forloop.first %}
+                                        <td rowspan="{{ rubrica.mis_preguntas|length }}" style="text-align: center; vertical-align: middle;">
+                                        <ul>
+                                            <li>
+                                                <a href='javascript:;' class="btn btn-info tu"
+                                                   onclick="infoobservacion('{{ materia.id }}', 'verdetalleclases', 'Detalle de clases grabadas del curso {{ materia.asignatura.nombre }} | paralelo: {{ materia.paralelo }}', 'clases')">
+                                                    <i class="fa fa-list"></i> Clases grabadas
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href='javascript:;' class="btn btn-warning tu" style="margin-top: 5px"
+                                                   onclick="infoobservacion('{{ materia.id }}', 'veractividadesdocente', 'Detalle de actividades del curso {{ materia.asignatura.nombre }} | paralelo: {{ materia.paralelo }}', 'activ')">
+                                                    <i class="fa fa-book"></i> Tareas y foros
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href='javascript:;' class="btn btn-success tu" style="margin-top: 5px"
+                                                   onclick="infoobservacion('{{ materia.id }}', 'veractividadesdocente', 'Resumen de horas y tutorias del curso {{ materia.asignatura.nombre }} | paralelo: {{ materia.paralelo }}', 'resumen')">
+                                                    <i class="fa fa-hourglass"></i> Resumen de horas
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href='javascript:;' class="btn btn-primary tu" style="margin-top: 5px"
+                                                   onclick="infoobservacion('{{ materia.id }}', 'veractividadesdocente', 'Resumen de horas y tutorias del curso {{ materia.asignatura.nombre }} | paralelo: {{ materia.paralelo }}', 'asistencias')">
+                                                    <i class="fa fa-check"></i> Asistencias
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href='javascript:;' class="btn btn-danger tu" style="margin-top: 5px"
+                                                   onclick="infoobservacion('{{ materia.id }}', 'verdetallesilabo', 'Detalle de plan analítico/sílabo del curso {{ materia.asignatura.nombre }} | paralelo: {{ materia.paralelo }}', 'asistencias')">
+                                                    <i class="fa fa-university"></i> Plan analítico/Sílabo
+                                                </a>
+                                            </li>
+                                        </ul>
+                                        </td>
+                                    {% elif forloop.counter > 1 and forloop.counter <= forloop.last %}
+                                        <!-- Se omite la celda para las filas 2 a 5 ya que el rowspan abarca estas filas -->
+                                    {% endif %}
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+
+
+
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <h5>Categoría de mejoras</h5>
+                <select id="nommejorascab" name="nommejorascab" style="width: 100%">
+                    <option value="0" selected="selected">--SELECCIONE--</option>
+                    {% for combomejora in combomejoras %}
+                        <option value="{{ combomejora.id }}">{{ combomejora }}</option>
+                    {% endfor %}
+                </select>
+                <h5>Acción propuesta</h5>
+                <select id="nommejoras" name="nommejoras" style="width: 100%">
+                    <option value="0" selected="selected">--SELECCIONE--</option>
+                </select>
+                <h5>Descripción de mejoras</h5>
+                <textarea class="input-block-level" id="mejoras"></textarea><br>
+                <div style="display: none">
+                    <h5>Criterios de formación</h5>
+                    <select id="nomcontinuacab" name="nomcontinuacab" style="width: 100%">
+                        <option value="0" selected="selected">--SELECCIONE--</option>
+                        {% for combocontinua in combocontinuas %}
+                            <option value="{{ combocontinua.id }}">{{ combocontinua }}</option>
+                        {% endfor %}
+                    </select>
+                    <h5>Categoría de formación</h5>
+                    <select id="nomcontinua" name="nomcontinua" style="width: 100%">
+                        <option value="0" selected="selected">--SELECCIONE--</option>
+                    </select>
+                    <h5>Descripción formacion continua</h5>
+                    <textarea class="input-block-level" id="formacion"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="d-grid gap-2 col-1 ">
+            <button  class="btn btn-success btn-lg active" id="guardar"><i class="fa fa-save"></i> Guardar</button >
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel1" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row-fluid panelbody1">
+
+                    </div>
+                </div>
+                <div class="modal-footer" id="footermodalhistorial">
+                    <a href="javascript:;" class="btn btn-warning uk-width-1-4 transition-3d-hover"
+                       data-bs-dismiss="modal">
+                        <i class="fa fa-window-close"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

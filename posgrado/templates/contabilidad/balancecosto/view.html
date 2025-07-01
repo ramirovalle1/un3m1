@@ -1,0 +1,239 @@
+{% extends 'contabilidad/balancecosto/base.html' %}
+{% load tz %}
+{% load sga_extras %}
+{% block extraheading %}
+
+{% endblock %}
+{% block extra_js_end %}
+    <script>
+        $(document).ready(function () {
+            // Desmarcar todos los checkboxes con la clase .seleccionindividual
+            $('.seleccionindividual').prop('checked', false);
+            $('#id_seleccionmasivo').prop('checked', false);
+        });
+
+        let pk_seleccionados = []
+
+        $(function (e) {
+            $("select").select2({width: '100%'});
+            $('.seleccionindividual').change(function () {
+
+                pk_seleccionados = [];
+                $('.seleccionindividual:checked').each(function () {
+                    let pk = this.attributes.pk_seleccionados.value;
+                    if (this.checked && !pk_seleccionados.includes(pk)) {
+                        pk_seleccionados.push(pk);
+                    }
+                });
+
+            });
+
+        });
+        const aprobar_balance_mensual = (pk)=>{
+            Swal.fire({
+                html: `¿Está seguro de aprobar el balance de costo mensual?`,
+                text: "Esta acción válida que el balance de costo mensual está correctamente válidado y no podrá editarlo.",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.post(`{{ request.path }}`, {'action': 'aprobar_balance_costo_mensual', 'id': pk}, function (data) {
+                        $.unblockUI();
+                        if (data.result == true) {
+                            location.href = "{{ request.path }}?action=viewbalancecosto&pk="+data.pk;
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json').fail(function () {
+                        $.unblockUI();
+                        mensajeDanger('Error de conexión, intentelo más tarde');
+                    });
+                     $.unblockUI();
+
+                }
+            });
+        }
+        const loadFormBalanceCosto = (id, text, action, footer = false) => {
+            bloqueointerface();
+            footer && $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result == 'ok') {
+                        $('#itemspanel .panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({
+                            backdrop: 'static',
+                            width: '90%'
+                        }).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbody").empty();
+                            for (instance in CKEDITOR.instances) {
+                                CKEDITOR.instances[instance].destroy();
+                            }
+                        });
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const generar_balance_mensual_acumulado = () => {
+            if (pk_seleccionados.length > 0) {
+                openwindow('GET', '/contabilidadposgrado', {
+                    action: 'generar_balance_costo_mensual_acumulado',
+                    ids: pk_seleccionados
+                }, '_blank');
+
+
+            } else {
+                mensajeDanger('Debe seleccionar al menos 1 personal válido.')
+            }
+
+        }
+
+
+    </script>
+{% endblock %}
+
+{% load sga_extras %}
+{% block opciones-balance-costo %}
+    <div class="col-md-6 col-lg-4 col-12 pe-lg-2">
+
+        <a href="javascript:void(0);"  onclick="loadFormBalanceCosto('','Generar blance de costo','addbalancecosto')"
+           class='btn btn-success bloqueo_pantalla'>
+            <span class="fa fa-plus"></span>
+            <t class="">Adicionar</t>
+        </a>
+    </div>
+    <div class="col-md-4 col-lg-4 col-12 pe-md-2 mt-4">
+        <a onclick="generar_balance_mensual_acumulado()"   href="javascript:;" class="btn btn-primary " style="font-size: 14px;"><i  class="fa fa-download" style="font-size: 12px"></i>&nbsp;Generar balance de costo Acumulado</a>
+
+    </div>
+{% endblock %}
+{% block filtros-balance-costo %}
+    <form method="GET" id="id-filtro-balance-costo" class="form-row py-0">
+        <div class="col-md-6 col-lg-4 col-12 pe-lg-2">
+            <label for=""><i class="fa fa-search"></i> Criterio: </label>
+            <div class="input-group mb-2">
+                <input type="hidden" name="action" value="">
+                <input type="text" class="form-control" placeholder="Buscar por..."
+                       aria-label="Buscar"
+                       aria-describedby="button-addon2" name="s" value="">
+                <div class="input-group-append">
+                    <button class="btn btn-primary-old" type="submit" id="button-addon2"><i
+                            class="fa fa-search"></i></button>
+                    <a title="Ver todo" href="{{ request.path }}?action=viewbalancecosto" class="btn btn-default tr">
+                        <i class="fas fa-sync-alt"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+{% endblock %}
+{% block content-balance-costo %}
+    <table class="table mb-0" style="position: relative!important;z-index: 1!important;">
+        <thead class="table-light">
+        <tr>
+            <th scope="col" class="border-0 text-center">#</th>
+            <th scope="col" class="border-0 text-center">Año</th>
+            <th scope="col" class="border-0 text-center">Mes</th>
+            <th scope="col" class="border-0 text-center">Fecha generación</th>
+            <th scope="col" class="border-0 text-center">Descripción</th>
+            <th scope="col" class="border-0 text-center">Estado</th>
+            <th scope="col" class="border-0 text-center"><i class="fa fa-cogs"></i></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for eBalanceCosto in eBalanceCostos %}
+            <tr>
+                <td class="text-center">
+                    <input type="checkbox" class="seleccionindividual"  {% if not eBalanceCosto.estado_balance_validado %}disabled {% endif %} pk_seleccionados="{{ eBalanceCosto.pk }}">
+                </td>
+
+                <td class="text-center">{{ eBalanceCosto.anio }}</td>
+                <td class="text-center">{{ eBalanceCosto.get_mes_display }}</td>
+                <td class="text-center">
+                {{ eBalanceCosto.fecha_creacion.day }} de {{ eBalanceCosto.fecha_creacion|nombremes }} del {{ eBalanceCosto.fecha_creacion.year }}  a las {{ eBalanceCosto.fecha_creacion.hour }}:{{ eBalanceCosto.fecha_creacion.minute }}
+                </td>
+                <td class="text-center">{{ eBalanceCosto.descripcion }}<br>
+                    {% if eBalanceCosto.existe_otro_balance_de_costo_validado_en_el_mismo_mes_and_anio %}
+                        <span class="text-warning">Ya se encuentra un balance aprobado.</span>
+                    {% endif %}
+
+                </td>
+                <td class="text-center">{{ eBalanceCosto.get_estado_badge| safe}}</td>
+                <td class="align-middle">
+                    <div class="d-flex justify-content-center">
+                        <div class="d-flex">
+                            <div class="me-2" title="Gestionar balance de costo">
+                                <a class="btn-icon btn btn-ghost btn-sm rounded-circle "
+                                   href="{{ request.path }}?action=viewbalancecosto_panel&pk={{ eBalanceCosto.pk }}">
+                                    <i class="fa fa-cogs"></i>&nbsp;
+                                </a>
+                            </div>
+                            <div class="me-2">
+                                <div class="dropdown dropstart">
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140"
+                                       aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </a>
+                                    <ul class="dropdown-menu" x-placement="right-start">
+
+                                        <li class="dropdown-item">
+                                            <a href="{{ request.path }}?action=viewbalancecosto_panel&pk={{ eBalanceCosto.pk }}"> <span
+                                                    class="fa fa-edit dropdown-item-icon"></span> Gestionar</a>
+                                        </li>
+                                        {% if eBalanceCosto.estado_balance_generado %}
+                                            {% if not eBalanceCosto.existe_otro_balance_de_costo_validado_en_el_mismo_mes_and_anio %}
+                                                <li class="dropdown-item">
+                                                    <a href="Javascript:void(0);"  onclick="aprobar_balance_mensual('{{ eBalanceCosto.pk }}')"> <span class="fa fa-check-double dropdown-item-icon"></span> Aprobar balance mensual</a>
+                                                </li>
+                                            {% endif %}
+                                             <li class="dropdown-item">
+                                                <a href="Javascript:void(0);"  onclick="eliminarajax('{{ eBalanceCosto.pk }}', 'Balance: {{ eBalanceCosto }}', 'eliminar_balance_de_costo')"> <span class="fa fa-trash dropdown-item-icon"></span> Eliminar</a>
+                                            </li>
+                                        {% endif %}
+
+                                             <li class="dropdown-item"><a href="?action=dowload_balance_costo_mensual&id={{eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar Balance de costo mensual</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_coordinador_programa&id={{eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar coordinador programa</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_coordinador_apoyo&id={{ eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar  coordinador de apoyo</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_profesor_posgrado&id={{ eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar profesor posgrado</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_costos_variables&id={{ eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar costo variables</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_personal_administrativo&id={{ eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar personal administrativo</a></li>
+                                             <li class="dropdown-item"><a href="?action=dowload_profesor_modular&id={{ eBalanceCosto.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar profesor módular</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5">No existen registros</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="card-footer border-top-0">
+        {% include 'paginacionb4.html' %}
+    </div>
+{% endblock %}

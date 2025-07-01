@@ -1,0 +1,333 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery-ui-1.10.3.js?v=1.0.0'></script>
+    <script type="text/javascript">
+        var lista_items1 = [];
+        var isInit = true;
+        var AddOrdenPedidoController = {
+            init: function () {
+                var self = this;
+                self.$frmOrdenPedido = $('[name="frmOrdenPedido"]');
+                    self.$table = $('.datatable table');
+                self.$elTemplates = $('#el-templates');
+                self.$tbody = $("tbody", self.$table)
+
+                $("#id_codigodocumento, #id_descripcion", self.$frmOrdenPedido).addClass("validate[required]");
+                $("#id_codigodocumento, #id_fechaordenpedido", self.$frmOrdenPedido).prop( "disabled", true );
+                $("#id_fechaordenpedido", self.$frmOrdenPedido).datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide');});
+
+                $(".btnAddItems", self.$frmOrdenPedido).click(function() {
+                    ModalAddItems.open();
+                });
+
+                self.$tbody.sortable({
+                    revert: true,
+                    handle: ".sortable-tr-handle"
+                });
+                ModalAddItems.init();
+            },
+            UpdateList: function(){
+                var self = this;
+                lista_items1 = [];
+                var valor = 0;
+                $(".dt-action-eliminar", self.$table).each(function(){
+                    var item = {
+                        id: $(this).attr("idp"),
+                        cantidad: $(this).attr("cantidad"),
+                        costo: $(this).attr("costo"),
+                        stock: $(this).attr("stock"),
+                    };
+                    valor += parseFloat($(this).attr("valor"));
+                    lista_items1.push(item);
+                });
+                $("#totalitems").html(valor.toFixed(2));
+            },
+            htmlTableTBodyTr: function (data) {
+                var self = this;
+                var $tr = $('[element="panel-order-pedido-table-tr"] tr', self.$elTemplates).clone();
+
+                $tr.data({'productoid': data.productoid, 'cantidad': data.cantidad});
+                $('td:nth-child(2)', $tr).html(data.codigo);
+                $('td:nth-child(3)', $tr).html(data.cuenta);
+                $('td:nth-child(4)', $tr).html(data.descripcion);
+                $('td:nth-child(5)', $tr).html(data.unidadmedida);
+                $('td:nth-child(6)', $tr).html(data.existencia);
+                $('td:nth-child(7)', $tr).html(data.costo);
+                $('td:nth-child(8)', $tr).html(data.cantidad);
+                $('td:nth-child(9) a', $tr).attr('idp', data.productoid);
+                $('td:nth-child(9) a', $tr).attr('cantidad', data.cantidad);
+                $('td:nth-child(9) a', $tr).attr('costo', data.costo);
+                $('td:nth-child(9) a', $tr).attr('stock', data.existencia);
+                $tr.attr("id","fila_"+data.productoid);
+                if (data.existencia==0){
+                    $('td', $tr).css("background-color", "#f2dede");
+                }
+
+                self.$tbody.append($tr);
+                $(".dt-action-eliminar", $tr).click(function() {
+                    $tr.remove();
+                    if(($('.dt-action-eliminar', self.$tbody).length)==0){
+                        $("tbody", self.$table).html('<tr><td colspan="9" class="noexitdata" style="text-align: center">NO EXISTEN PRODUCTOS EN LA ORDEN DE PEDIDO</td></tr>');
+                    }
+                    self.UpdateList();
+
+                });
+                self.UpdateList();
+
+            },
+        };
+
+        var ModalAddItems = {
+            init: function ()
+            {
+                var self = this;
+                self.$modalAddItem = $('#modalAddItem', self.$frmOrdenPedido);
+                self.$frmAddItem = $('#frmAddItem', self.$modalAddItem);
+
+                self.$modalAddItem.on("show.bs.modal", function () {
+
+                });
+
+                self.$modalAddItem.on("hidden.bs.modal", function () {
+
+                });
+
+                $("#id_codigoprod", self.$frmAddItem).typeahead({
+                    source: this.searchProduct,
+                    updater: this.updaterProduct}).blur(function(){
+                        $(this).val($(this).attr("codigo"));
+                });
+
+                $("#itemsAdicionar, #itemsAdicionarCerrar", self.$modalAddItem).click(function() {
+                    var self = this;
+                    var codigo = $("#id_codigoprod", self.$frmAddItem).val();
+                    var productoid = $("#id_codigoprod", self.$frmAddItem).attr('idp');
+                    var cuenta = $("#id_cuentaprod", self.$frmAddItem).val();
+                    var descripcion = $("#id_descripcionprod", self.$frmAddItem).val().toUpperCase();
+                    var unidadmedida = $("#id_unidadmedidaprod", self.$frmAddItem).val();
+                    var existencia = parseFloat($("#id_existenciaprod", self.$frmAddItem).val());
+                    var costo = parseFloat($("#id_costoprod", self.$frmAddItem).val());
+                    var cantidad = parseFloat($("#id_cantidadprod", self.$frmAddItem).val());
+                    $("#incompleto, #incompletovalores, #alertasalida", self.$modalAddItem).hide();
+                    if (codigo > 0 && cantidad > 0)
+                    {
+                        var data = {
+                            'codigo': codigo,
+                            'productoid':productoid,
+                            'cuenta': cuenta,
+                            'descripcion': descripcion,
+                            'unidadmedida': unidadmedida,
+                            'existencia': existencia,
+                            'costo': costo,
+                            'cantidad': cantidad
+                        }
+
+                        if ($('.noexitdata', self.$tbody).length == 1)
+                        {
+                            $('.noexitdata', self.$tbody).remove();
+                        }
+                        if ($("#fila_" + productoid).length) {
+                            $("#alertasalida", self.$modalAddItem).show();
+                            return false;
+                        }
+                        AddOrdenPedidoController.htmlTableTBodyTr(data)
+                        ModalAddItems.formReset();
+                        tooltips();
+                        if ($(self).attr('id') == 'itemsAdicionarCerrar'){
+                            ModalAddItems.$modalAddItem.modal("hide");
+                        }
+                    }
+                    else
+                    {
+                        $("#incompleto", self.$modalAddItem).show();
+                    }
+
+                });
+                $("#id_cantidadprod").blur(function(){
+                    numerico($(this), 0, 1000000, 4);
+                });
+
+            },
+            formReset : function (){
+                var self = this;
+                $("#id_codigoprod", self.$frmAddItem).val("").attr("idp","");
+                $("#id_cuentaprod", self.$frmAddItem).val("");
+                $("#id_tipoprod", self.$frmAddItem).val("");
+                $("#id_descripcionprod", self.$frmAddItem).val("");
+                $("#id_unidadmedidaprod", self.$frmAddItem).val("");
+                $("#id_existenciaprod", self.$frmAddItem).val("0.00");
+                $("#id_costoprod", self.$frmAddItem).val("0.00");
+                $("#id_cantidadprod", self.$frmAddItem).val("0.0000");
+
+                $("#incompleto, #incompletovalores, #alertasalida", self.$modalAddItem).hide();
+            },
+            searchProduct : function(query, process) {
+                var self = this;
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_hdincidente",
+                    data: {"action": "SearchProduct", "q": query},
+                    success: function(data) {
+                        if (data.result=='ok'){
+                            $("#id_codigoprod", self.$frmAddItem).get(0).results = data.results;
+                            listing = [];
+                            for (var i in data.results) {
+                                var dato = data.results[i];
+                                listing.push(dato.name);
+                            }
+                            process(listing);
+                        } else {
+                            $("#id_descripcionprod", self.$frmAddItem).val("");
+                            $("#id_codigoprod", self.$frmAddItem).attr({"codigo": ""});
+                            process([query]);
+                        }
+                    },
+                    error: function() {
+                    },
+                    dataType: "json"
+                });
+            },
+            updaterProduct: function(item) {
+                var self = this;
+                var results = $("#id_codigoprod", self.$frmAddItem).get(0).results;
+                for (var i in results) {
+                    var datos = results[i];
+                    if (item==datos.name) {
+                        $("#id_codigoprod", self.$frmAddItem).val(datos.alias[0]).attr({"idp": datos.id, "codigo": datos.alias[0]});
+                        $("#id_cuentaprod", self.$frmAddItem).val(datos.alias[1]);
+                        $("#id_tipoprod", self.$frmAddItem).val(datos.alias[2]);
+                        $("#id_descripcionprod", self.$frmAddItem).val(datos.alias[3]);
+                        $("#id_unidadmedidaprod", self.$frmAddItem).val(datos.alias[4]);
+                        $("#id_existenciaprod", self.$frmAddItem).val(datos.alias[5]);
+                        $("#id_costoprod", self.$frmAddItem).val(datos.alias[6]);
+                        numerico($("#id_costoprod", self.$frmAddItem), 0, 1000000, 4);
+                        return datos.alias[0];
+                    }
+                }
+                return item;
+            },
+            open(){
+                var self = this;
+                self.formReset();
+                self.$modalAddItem.modal({backdrop:'static'})
+                .off('shown.bs.modal')
+                .on('shown.bs.modal', function () {
+                    //self.initLoadComponents(function () {
+                    //fLoad();
+                    //});
+                }).modal('show');
+            }
+
+
+        };
+
+        $(function (){
+            AddOrdenPedidoController.init();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_hdagente{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_hdincidente{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/adm_hdincidente{% endblock %}
+{% block formback %}/adm_hdincidente{% endblock %}
+{% block formtagextra %}name="frmOrdenPedido"{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <div class="datatable">
+            <table class="table table-bordered" id="tableOrdenPedido" style="margin-bottom: 0;">
+                <thead>
+                    <tr>
+                        <th style="width: 4%; text-align: center; vertical-align: middle"></th>
+                        <th style="width: 6%; text-align: center; vertical-align: middle">C&oacute;digo</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">Cuenta Contable</th>
+                        <th style="width: 45%; text-align: center; vertical-align: middle">Descripci&oacute;n</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">UM</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">Stock</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">Costo</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">Cantidad</th>
+                        <th style="width: 5%; text-align: center; vertical-align: middle"></th>
+                    </tr>
+                </thead>
+                <tbody class="tbdoy-sortable-orden-pedido">
+                    <tr>
+                        <td colspan="9" class="noexitdata" style="text-align: center">NO EXISTEN PRODUCTOS EN LA ORDEN DE PEDIDO</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="9"><a href="javascript:;" class="btn btn-info btn-mini btnAddItems"><i class="fa fa-plus"></i> Adicionar</a></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="modalAddItem" class="modal fade" tabindex="-1" role="dialog" style="display: block;" data-keyboard="false" data-backdrop="static">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Producto para Orden de Pedido</h3>
+        </div>
+        <div class="modal-body" id="itemspanel_body">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                Revise los valores en la cantidad o costos no pueden ser ceros
+            </div>
+            <div class="alert alert-danger" id="alertasalida" style="display: none;">
+                Este producto ya se encuentra en la lista
+            </div>
+            <div class="row-fluid">
+                <form id="frmAddItem" formtype="form-horizontal form-modal" style="width: 100%; margin-bottom: 0">
+                    <div class="row-fluid">
+                        {% for field in form2 %}
+                            <fieldset class="control-group">
+                                <label class="control-label-modal" style="text-align: right; padding-right: 20px; width: 120px; vertical-align: middle " for="id_{{ field.name }}">{{ field.label }}</label>
+                                <div class="controls-modal">
+                                    {{ field }}
+                                    <p class="help-text">{{ field.help_text }} </p>
+                                </div>
+                            </fieldset>
+                        {% endfor %}
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="itemsAdicionar"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="itemsAdicionarCerrar"><i class="fa fa-plus"></i> Adicionar y Cerrar</a>
+            <a href="javascript:;" class="btn btn-info action-close" data-dismiss="modal"> Cerrar</a>
+        </div>
+    </div>
+    <div id="el-templates" style="display:none;">
+        <div element="panel-order-pedido-table-tr">
+            <table>
+                <tbody>
+                    <tr>
+                        <td style='text-align: center; vertical-align: middle'>
+                            <span class="label label-primary sortable-tr-handle"><i class='fa fa-arrows-v'></i></span>
+                        </td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: left; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'></td>
+                        <td style='text-align: center; vertical-align: middle'>
+                            <a class="btn btn-danger btn-mini dt-action-eliminar tu" title="Eliminar" data-original-title="Eliminar"  href="javascript:;" idp="0" cantidad="0" costo="0.0" stock="0"><span class="fa fa-remove"></span> </a>
+                            <!--<a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' title='Eliminar'  idp='0' cantidad='0' ><i class='fa fa-remove'></i></a>-->
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='SaveAddOrdenPedido'/>
+    <input type='hidden' name='incidente_id' value='{{ incidete.id }}'>
+{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?3.0.0" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=2.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=3.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=2.0.0"/>
+    <link href="/static/widget_ppp.css?v=2.0.0" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        #app {padding-left: 1.5rem !important;padding-right: 1.5rem !important}
+        .table_striped thead th:nth-child(2), .table_striped thead td:nth-child(2) {text-align: left !important;padding-left: 15px}
+
+        .btn-success {background-color: #15ca9a !important}
+
+        .btn_tipo:hover {
+            transform: scale(1.05);
+        {#background-color: var(--bs-warning) !important;#}
+        {#border-color: white !important;#}
+        }
+
+        .dataTables_wrapper .dataTables_filter {
+            display: none;
+        }
+
+        .btn_tipo.active {
+            background-color: var(--bs-warning) !important;
+            color:white !important;
+        }
+
+        .radius-20 {
+            border-radius:20px!important;
+        }
+
+        /* Estilo de la barra de desplazamiento */
+        ::-webkit-scrollbar {
+            width: 10px; /* Ancho de la barra de desplazamiento */
+            height: 10px;
+        }
+
+        /* Estilo del área de la barra de desplazamiento (track) */
+        ::-webkit-scrollbar-track {
+            background-color: #E7F0F8; /* Color de fondo */
+        }
+
+        /* Estilo del mango de la barra de desplazamiento (thumb) */
+        ::-webkit-scrollbar-thumb {
+        {#background-color: #b4b4b4; /* Color del mango */#}
+            background-color: #A8B4BF; /* Color del mango */
+        }
+
+    </style>
+    <script type="text/javascript">
+        $(function () {
+            $('#id_categoria').change(function(){
+                var idcate = $(this).val();
+                if(idcate==3){
+                    $('#muestrabuscador').hide();
+                    $('#muestrasolotexto').show();
+                }else{
+                    $('#muestrasolotexto').hide();
+                    $('#muestrabuscador').show();
+                }
+            });
+
+            ItemsDisplay = function (item) {
+                if (item.text) {
+                    return $('<span>' + item.text + '</span>');
+                } else {
+                    if (item.name) {
+                        return $('<span>' + item.name + '</span>');
+                    } else {
+                        return '---------';
+                    }
+                }
+            };
+            $("#id_persona").select2({
+                placeholder: "--------",
+                allowClear: true,
+                width: '100%',
+                ajax: {
+                    url: function (params) {
+                        var valorcategoria = $("#id_categoria").val();
+                        if(valorcategoria==0){
+                            mensajeDanger('Seleccione una categoría');
+                        }
+                        if(valorcategoria==1){
+                            return "/api/1.0/odilo?action=buscadorLibros&p=1&s=10&q=" + params.term;
+                        }
+                        if(valorcategoria==2){
+                            return "/reportes?action=data&model=ArticuloInvestigacion&p=1&s=10&q=" + params.term;
+                        }
+                        if(valorcategoria==4){
+                            return "/reportes?action=data&model=LibroKohaProgramaAnaliticoAsignatura&p=1&s=10&q=" + params.term;
+                            {#return "/pro_planificacion?action=buscarpersona&q=" + params.term;#}
+                        }
+
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                },
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay,
+                templateSelection: ItemsDisplay
+            }).on("select2:select", function (evt) {
+                $("#id_persona").attr({"value": (evt.params.data.id)});
+            });
+
+            $(".addrecurso").click(function () {
+                var id = $("#id_persona").val();
+                var idcategoria = $("#id_categoria").val();
+                if(idcategoria == 0 || id == ''){
+                    mensajeWarning("Seleccione un recurso");
+                    return false
+                }
+                if(idcategoria == 1){
+                    var texto = 'Está seguro de guardar el libro?'
+                }
+                if(idcategoria == 2){
+                    var texto = 'Está seguro de guardar el artículo?'
+                }
+                if(idcategoria == 4){
+                    var texto = 'Está seguro de guardar el repositorio institucional?'
+                }
+                Swal.fire({
+                    html: texto,
+                    type: 'warning',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            data: {
+                                'action': 'adicionarrecurso', 'id': id, 'idcategoria': idcategoria,'idsilasemanal': {{ silabo.id }},
+                            },
+                            url: '{{ request.path }}',
+                            type: "GET",
+                            success: function (data) {
+                                $.unblockUI();
+                                var object = data
+                                if (object.results === 'ok') {
+                                    Swal.fire({
+                                        title: 'Acción realizada correctamente!',
+                                        text: "Esta acción no se puede revertir.",
+                                        type: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                            bloqueointerface();
+                                            location.reload();
+                                        }
+                                    })
+                                }
+                                else {
+                                    Swal.fire(object.mensaje, '', 'warning');
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error de conexión.")
+                            },
+                        });
+                    }
+                })
+            });
+
+            $(".addrecursoapa").click(function () {
+                var textoapa = $("#id_bibliapa").val();
+                var idcategoria = $("#id_categoria").val();
+                if(idcategoria == 0 || textoapa == ''){
+                    mensajeWarning("Falta seleccionar una categoría o ingresar una bibliografía virtual");
+                    return false
+                }
+                var texto = 'Está seguro de guardar bibliografía virtual?'
+                Swal.fire({
+                    html: texto,
+                    type: 'warning',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            data: {
+                                'action': 'adicionarrecurso', 'textoapa': textoapa, 'idcategoria': idcategoria,'idsilasemanal': {{ silabo.id }},
+                            },
+                            url: '{{ request.path }}',
+                            type: "GET",
+                            success: function (data) {
+                                $.unblockUI();
+                                var object = data
+                                if (object.results === 'ok') {
+                                    Swal.fire({
+                                        title: 'Acción realizada correctamente!',
+                                        text: "Esta acción no se puede revertir.",
+                                        type: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                            bloqueointerface();
+                                            location.reload();
+                                        }
+                                    })
+                                }
+                                else {
+                                    Swal.fire(object.mensaje, '', 'warning');
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error de conexión.")
+                            },
+                        });
+                    }
+                })
+            });
+            $(".addbibliobasica").click(function () {
+                var tipo = $(this).attr('tipo');
+                var codbasica = $(this).attr('codbasica');
+                if(tipo == 1){
+                    var tipoact = 'inactivar'
+                }
+                if(tipo == 2){
+                    var tipoact = 'activar'
+                }
+                var texto = 'Está seguro de '+ tipoact +'?'
+                Swal.fire({
+                    html: texto,
+                    type: 'warning',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            data: {
+                                'action': 'adicionarrecursobibliobasica', 'codbasica': codbasica, 'tipo': tipo, 'idsilasemanal': {{ silabo.id }},
+                            },
+                            url: '{{ request.path }}',
+                            type: "GET",
+                            success: function (data) {
+                                $.unblockUI();
+                                var object = data
+                                if (object.results === 'ok') {
+                                    Swal.fire({
+                                        title: 'Acción realizada correctamente!',
+                                        text: "Esta acción no se puede revertir.",
+                                        type: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                            bloqueointerface();
+                                            location.reload();
+                                        }
+                                    })
+                                }
+                                else {
+                                    Swal.fire(object.mensaje, '', 'warning');
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error de conexión.")
+                            },
+                        });
+                    }
+                })
+            });
+            $(".deleterecurso").click(function () {
+                var idopc = $(this).attr('idopc');
+                var id = $(this).attr('cod');
+                var nomaction = $(this).attr('actiondelete');
+                var nomrecurso = $(this).attr('nomrecurso');
+                var texto = 'Está seguro de el recurso '+ nomrecurso +' ?'
+                Swal.fire({
+                    html: texto,
+                    type: 'warning',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            data: {
+                                'action': nomaction, 'id': id, 'idopc': idopc,
+                            },
+                            url: '{{ request.path }}',
+                            type: "POST",
+                            success: function (data) {
+                                $.unblockUI();
+                                var object = data
+                                if (object.results === 'ok') {
+                                    Swal.fire({
+                                        title: 'Acción realizada correctamente!',
+                                        text: "Esta acción no se puede revertir.",
+                                        type: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                            bloqueointerface();
+                                            location.reload();
+                                        }
+                                    })
+                                }
+                                else {
+                                    Swal.fire(object.mensaje, '', 'warning');
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error de conexión.")
+                            },
+                        });
+                    }
+                })
+            });
+
+
+
+
+
+
+        });
+
+
+
+
+{#        {% if ODILO_API %}#}
+{#            function buscarOdilo() {#}
+{#                $.ajax({#}
+{#                    type: "GET",#}
+{#                    url: `/api/1.0/odilo`,#}
+{#                    data: {#}
+{#                        'action': 'loadModalLibros',#}
+{#                    },#}
+{#                    success: function (data) {#}
+{#                        $.unblockUI();#}
+{#                        if (data.result) {#}
+{#                            $('.panelbodyOdilo').html(data.data);#}
+{#                            $("#itemspanelOdilo").modal({backdrop: 'static'}).modal('show')#}
+{#                        } else {#}
+{#                            mensajeDanger(data.message);#}
+{#                        }#}
+{#                    },#}
+{#                    error: function () {#}
+{#                        $.unblockUI();#}
+{#                        mensajeDanger("Error de conexión.");#}
+{#                    },#}
+{#                    dataType: "json"#}
+{#                });#}
+{#            }#}
+{##}
+{#            function consultarLibrosOdilo() {#}
+{#                bloqueointerface();#}
+{#                $.ajax({#}
+{#                    type: "GET",#}
+{#                    url: "/api/1.0/odilo",#}
+{#                    data: {'action': 'consultarLibros'},#}
+{#                    success: function (response) {#}
+{#                        $.unblockUI();#}
+{#                        if (response.result) {#}
+{#                            var offcanvas = new bootstrap.Offcanvas(document.getElementById('listaLibrosPreReservaInicial'));#}
+{#                            offcanvas.toggle();#}
+{#                            $('.listaLibrosPreBodyInicial').html(response.data)#}
+{#                        } else {#}
+{#                            alertaDanger(response.msg)#}
+{#                        }#}
+{#                    },#}
+{#                    error: function (error) {#}
+{#                        $.unblockUI();#}
+{#                        mensajeDanger(error);#}
+{#                    }#}
+{#                });#}
+{#            }#}
+{#        {% endif %}#}
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/i18n/es.js"></script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.25"></script>
+{% endblock %}
+{% block atras %}/pro_planificacion?action=planclase&silaboid={{ silabo.silabo.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ title }}</h3>
+                <h6>SEMANA #{{ silabo.numsemana }} - {{ silabo.silabo.materia }} </h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="">
+            <h3 class="fw-bolder" style="font-size: 14px;"><i class="fa fa-book" aria-hidden="true"></i>&nbsp;&nbsp;BIBLIOGRAFÍA BÁSICA</h3>
+            <table class="table table_primary table-striped">
+                <thead class="table-light">
+                <tr>
+                    <th style="text-align: center" width="20%">ACTIVAR/DESACTIVAR</th>
+                    <th style="text-align: center" width="80%">NOMBRE DEL RECURSO</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for lisbib in librosilabos %}
+                    <tr>
+                        <td style="text-align: center">
+                            {% if lisbib.id in bibliografiasilabos %}
+                                <span class="text-success me-1 addbibliobasica" tipo="1" codbasica="{{ lisbib.id }}"><i class="fa fa-check fs-4"></i></span>
+                            {% else %}
+                                <span class="text-danger me-1 addbibliobasica" tipo="2" codbasica="{{ lisbib.id }}"><i class="fa fa-remove fs-4"></i></span>
+                            {% endif %}
+                        </td>
+                        <td style='text-align: justify'>
+                            {% if lisbib.odilo %}
+                                <div class="ms-2 me-auto mt-1">
+                                    <img style="height: 35px;margin-top: 1px;" src="{{ lisbib.small }}"  class="img-thumbnail">
+                                    {{ lisbib.autor }}, {{ lisbib.titulo }}, {{ lisbib.isbm }}<br>
+                                </div>
+                                <a target="_blank" href="https://uteca.unemi.edu.ec/info/{{ lisbib.codigo }}"  class="btn btn-mini btn-default"><i class="fa fa-book"></i> Ver libro</a>
+                            {% else %}
+                                {{ lisbib.librokohaprogramaanaliticoasignatura }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <h3 class="fw-bolder" style="font-size: 14px;"><i class="fa fa-book" aria-hidden="true"></i>&nbsp;&nbsp;BIBLIOGRAFÍA COMPLEMENTARIA</h3>
+            <div class="row">
+                <div class="col-sm-4">
+                    <select name="categoria" id="id_categoria"  style="width: 100%;" tabindex="-1" aria-hidden="true">
+                        <option value="0">-- Categoría / Repositorio --</option>
+                        <option value="1">UTECA</option>
+                        <option value="2">ARTÍCULO</option>
+                        <option value="3">BIBLIOGRAFÍA VIRTUAL</option>
+                        <option value="4">REPOSITORIO INSTITUCIONAL</option>
+                    </select>
+                </div>
+                <div class="col-sm-8">
+                    <div class="input-group mb-2" id="muestrabuscador" style="flex-wrap: inherit;">
+                        <select name="persona" class="form-control" id="id_persona" >
+                            <option value="" selected="">---------</option>
+                        </select>
+                        <div class="input-group-append" >
+                            <a class="btn btn-success addrecurso" type="submit" id="button-addon2"><i class="fa fa-plus" aria-hidden="true"></i></a>
+                        </div>
+                    </div>
+                    <div class="input-group mb-2" id="muestrasolotexto" style="display: none">
+                        <input type="text" class="form-control" placeholder="Ingrese bibliografía virtual" autocomplete="off" name="id_bibliapa" id="id_bibliapa" value="">
+                        <div class="input-group-append">
+                            <a class="btn btn-success addrecursoapa" type="submit" id="button-addon2"><i class="fa fa-plus" aria-hidden="true"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <table class="table table_primary table-striped">
+                <thead class="table-light">
+                <tr>
+                    <th style="text-align: center" width="20%">CATEGORÍA/REPOSITORIO</th>
+                    <th style="text-align: center" width="70%">NOMBRE DEL RECURSO</th>
+                    <th style="text-align: center" width="10%">ACCIONES</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for bibcomp in bibliografiacomplementaria %}
+                    <tr id="fila_default_evidencia">
+                        <td style="text-align: left">REPOSITORIO INSTITUCIONAL</td>
+                        <td style="text-align: justify"><i class="fa fa-book"></i> {{ bibcomp.librokohaprogramaanaliticoasignatura }}</td>
+                        <td style="text-align: center">
+                            <a class="btn btn-danger btn-mini deleterecurso" idopc="4" nomrecurso="{{ bibcomp.librokohaprogramaanaliticoasignatura }}" cod="{{ bibcomp.id }}" actiondelete="deleteitemrecurso">
+                                <i class="fa fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% for luteca in librosuteca %}
+                    <tr id="fila_default_evidencia">
+                        <td style="text-align: left">UTECA</td>
+                        <td style="text-align: justify">
+                            <img style="height: 25px;margin-top: 0px;" src="{{ luteca.small }}"  class="img-thumbnail">
+                            {{ luteca.autor }}, {{ luteca.titulo }}, {{ luteca.isbm }}
+                        </td>
+                        <td style="text-align: center">
+                            <a class="btn btn-danger btn-mini deleterecurso" idopc="1" nomrecurso="{{ luteca.titulo }}" cod="{{ luteca.id }}" actiondelete="deleteitemrecurso">
+                                <i class="fa fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% for lapa in bibliografiaapa %}
+                    <tr id="fila_default_evidencia">
+                        <td style="text-align: left">BIBLIOGRAFÍA VIRTUAL</td>
+                        <td style="text-align: justify">
+                            <span class="fa fa-bookmark-o"></span> {{ lapa.bibliografia|linebreaksbr }}
+                        </td>
+                        <td style="text-align: center">
+                            <a class="btn btn-danger btn-mini deleterecurso" idopc="3" nomrecurso="{{ lapa.bibliografia }}" cod="{{ lapa.id }}" actiondelete="deleteitemrecurso">
+                                <i class="fa fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% for larti in listadoarticulos %}
+                    <tr id="fila_default_evidencia">
+                        <td style="text-align: left">ARTÍCULO</td>
+                        <td style="text-align: justify">
+                            <span class="fa fa-bookmark-o"></span> {{ larti.articulo.nombre|upper }}
+                        </td>
+                        <td style="text-align: center">
+                            <a class="btn btn-danger btn-mini deleterecurso" idopc="2" nomrecurso="{{ larti.articulo.nombre|upper }}" cod="{{ larti.id }}" actiondelete="deleteitemrecurso">
+                                <i class="fa fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

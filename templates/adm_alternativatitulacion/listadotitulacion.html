@@ -1,0 +1,641 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            var table = $('#example').dataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging":   false,
+                "ordering": false,
+                "info":     false,
+                "destroy": true,
+                "searching": false,
+                {#                "scrollY": h,#}
+                "order": [[ 0, 'asc' ]],
+                "columnDefs": [{ "visible": false,"targets": 0 }],
+                "drawCallback": function ( settings ) {
+                    var api = this.api();
+                    var rows = api.rows( {page:'current'} ).nodes();
+                    var last=null;
+                    api.column(0, {page:'current'} ).data().each( function ( group, i ) {
+                        if ( last !== group ) {
+                            $(rows).eq( i ).before(
+                                '<tr class="group"><td colspan="8" height="30" bgcolor="#d1f5ea">'+group+'</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                }
+            });
+        } );
+
+        $(function () {
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var idf = $("#id_facultad").val();
+                var idc = $("#id_carrera").val();
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "/adm_alternativatitulacion?action=listadotitulacion&s=" + term + "&idf=" + idf + "&idc=" + idc;
+                } else {
+                    bloqueointerface();
+                    location.href = "/adm_alternativatitulacion?action=listadotitulacion&&idf=" + idf + "&idc=" + idc;
+                }
+                return false;
+            };
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $("#id_facultad").change(function () {
+                busqueda();
+            });
+            $("#id_carrera").change(function () {
+                busqueda();
+            });
+            $("select").select2({minimumResultsForSearch: 20});
+            $(".calficaciones").each(function () {
+                var did = $(this).attr('did');
+                var nf = $(this).attr('nf');
+                var pg =$("#pg"+did).attr('valu');
+                var grado =0;
+                grado = ((parseFloat(nf)+parseFloat(pg))/2);
+                $("#notagrado"+did).html(grado.toFixed(2));
+            });
+            $("#generarlistado").click(function () {
+                bloqueointerface();
+                var lista = "";
+                $(".recorreasignados").each(function (index) {
+                    if ($(this).is(":checked")) {
+                        var seleccion = $(this).attr('codasignado');
+                        lista += seleccion + ",";
+                    }
+                });
+                if (lista.length == 0) {
+                    $.unblockUI();
+                    mensajeWarning('Favor seleccione alumnos a graduar.')
+                    return false;
+                }
+                $.unblockUI();
+                $("#modalnotoficacionimportar").modal({backdrop: 'static', width: '600px'}).modal('show');
+            });
+
+            $(".vermodalimprimir").click(function () {
+                $('#modalimprimir').modal('show');
+            });
+            $(".verdetalle").click(function () {
+                var idasignada = $(this).attr('idasignada');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_alternativatitulacion",
+                    data: {'action': 'verdetallerequisitos', 'idasignada': idasignada },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            bodyrequisitos
+                            $("#bodyrequisitos").html(data.data);
+                            $("#titulorequisito").html('Requisitos de titulación');
+                            $('#modaldetallerequisitos').modal({backdrop:'static', width: '650px'}).modal('show');
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            mensajeSuccess(data.mensaje)
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning('Error al obtener los datos.')
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".verfaltantesfirmas").click(function () {
+                var idasignada = $(this).attr('idasignada');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_alternativatitulacion",
+                    data: {'action': 'verfaltantesfirmar', 'idasignada': idasignada },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            bodyrequisitos
+                            $("#bodyrequisitos").html(data.data);
+                            $("#titulorequisito").html('Faltantes firmar acta de titulación');
+                            $('#modaldetallerequisitos').modal({backdrop:'static', width: '650px'}).modal('show');
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            mensajeSuccess(data.mensaje)
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning('Error al obtener los datos.')
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#boton_notoficaciongenerar").click(function () {
+                var lista = "";
+                var fgraduacion = $("#id_fgraduacion").val()
+                var factagrado = $("#id_factagrado").val()
+                var fconsejo = $("#id_fconsejo").val()
+                $(".recorreasignados").each(function (index) {
+                    if ($(this).is(":checked")) {
+                        var seleccion = $(this).attr('codasignado');
+                        lista += seleccion + ",";
+                    }
+                });
+                if (lista.length == 0) {
+                    mensajeWarning('Favor seleccione alumnos a generar acta.')
+                    return false;
+                }
+                var id_memo = $("#id_memo").val()
+                if (id_memo == ''){
+                    mensajeWarning('Favor escribir número de memo.')
+                    return false;
+                }
+                if (fgraduacion == ''){
+                    mensajeWarning('Favor ingresar fecha de graduación.')
+                    return false;
+                }
+                if (factagrado == ''){
+                    mensajeWarning('Favor ingresar fecha acta de grado.')
+                    return false;
+                }
+                if (fconsejo == ''){
+                    mensajeWarning('Favor ingresar fecha de consejo directivo.')
+                    return false;
+                }
+                lista = lista.substring(0, lista.length - 1);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_alternativatitulacion",
+                    data: {'action': 'graduarlistadomasivo', 'lista': lista, 'id_memo': id_memo, 'fgraduacion': fgraduacion, 'factagrado': factagrado, 'fconsejo': fconsejo},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $('#modalnotoficacionimportar').modal('hide');
+                            bloqueointerface();
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            mensajeSuccess(data.mensaje)
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning('Error al obtener los datos.')
+                    },
+                    dataType: "json"
+                });
+
+            });
+            $(".seleccionartodoscheck").click(function () {
+                if ($(this).is(":checked")) {
+                    $(".recorreasignados").each(function () {
+                        $(this).prop('checked', true);
+                    });
+                } else {
+                    $(".recorreasignados").each(function () {
+                        $(this).prop('checked', false);
+                    });
+                }
+
+            });
+            $("#cancel_importarcioncancela").click(function () {
+                $("#modalnotoficacionimportar").modal('hide');
+            });
+            if($(".recorreasignados").length == 0) {
+                $("#idaviso").css("display", "none");
+                $("#generarlistado").css("display", "none");
+                $(".seleccionartodoscheck").css("display", "none");
+            }
+
+            $(".imprimeexcell").click(function () {
+                var id_coordinacion = $("#id_coordinacion").val()
+                var id_carreras = $("#id_carreras").val()
+                if(id_coordinacion == 0){
+                    mensajeWarning('Favor seleccione coordinación.')
+                    return false;
+                }
+                openwindow('POST' ,'/adm_alternativatitulacion', {action:'imprimeexcel','id_coordinacion': id_coordinacion,'id_carreras': id_carreras }, '_blank');
+            });
+
+            $('#id_coordinacion').change(function(){
+                $('#id_carreras').empty().append('<option value="0">---------</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#id_coordinacion").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_alternativatitulacion",
+                        data: {'action': 'carrerascoordinacion', 'id_coordinacion': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_carreras').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+            {#$('#id_facultad').select2({width:'100%',placeholder:'Seleccione facultad'})#}
+
+        });
+
+        function pdfactatitulacion(idasignado){
+            openwindow('POST' ,'/adm_complexivotematica', {action:'pdfactatitulacioncomplexivo','idmateriaasign': idasignado }, '_blank');
+        }
+        function formModalGET(id, text, action, dimension, footer = true) {
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-lg').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ title }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class='row'>
+            <div class='col-lg-12'>
+                <a href="javascript:void(0);" class="btn btn-cian-secondary" onclick="formModalGET('','REPORTE','reportasignatura')"><i class="fa fa-file-excel-o"></i> Reporte</a>
+                {#            <a class="btn btn-warning vermodalimprimir"  style="text-align: left; float: left; margin-right: 3px;" href="javascript:void(0);"><i class="fa fa-file-excel"></i> Imprimir</a>#}
+            </div>
+        </div>
+        <form method="GET">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-lg-3 col-md-4 col-12">
+                        <div class="input-group mb-2" style="margin-left: 5px">
+                            <select name="id_facultad" id="id_facultad" class="form-control" style="width: 100%">
+                                <option value="">--FACULTAD--</option>
+                                {% for lcor in listadocoordinacion %}
+                                    <option {% if idf == lcor.0 %}selected{% endif %} value="{{ lcor.0 }}">{{ lcor.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-4 col-12">
+                        <div class="input-group mb-2" style="margin-left: 5px">
+                            <select name="id_carrera" id="id_carrera" class="form-control" style="width: 100%">
+                                <option value="">--CARRERAS--</option>
+                                {% for lcar in listadocarrera %}
+                                    <option {% if idc == lcar.0 %}selected{% endif %} value="{{ lcar.0 }}">{{ lcar.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 col-md-4 col-12">
+                        <div class="input-group mb-2">
+                            <input class='form-control' type='text' id='searchinput' name="s" value='{{ s }}' autocomplete="off" placeholder="Alumno"/>
+                            <div class="input-group-append">
+                                <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()" id="button-addon2">
+                                    <i class="fa fa-search"></i>
+                                </a>
+                                {% if url_vars %}
+                                    <a title="Ver todo" href="{{ request.path }}?action={{ action }}" class="btn btn-default tr bloqueo_pantalla">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </form>
+
+        <table class="table table_primary" id="example">
+            <thead class="table-light">
+            <tr>
+                <th style="text-align: center;width: 60%">CARRERA</th>
+                <th style="text-align: center;width: 5%">
+                    <a class="btn btn-success" id="generarlistado">Generar</a><br>
+                    Nro.<br>
+                    <input type="checkbox" class="form-check-input seleccionartodoscheck">
+                </th>
+                <th style="text-align: center;width: 700px;">ESTUDIANTE</th>
+                <th style="text-align: center; width: 50px;">NOTA</th>
+                <th style="text-align: center; width: 50px;">RECORD</th>
+                <th style="text-align: center; width: 50px;">NOTA GRADO</th>
+                <th style="text-align: center; width: 50px;">ESTADO</th>
+                <th style="text-align: center; width: 15px;">CUMPLE REQUISITOS</th>
+                <th style="text-align: center; width: 15px;"></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for asignadomateria in listado %}
+                <tr>
+                    {% with validacionrequisitos=asignadomateria.materiaasignada.matricula.inscripcion|args:asignadomateria.materiaasignada.materia.id|args:asignadomateria.actacerrada|call:"valida_requisitos_complexivo" %}
+                        <td>
+                            <strong>
+                                CARRERA: {{ asignadomateria.materiaasignada.materia.asignaturamalla.malla.carrera.nombre }} <br>
+                                ASIGNATURA: {{ asignadomateria.materiaasignada.materia.asignaturamalla.asignatura.nombre }} ({{ asignadomateria.materiaasignada.materia.paralelo }}) ({{ asignadomateria.materiaasignada.materia.asignaturamalla.nivelmalla }})
+                            </strong>
+                        </td>
+                        <td style="text-align: center;">
+                            {#                                {{ asignadomateria.id }}#}
+                            {% if asignadomateria.actacerrada %}
+                                {% if not asignadomateria.estadograduado %}
+                                    <input class="form-check-input recorreasignados" type="checkbox" codasignado="{{ asignadomateria.id }}">
+                                {% endif %}
+                            {% endif %}
+                            {% if numeropagina == 1 %}
+                                {{ forloop.counter }}
+                            {% else %}
+                                {% with contador=numerofilasguiente|sumar_pagineo:forloop.counter %}
+                                    {{ contador }}
+                                {% endwith %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: left;">
+                            <div class="d-flex align-items-center">
+                                <div>
+                                        <span class="avatar avatar-lg">
+                                            {% if asignadomateria.materiaasignada.matricula.inscripcion.persona.foto.foto %}
+                                                <img src="https://sga.unemi.edu.ec{{ asignadomateria.materiaasignada.matricula.inscripcion.persona.foto.foto.url }}" class="rounded-circle">
+                                            {% else %}
+                                                {% if asignadomateria.materiaasignada.matricula.inscripcion.persona.sexo_id == 1 %}
+                                                    <img src="/static/images/iconos/mujer.png" class="rounded-circle">
+                                                {% else %}
+                                                    <img src="/static/images/iconos/hombre.png" class="rounded-circle">
+                                                {% endif %}
+                                            {% endif %}
+                                        </span>
+                                </div>
+                                <div class="ms-0">
+                                    <h6 class="mb-0">
+                                        <span class="fa fa-id-badge" aria-hidden="true"></span>
+                                        {% if asignadomateria.materiaasignada.matricula.inscripcion.persona.cedula %}
+                                            {{ asignadomateria.materiaasignada.matricula.inscripcion.persona.cedula }}
+                                        {% else %}
+                                            {{ asignadomateria.materiaasignada.matricula.inscripcion.persona.pasaporte }}
+                                        {% endif %}
+                                        |
+                                        <span class="fa fa-user" aria-hidden="true"></span> {{ asignadomateria.materiaasignada.matricula.inscripcion }}
+                                    </h6>
+                                    <p class="mb-0 text-muted">
+                                        <span class="fa fa-envelope"></span> <a
+                                            href="mailto:{{ asignadomateria.materiaasignada.matricula.inscripcion.persona.email }}">{{ asignadomateria.materiaasignada.matricula.inscripcion.persona.email }}</a>
+                                        | <span
+                                            class="fa fa-phone-square"></span> {{ asignadomateria.materiaasignada.matricula.inscripcion.persona.telefono }}
+                                    </p>
+                                    <h6 class="mb-0 text-muted">
+                                        <strong>
+                                            {% if asignadomateria.actacerrada %}
+                                                {{ asignadomateria.numeromemo|default_if_none:"" }} |
+                                                {{ asignadomateria.numeromemogradua|default_if_none:"" }} |
+                                                ACTA N°: SUS-{{ asignadomateria.materiaasignada.matricula.inscripcion.carrera.abrsustentacion|default_if_none:"" }}-{{ asignadomateria.numeroacta }}-{{ asignadomateria.materiaasignada.materia.nivel.periodo.fin|date:"dmY" }}
+                                            {% else %}
+                                                <b class="text-danger"> ACTA NO GENERADA</b>
+                                            {% endif %}
+                                        </strong>
+                                    </h6>
+                                    <p class="mb-0 text-muted"><span class="fa fa-book"></span> {{ asignadomateria.materiaasignada.materia }}</p>
+                                    <h6 class="mb-0 text-muted">
+                                        <strong>
+                                            {% if asignadomateria.estadograduado %}
+                                                <b class="text-success"><span class="fa fa-graduation-cap" aria-hidden="true"></span> GRADUADO</b>
+                                            {% else %}
+                                                <b class="text-danger"><span class="fa fa-graduation-cap" aria-hidden="true"></span> NO GRADUADO</b>
+                                            {% endif %} |
+                                            {% if asignadomateria.actatitulacionfirmada %}
+                                                <b class="text-success"> ACTA DE TITULACIÓN FIRMADA</b>
+                                            {% else %}
+                                                <b class="text-danger"> ACTA DE TITULACIÓN NO FIRMADA</b>
+                                            {% endif %}
+                                        </strong>
+                                    </h6>
+                                </div>
+                            </div>
+                        </td>
+                        {#                            <td style="text-align: center; vertical-align: middle;" class="calficaciones" did="{{ asignadomateria.id }}" nf="{{ asignadomateria.materiaasignada.notafinal|floatformat:"2" }}">{{ asignadomateria.materiaasignada.notafinal|floatformat:"2" }}</td>#}
+                        <td style="text-align: center; vertical-align: middle;" class="calficaciones" did="{{ asignadomateria.id }}" nf="{{ asignadomateria.notafinal|floatformat:"2" }}">{% if asignadomateria.actacerrada %}{{ asignadomateria.notafinal|floatformat:"2" }}{% endif %}</td>
+                        <td style="text-align: center; vertical-align: middle;" id="pg{{ asignadomateria.id }}" valu="{{ asignadomateria.materiaasignada.matricula.inscripcion.promedio_record }}">{{ asignadomateria.materiaasignada.matricula.inscripcion.promedio_record }}</td>
+                        <td style="text-align: center; vertical-align: middle;" id="notagrado{{ asignadomateria.id }}"></td>
+                        <td style="text-align: center;vertical-align: middle;">
+                            {% if asignadomateria.materiaasignada.aprobada %}
+                                <span id='maestado{{ asignadomateria.materiaasignada.id }}' style="color: #006400;"><b>{{ asignadomateria.materiaasignada.estado }}</b></span>
+                            {% endif %}
+                            {% if asignadomateria.materiaasignada.reprobado %}
+                                <span id='maestado{{ asignadomateria.materiaasignada.id }}' style="color: #dc143c;"><b>{{ asignadomateria.materiaasignada.estado }} </b></span>
+                            {% endif %}
+                            {% if asignadomateria.materiaasignada.encurso %}
+                                <span id='maestado{{ asignadomateria.materiaasignada.id }}'>{{ asignadomateria.materiaasignada.estado }}</span>
+                            {% endif %}
+                            {% if asignadomateria.materiaasignada.recuperacion %}
+                                <span id='maestado{{ asignadomateria.materiaasignada.id }}' style="color: #daa520;"><b>{{ asignadomateria.materiaasignada.estado }} </b></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;vertical-align: middle;">
+                            {% if validacionrequisitos %}
+                                <i class="fa fa-check" style="color:green"></i>
+                            {% else %}
+                                <i class="fa fa-remove" style="color:red"></i>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center; vertical-align: middle">
+                            <div class="dropdown dropleft">
+                                <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                </a>
+                                <ul class="dropdown-menu" style="">
+                                    <span class="dropdown-header"><i class="fa fa-cogs" aria-hidden="true"></i> Acciones</span>
+                                    <li class="dropdown-item">
+                                        <a href="javascript:;" class="verdetalle" idasignada="{{ asignadomateria.materiaasignada.id }}">
+                                            <i class="fa fa-list dropdown-item-icon" aria-hidden="true"></i> Ver detalle requisitos
+                                        </a>
+                                    </li>
+                                    <li class="dropdown-item">
+                                        <a href="javascript:;" class="verfaltantesfirmas" idasignada="{{ asignadomateria.id }}">
+                                            <i class="fa fa-list dropdown-item-icon" aria-hidden="true"></i> Faltantes por firmar
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    {% endwith %}
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="15">NO EXISTEN REGISTROS</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+    <div class="modal fade" id="modalnotoficacionimportar" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="exampleModalLabel">Generar actas</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning" role="alert" style="text-align: justify">
+                        <strong>Antes de generar el acta, por favor, revisa los siguientes pasos:</strong>
+                        <ol style="margin-top: 0">
+                            <li>
+                                Revisar la malla del alumno para asegurar de que todos los campos "Título Hombre" y "Título Mujer" estén llenos.
+                                Malla -> acciones -> editar.
+                            </li>
+                            <li>
+                                Verificar en el módulo de coordinaciones que estén asignados el Decano y el Coordinador de Carrera.
+                                Se le recuerda que la configuración de coordinaciones es por periodo lectivo.
+                            </li>
+                        </ol>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-12 col-md-4 col-12">
+                            <strong>MEMORANDO Nro.</strong>
+                            <input class="form-control" type="text" id="id_memo" name="id_memo" placeholder="Ej. UNEMI-FACE-2022-0666-MEM">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-4 col-md-4 col-12">
+                            <strong>FECHA GRADUACIÓN:</strong>
+                            <input class="form-control" type="date" id="id_fgraduacion" name="id_fgraduacion" placeholder="FECHA DE GRADUACIÓN">
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-12">
+                            <strong>FECHA ACTA GRADO:</strong>
+                            <input class="form-control" type="date" id="id_factagrado" name="id_factagrado" placeholder="FECHA ACTA DE GRADO">
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-12">
+                            <strong>FECHA CONSEJO DIRECTIVO:</strong>
+                            <input class="form-control" type="date" id="id_fconsejo" name="id_fconsejo" placeholder="FECHA DE CONSEJO DIRECTIVO">
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="boton_notoficaciongenerar" class='btn btn-success'> Generar</a>
+                        <a href="javascript:;" id="cancel_importarcioncancela" class='btn btn-default'> Cancelar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="modaldetallerequisitos" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="titulorequisito"></h5>
+                </div>
+                <div class="modal-body" id="bodyrequisitos"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal">
+                        <i class="fa fa-window-close"></i> Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="modalimprimir" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" >Imprimir listado de alumnos</h5>
+                </div>
+                <div class="modal-body" id="bodyimprimir">
+                    <select name="id_coordinacion" id="id_coordinacion" class="form-control" style="width: 100%">
+                        <option value="0">--FACULTAD--</option>
+                        {% for lcor in listadocoordinacion %}
+                            <option value="{{ lcor.0 }}">{{ lcor.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="id_carreras" id="id_carreras" class="form-control" style="width: 100%">
+                        <option value="0">--CARRERAS--</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <a class="btn btn-default imprimeexcell">
+                        <i class="fa fa-print"></i> Imprimir
+                    </a>
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal">
+                        <i class="fa fa-window-close"></i> Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="get" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal" id="cerrar"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

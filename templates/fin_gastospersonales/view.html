@@ -1,0 +1,578 @@
+{% extends "fin_gastospersonales/base_gastospersonales.html" %}
+{% load sga_extras %}
+{% block heading_ext %}
+    <script>
+        var intentos = 0;
+        var idpersona = 0;
+        $(function () {
+
+            $("#search").click(function () {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/fin_gastospersonales?s=" + term;
+            });
+
+            actualizar_reporte = function () {
+
+            };
+
+            $("#reporte_declaracion").click(function () {
+                var idpersona = parseInt($("#persona_reporte").val());
+                var anio = parseInt($("#anioreporte").val());
+                if (idpersona && anio) {
+                    $("#reporte_declaracion").attr({"nhref": "/reportes?action=run&n={{ reporte_0.nombre }}&id=" + idpersona + "&anio=" + anio});
+                    $("#reporte_declar").modal('hide');
+                }
+            });
+            $("#reporte_declaracion_a").click(function () {
+                var idpersona = parseInt($("#persona_reporte_a").val());
+                var anio = parseInt($("#anioreporte_a").val());
+                if (idpersona && anio) {
+                    $("#reporte_declaracion_a").attr({"nhref": "/reportes?action=run&n={{ reporte_1.nombre }}&id=" + idpersona + "&anio=" + anio});
+                    $("#reporte_declar_a").modal('hide');
+                }
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $('#calculopanel_cerrar').click(function () {
+                $("#calculopanel").modal('hide');
+            });
+
+            $('#calculopanel_cerrarexcel').click(function () {
+                $("#calculopanelexcel").modal('hide');
+            });
+
+            function terminar() {
+                $("#calculopanelprogresshint").html("Finalizando Cálculo");
+                $("#progressbar").css({'width': '100%'});
+                intentos = 0;
+                $("#calculopanel").modal("hide");
+                bloqueointerface();
+                location.href = "/fin_gastospersonales";
+            }
+
+            function fallo() {
+                $.unblockUI();
+                $("#calculopanel").modal("hide");
+                smoke.alert("Fallo al calcular");
+                $("#calculopanel_cerrar, #pie_calculo").show();
+                $("#fecha_inicio").removeAttr('disabled');
+                $("#fecha_fin").removeAttr('disabled');
+            }
+
+            $('.detalle').click(function () {
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_gastospersonales",
+                    data: {'action': 'detalle', 'id': id},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#detalletalentohumanomodal_contenido").html(data.data);
+                            $("#detalletalentohumanomodal").modal({'width': '1000px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            function calculo(lista, elemento, cantidad) {
+                var persona = lista[elemento];
+                var cp = (100 / (cantidad + 1)) * elemento + '%';
+                var anio = parseInt($("#aniocalculo").val());
+                if (elemento > cantidad) {
+                    $("#calculopanel").modal("hide");
+                    bloqueointerface();
+                    location.href = "/fin_gastospersonales";
+                } else {
+                    $("#calculopanelprogresshint").html(persona.distributivo);
+                    $("#progressbar").css({'width': cp});
+                    $.ajax({
+                        type: "POST",
+                        url: "/fin_gastospersonales",
+                        data: {"action": "calcular_declaraciones", "maid": persona.id, "anio": anio},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                intentos = 0;
+                                calculo(lista, elemento + 1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallo();
+                                } else {
+                                    calculo(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function () {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallo();
+                            } else {
+                                calculo(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+
+
+            empezar_calculo = function () {
+                $("#barraprogreso").show();
+                $("#calculopanelprogresshint").show();
+                var anio = parseInt($("#aniocalculo").val());
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_gastospersonales",
+                    data: {'action': 'lista_plantilla', 'anio': anio},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            personas = data.personas;
+                            cantidad = personas.length;
+                            indice = 0;
+                            calculo(personas, indice, (cantidad - 1));
+                        } else {
+                            smoke.alert(data.mensaje);
+                            $("#pie_calculo").show();
+                            $("#calculopanel_cerrar, #pie_calculopanel").show();
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                        $("#pie_calculopanel").show();
+                        $("#cerrarpanel_cerrar, #pie_calculo").show();
+                    },
+                    dataType: "json"
+                });
+            };
+
+            empezar_calculoexcel = function () {
+                $("#barraprogresoexcel").show();
+                $("#calculopanelprogresshintexcel").show();
+                var anio = parseInt($("#aniocalculoexcel").val());
+                var mes = parseInt($("#mescalculoexcel").val());
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_gastospersonales",
+                    data: {'action': 'lista_plantilla_excel', 'anio': anio, 'mes': mes},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            {#                            personas = data.personas;#}
+                            {#                            cantidad = personas.length;#}
+                            indice = 0;
+                            $("#calculopanelexcel").modal('hide');
+                            location.href = data.archivo;
+                            {#                            calculo(personas, indice, (cantidad-1));#}
+                        } else {
+                            smoke.alert(data.mensaje);
+                            $("#pie_calculoexcel").show();
+                            $("#calculopanel_cerrarexcel, #pie_calculopanelexcel").show();
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                        $("#pie_calculopanel").show();
+                        $("#cerrarpanel_cerrar, #pie_calculo").show();
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $('#detalletalentohumanomodal_cerrar').click(function () {
+                $("#detalletalentohumanomodal").modal('hide');
+            });
+
+            $('#generar_dec').click(function () {
+                $("#calculopanel").modal({"backdrop": "static", "width": "350"}).modal("show");
+                $("#pie_calculopanel").show();
+
+            });
+
+            $('#generar_excel').click(function () {
+                $("#calculopanelexcel").modal({"backdrop": "static", "width": "350"}).modal("show");
+                $("#pie_calculopanelexcel").show();
+
+            });
+
+            $("#calculopanel_generar").click(function () {
+                $("#pie_calculopanel").hide();
+                $("#aniocalculo").attr("disabled", true);
+                empezar_calculo();
+            });
+
+            $("#calculopanel_generarexcel").click(function () {
+                $("#pie_calculopanelexcel").hide();
+                {#                $("#aniocalculoexcel").attr("disabled", true);#}
+                {#                $("#mescalculoexcel").attr("disabled", true);#}
+                empezar_calculoexcel();
+            });
+
+            $('.reporte_dec').click(function () {
+                var id = $(this).attr('ida');
+                $("#persona_reporte").val(id);
+                $("#reporte_declar").modal({"backdrop": "static", "width": "250"}).modal("show");
+                $("#aniocalculo").removeAttr('disabled');
+            });
+            $('.reporte_dec_a').click(function () {
+                var id = $(this).attr('ida');
+                $("#persona_reporte_a").val(id);
+                $("#reporte_declar_a").modal({"backdrop": "static", "width": "250"}).modal("show");
+                $("#aniocalculo_a").removeAttr('disabled');
+            });
+
+            $('#reportepanel_cerrar').click(function () {
+                $("#reporte_declar").modal('hide');
+            });
+
+            $('#reportepanel_cerrar_a').click(function () {
+                $("#reporte_declar_a").modal('hide');
+            });
+
+
+            $("#persona_r").hide();
+            $("#persona_r_a").hide();
+
+            conectar_reporte();
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block subtitle %}
+    <i class="fa fa-record-vinyl"></i> {{ periodo|title2 }}
+{% endblock %}
+{% block title_input %}
+    Buscar por cedula, nombres o apellidos...
+{% endblock %}
+{% block filtros %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="id" value="{{ periodo.id|encrypt }}">
+{% endblock %}
+{% block button_action %}
+<a href="javascript:void(0)"
+               onclick="formModal('{{ periodo.id|encrypt }}','','Adicionar responsable con gasto', 'addgastopersonal', 'modal-md')"
+               class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+{% endblock %}
+{% block replace_all_btn %}
+    <div class="input-group-append">
+        <a  href="{{ request.path }}?action={{ action }}&id={{ periodo.id|encrypt }}"
+            id='allresults' class="btn btn-cian-secondary py-1 p-3"><i class="fa fa-refresh " aria-hidden="true"></i>
+        </a>
+     </div>
+{% endblock %}
+{% block content %}
+    <div class="row">
+        <div class="col-12 pt-0 text-end">
+            <i class="fa fa-sort-numeric-desc"></i> Con documento: <span class="badge bg-success"> {{ t_conarchivos }}</span> |
+            <i class="fa fa-sort-numeric-desc"></i> Sin documento: <span class="badge bg-danger"> {{ t_sinarchivos }}</span> |
+            <i class="fa fa-sort-numeric-desc"></i> Total: <span class="badge bg-secondary"> {{ paging.count }}</span> |
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+            <table class="table table-bordered table-striped tabla_responsive">
+                <thead class="table-light cabecera-fija">
+                <tr>
+                    <th class="text-center"><i class="fa fa-sort-numeric-desc"></i></th>
+                    <th class="text-center"><i class="fa fa-user-tie "></i> Funcionario</th>
+                    <th class="text-center"><i class="fa fa-list"></i> Detalle</th>
+                    <th class="text-center">Reg.</th>
+                    <th class="text-center"><i class="fa fa-cogs"></i></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for administrativo in listado %}
+                    <tr>
+                        <td class="text-center w-5 align-middle">{{ forloop.counter }}</td>
+                        <td class="w-30 text-secondary align-middle">
+                            <div class="mb-0">
+                                <div class="row g-0">
+                                    <div class="col-md-3 text-center v-align-middle justify-content-center">
+                                        <img src="{{ administrativo.persona.get_foto }}" alt="" class="img-fluid rounded-circle"
+                                             width="60px">
+                                    </div>
+                                    <div class="col-md-9">
+                                        <div class="">
+                                            <p class="card-text">
+                                                <i class="fa fa-user"
+                                                   aria-hidden="true"></i> {{ administrativo.persona.nombre_completo_minus }}
+                                            </p>
+                                            <p class="card-text">
+                                                <i class="fa fa-address-card"
+                                                   aria-hidden="true"></i> {{ administrativo.persona.cedula }}
+                                            </p>
+                                            <p class="card-text">
+                                                {% if administrativo.persona.telefono %} <i class="fa fa-phone"></i>
+                                                    {{ administrativo.persona.telefono }}
+                                                    <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ administrativo.persona.telefono }}&text=Hola {{ administrativo.persona }}'
+                                                       target="_blank" class="fs-4"
+                                                       data-bs-toggle="tooltip"
+                                                       title="Enviar mensaje por whatsapp">
+                                                        <i class="fa fa-whatsapp"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </p>
+                                            <p class="card-text">
+                                                <i class="fa fa-envelope" aria-hidden="true"></i>
+                                                {% if administrativo.persona.emailinst %}
+                                                    {{ administrativo.persona.emailinst }}
+                                                {% else %}
+                                                    {{ administrativo.persona.email }}
+                                                {% endif %}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="w-20  align-middle">
+                            <p><b>Usuario: </b>{{ administrativo.persona.usuario }}
+                                {% if administrativo.persona.activo %}
+                                    <span class="badge bg-success">Activo</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactivo</span>
+                                {% endif %}
+                            </p>
+                            {% if administrativo.persona.mis_cargos %}
+                                <p class="fs-6"><b class="fs-5">Cargo: </b>
+                                    {% for cargo in administrativo.persona.mis_cargos %}
+                                        {{ cargo.denominacionpuesto|default_if_none:'' }} - ({{ cargo.estadopuesto }})
+                                        <br>
+                                    {% endfor %}
+                                </p>
+                            {% endif %}
+                                <p><b>Documentos: </b>
+                                    {% if administrativo.archivo %}
+                                        <a href="{{ administrativo.archivo.url }}"
+                                           data-width="2048" data-height="1365"  class="tb"
+                                           data-fancybox="iframe{{ administrativo.id }}"
+                                             data-caption="Gastos personales de {{  administrativo.persona }}"
+                                             title="Documento de gastos personales."><i class="fa fa-file-pdf-o text-danger fs-4"></i></a>
+                                    {% else %}
+                                        Sin carga de archivo
+                                    {% endif %}
+                                </p>
+                        </td>
+
+                        <td class="text-center w-5">
+                            {% if administrativo.persona.actualizo_gasto %}
+                                <i class="fa fa-check tu" title="Registró Declaración"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-center w-5 align-middle">
+                            <div class="dropdown">
+                                <div class="dropdown dropleft">
+                                    <a href="javascript:void(0);"
+                                       class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                       aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                    </a>
+                                    <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item"
+                                               href="{{ request.path }}?action=personagasto&id={{ administrativo.persona.id }}&idp={{ periodo.id|encrypt }}">
+                                                <i class="fa fa-list dropdown-item-icon"></i> Gastos
+                                            </a>
+                                        </li>
+                                         <li>
+                                            <a class="dropdown-item"
+                                               href="javascript:void(0)"
+                                                onclick="formModal('','{{ administrativo.id|encrypt }}','Editar {{ administrativo }}','editgastopersonal','modal-md')">
+                                                <i class="fa fa-edit dropdown-item-icon"></i> Editar
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            {#                            {% if administrativo.persona.tiene_declaracion %}#}
+                            {#                                <a class="btn btn-mini btn-info reporte_dec" ida="{{ administrativo.persona.id }}"#}
+                            {#                                   href="javascript:;"><i class="fa fa-print"></i> Dec. Anual 107</a>#}
+                            {#                            {% endif %}#}
+                            {#                            {% if administrativo.persona.tiene_declaracion_a %}#}
+                            {#                                <a class="btn btn-mini btn-info reporte_dec_a" ida="{{ administrativo.persona.id }}"#}
+                            {#                                   href="javascript:;"><i class="fa fa-print"></i> Dec. Anual 107A</a>#}
+                            {#                            {% endif %}#}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center">NO EXISTEN DATOS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% include 'paginacionb4.html' %}
+
+        </div>
+    </div>
+
+{% endblock %}
+{% block moreblock_ext %}
+    <div class="modal fade static" id="detalletalentohumanomodal" style="display: none;">
+        <div class="modal-header">
+            <h4>Detalle cargo</h4>
+        </div>
+        <div class="modal-body">
+            <div id="detalletalentohumanomodal_contenido" style="width: 100%; max-height: 400px; overflow: auto">
+
+            </div>
+        </div>
+        <div>
+            <div class="modal-footer">
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="detalletalentohumanomodal_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="calculopanel" style="width: 100px; display: none">
+        <div class="modal-header">
+            <h4>Generando Declaraciones</h4>
+        </div>
+        <div class="modal-body" id="calculopanelpanelbody">
+            <div style="height: 35px">
+                <div style="width: 50px; padding-right: 5px; float: left">
+                    Año:
+                </div>
+                <div>
+                    <input type="text" id="aniocalculo" value="{{ fecha|date:'Y' }}" style="width: 50px">
+                </div>
+            </div>
+            <div id="barraprogreso">
+                Progreso:
+                <div class="progress progress-striped active">
+                    <div class="bar" style="width: 0;" id="progressbar"></div>
+                </div>
+                <div id="calculopanelprogresshint">
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="modal-footer" id="pie_calculopanel">
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="calculopanel_generar">Generar</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="calculopanel_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="calculopanelexcel" style="width: 100px; display: none">
+        <div class="modal-header">
+            <h4>Generando Declaraciones Excel</h4>
+        </div>
+        <div class="modal-body" id="calculopanelpanelbodyexcel">
+            <div style="height: 35px">
+                <div style="width: 50px; padding-right: 5px; float: left">
+                    Año:<input type="text" id="aniocalculoexcel" value="{{ fecha|date:'Y' }}" style="width: 50px">
+                </div>
+                <div style="width: 50px; padding-right: 5px; float: left">
+                    Mes:<input type="text" id="mescalculoexcel" value="{{ fecha|date:'m' }}" style="width: 50px">
+                </div>
+            </div>
+            <div id="barraprogresoexcel">
+                Progreso:
+                <div class="progress progress-striped active">
+                    <div class="bar" style="width: 0;" id="progressbarexcel"></div>
+                </div>
+                <div id="calculopanelprogresshintexcel">
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="modal-footer" id="pie_calculopanelexcel">
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="calculopanel_generarexcel">Generar</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="calculopanel_cerrarexcel">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="reporte_declar" style="width: 100px; display: none">
+        <div class="modal-header">
+            <h4>Informe de Declaraciones 107</h4>
+        </div>
+        <div class="modal-body" id="reportepanelbody">
+            <div class="modal-body" id="reportepanelpanelbody">
+                <div class="row-fluid">
+                    <div id="persona_r" style="height: 35px">
+                        <div style="width: 100px; text-align: right; padding-right: 10px; float: left">
+                            Año:
+                        </div>
+                        <div style="float: left">
+                            <input type="text" id="persona_reporte" value="">
+                        </div>
+                    </div>
+                    <div style="height: 35px">
+                        <div style="width: 50px; padding-right: 5px; float: left">
+                            Año:
+                        </div>
+                        <div>
+                            <input type="text" id="anioreporte" value="{{ fecha|date:'Y' }}" style="width: 50px">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="modal-footer" id="pie_calculo">
+                <a id="reporte_declaracion" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref=""
+                   class="reportedirecto btn btn-success tu"> <i class='fa fa-print'></i> Imprimir</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="reportepanel_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="reporte_declar_a" style="width: 100px; display: none">
+        <div class="modal-header">
+            <h4>Informe de Declaraciones 107A</h4>
+        </div>
+        <div class="modal-body" id="reportepanelbody">
+            <div class="modal-body" id="reportepanelpanelbody">
+                <div class="row-fluid">
+                    <div id="persona_r_a" style="height: 35px">
+                        <div style="width: 100px; text-align: right; padding-right: 10px; float: left">
+                            Año:
+                        </div>
+                        <div style="float: left">
+                            <input type="text" id="persona_reporte_a" value="">
+                        </div>
+                    </div>
+                    <div style="height: 35px">
+                        <div style="width: 50px; padding-right: 5px; float: left">
+                            Año:
+                        </div>
+                        <div>
+                            <input type="text" id="anioreporte_a" value="{{ fecha|date:'Y' }}" style="width: 50px">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="modal-footer" id="pie_calculo">
+                <a id="reporte_declaracion_a" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref=""
+                   class="reportedirecto btn btn-success tu"> <i class='fa fa-print'></i> Imprimir</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="reportepanel_cerrar_a">Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript">
+        $(function () {
+            $(".verobservaciones").click(function () {
+                var id = $(this).attr('id');
+                $.post("/alu_solicitudbalcon", {'action': 'verproceso', 'id': id}, function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $(".panelbody2").html(data.data);
+                        $("#divmostrartarea").modal({backdrop: 'static', width: '1000px'}).modal('show');
+                    }
+                }, 'json');
+            });
+
+        });
+
+        function formModal(id, text, action, footer=true) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (footer){
+                        $(".modal-footer").hide()
+                    }
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+        var uiModalSolicitudCalificarServicio = {
+                init: function () {
+                    var self = this;
+                    self.$materias = [];
+                    self.$modalForm = $('#modalSolicitudCalificarServicio');
+                    $('.action-close', self.$modalForm).click(function(){
+                        self.close();
+                    });
+                    $('.action-edit', self.$modalForm).click(function(){
+                        //self.setFormReadOnly(false);
+                        self.setFormType('edit');
+                    });
+                    $('.action-save', self.$modalForm).click(function (){
+                        self.actionSave();
+                    });
+                },
+                processModalInit: function () {
+                    var self = this;
+                    $("#frmSolicitudCalificarServicio", self.$modalForm).validationEngine({autoHidePrompt: true, autoHideDelay: 1000});
+                    $(".action_add_materia", self.$modalForm).click(function () {
+                        let elMateria = $("#id_materias_imparte", self.$modalForm)
+                        let val = elMateria.val();
+                        if(val){
+                            let eMateria = elMateria.select2('data')[0];
+                            let tr_existe = false;
+                            $("#dataMaterias tbody.principal", self.$modalForm).each(function(){
+                                var _id = $(this).attr('value');
+                                if (eMateria.id == _id)
+                                {
+                                    tr_existe = true;
+                                    $(this).remove();
+                                }
+                            });
+                            if(!tr_existe){
+                                var $tr = $('#el-templates [element="table-row-materia"] table tbody tr.principal').clone();
+                                $tr.attr('value', eMateria.id);
+                                $tr.data({'eMateria': eMateria});
+                                $('td.principal:nth-child(1)', $tr).html(eMateria.text);
+                                $('td.principal:nth-child(2)', $tr).html('');
+                                $('td.principal:nth-child(2)', $tr).html(`<div class="accordion-group">
+                                    <div class="accordion-heading" style="background-color:#f0f0f0">
+                                            <a style="color: black" class="accordion-toggle collapsed" data-toggle="collapse" data-parent="#accordionhorariomateria${eMateria.id}" href="#collapsehorariomateria${eMateria.id}">
+                                                <span class="fa fa-chevron-down" aria-hidden="true"></span> Horario
+                                            </a>
+                                    </div>
+                                    <div id="collapsehorariomateria${eMateria.id}" class="accordion-body tercerafilaacoordion collapse" style="height: 0px;">
+                                        <div class="accordion-inner">
+                                            <table class="table table-striped table-bordered text-center" id="tablehorariomateria${eMateria.id}">
+                                                <thead>
+                                                    <tr>
+                                                        <td style="text-align: center;width:30%;">Dia</td>
+                                                        <td style="text-align: center;width:30%;">Hora Inicio</td>
+                                                        <td style="text-align: center;width:30%">Hora Fin</td>
+                                                        <td style="text-align: center;width:10%">
+                                                            <a href="javascript:;" class='btn btn-mini btn-success action_add_horariomateria btn-a-h' title="Agregar Horario" value="${eMateria.id}">
+                                                                <span class="fa fa-plus"></span>
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>`);
+                                $('td.principal:nth-child(3) input', $tr).attr('value', eMateria.numero_estudiantes);
+                                $('td.principal:nth-child(3) input', $tr).attr('val', eMateria.id);
+                                $('td.principal:nth-child(4) a', $tr).attr('value', eMateria.id);
+                                $("#dataMaterias tbody.principal", self.$modalForm).append($tr);
+                                self.$materias.push(eMateria.id);
+                                $('#id_materias_imparte').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                            }else{
+                                NotificationJG.error('La materia ya se encuentra agregada');
+                            }
+                        }else{
+                           NotificationJG.error('Debe seleccionar una materia');
+                        }
+                    });
+                },
+                close: function (){
+                    var self = this;
+                    self.$modalForm.modal('hide');
+                },
+                open: function(type, id, isEdit/*=undefined*/){
+
+                    bloqueointerface();
+                    isEdit = typeof isEdit == 'undefined' ? false : isEdit;
+                    var self = this;
+                    self.setFormType(type);
+                    if (isEdit) {
+                        $('.action-edit', self.$modalForm).addClass('disabled').hide();
+                        $('.action-save', self.$modalForm).addClass('disabled').hide();
+
+                    }
+                    var h = $(window).height()-450;
+                    $.ajax({
+                        type: "GET",
+                        url: "{{ request.path }}",
+                        data: {'action': 'loadFormSolicitudCalificarServicio', 'typeForm': type, 'id': id},
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                $(".modal-body", self.$modalForm).html(data.html);
+                                var h = $(window).height() - 150;
+                                self.$modalForm.modal({backdrop:'static', width: '80%', height: h}).modal('show');
+                                self.processModalInit();
+                            } else {
+                                $.unblockUI();
+                                NotificationJG.error(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            NotificationJG.error("Error al enviar los datos.");
+                        },
+                        dataType: "json",
+                    });
+                },
+                setFormType: function( type /* new, edit, view */ )
+                {
+                    var self = this;
+
+                    if( type == 'new' )
+                    {
+                        $('.modal-header span', self.$modalForm).html('Nueva');
+
+                        $('.action-save', self.$modalForm).show();
+                        $('.action-edit', self.$modalForm).hide();
+                        self.setFormReadOnly(false);
+                    }
+                    else if( type == 'edit' )
+                    {
+                        $('.modal-header span', self.$modalForm).html('Editar');
+
+                        $('.action-save', self.$modalForm).show();
+                        $('.action-edit', self.$modalForm).hide();
+                        self.setFormReadOnly(false);
+                    }
+                    else if( type == 'view' )
+                    {
+                        $('.modal-header span', self.$modalForm).html('Ver');
+                        $('.action-save', self.$modalForm).hide();
+                        $('#id_materias_imparte', self.$modalForm).hide();
+                        $('.action_add_materia', self.$modalForm).hide();
+                        $('.action_change_numeroestudiantes', self.$modalForm).prop('disabled',true);
+                        $('[typefield="dia"]', self.$modalForm).prop('disabled',true);
+                        $('.action-edit', self.$modalForm).hide();
+                        self.setFormReadOnly(true);
+                    }
+                },
+                setFormReadOnly: function( isFormReadOnly )
+                {
+                    var self = this;
+
+                    $('[name="name"]', self.$modalForm).prop('disabled', isFormReadOnly);
+                    $('[name="name"]', self.$modalForm).prop('readonly', isFormReadOnly);
+
+                     if ((!isFormReadOnly))
+                    {
+                        $(".action_new_carrera", self.$modalForm).css("display", "");
+                        $(".action_remove_carrera", self.$modalForm).css("display", "");
+                    }
+
+                },
+                formGetData:function(){
+                    var self = this;
+                    let aData = {};
+                    aData.id=$('[name="id"]', self.$modalForm).val()
+                    aData.typeForm=$('[name="typeForm"]', self.$modalForm).val()
+                    aData.action=$('[name="action"]', self.$modalForm).val()
+                    var preguntas = []
+                    errores_preguntas = false;
+                    $("#tableEncuestaSatisfaccion tbody tr.pregunta_calificar", self.$modalForm).each(function(){
+                        let ePregunta = $(this).data('ePregunta');
+                        if(ePregunta == undefined ){
+                            console.log('error');
+                            errores_preguntas = true;
+                        }
+                        preguntas.push(ePregunta);
+                    });
+                    aData.errores_preguntas = errores_preguntas;
+                    aData.preguntas = JSON.stringify(preguntas);
+                    return aData;
+                },
+                actionSave: function (){
+                    var self = this;
+                    var valid = $("#frmSolicitudProfesorCatedra").validationEngine('validate');
+                    {#var valid = $("#frmGrupo", self.$modalForm).validationEngine('validate', { scroll: false });#}
+                    if (!valid){
+                        return false;
+                    }
+                    $('.datepicker').css({"display": "none"});
+                    $('.bootstrap-timepicker-widget').css({"display": "none"});
+
+                    $('.controls input').each(function(){
+                        if ($(this).attr('type')=='text'){
+                            $(this).val($(this).val().trim());
+                        }
+                        if ($(this).attr('type')!='file'){
+                            if ($(this).css('text-transform')=='uppercase'){
+                                if ($(this).attr('type')!='password'){
+                                    $(this).val($(this).val().toUpperCase());
+                                }
+                            }
+                        }
+                    });
+                    var aData = self.formGetData();
+                    console.log(aData)
+                    if (aData.errores_preguntas){
+                        NotificationJG.error("Debe completa toda la Encuesta de Satisfacción");
+                        return false;
+                    }
+                    //console.log(aData)
+                    //console.log(JSON.parse(aData.get('materias')));
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "{{ request.path }}",
+                        data: aData,
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                self.close();
+                                NotificationJG.success(data.mensaje);
+                                location.href =  '{{ request.path }}?action=misolicitudes'
+                            }
+                            else{
+                                NotificationJG.error(data.mensaje);
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            NotificationJG.error("Error al enviar los datos.");
+                        },
+                        dataType: "json",
+                        /*cache: false,
+                        contentType: false,
+                        processData: false*/
+                    });
+                }
+                };
+
+        $(function () {
+            uiModalSolicitudCalificarServicio.init()
+            $("select").select2({minimumResultsForSearch: 20});
+
+            $(".select2hidden").each(function () {
+                var id = $(this).attr("id");
+                $("#" + id + "_select2").html('<option>' + $(this).attr("descripcion") + '</option>').trigger('change');
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/alu_solicitudbalcon{% endblock %}
+
+{% block marcaaguabackground %}backgrounmarcaagua{% endblock %}
+{% block canvas %}
+    {#    <div class="modal fade static" id="itemspanel" style="display: none;">#}
+    {#        <div class="modal-header">#}
+    {#            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>#}
+    {#        </div>#}
+    {#        <div class="modal-body">#}
+    {#            <div class="row-fluid panelbody">#}
+    {##}
+    {#            </div>#}
+    {#        </div>#}
+    {#    </div>#}
+
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" id="w-modal" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+                     <button type="button" class="btn-close text-reset" data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true"></span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+
+                        </div>
+                    </form>
+                </div>
+                 <div class="modal-footer" id="footermodal">
+                    <a href="javascript:;" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-window-close"></i>
+                        Cerrar</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="modal fade static" id="modalSolicitudCalificarServicio" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" id="w-modal" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle"> AYÚDENOS A MEJORAR</b></h4>
+                     <button type="button" class="btn-close text-reset" data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true"></span>
+                    </button>
+                </div>
+                <div class="modal-body panelbody">
+
+                </div>
+                 <div class="modal-footer">
+                     <a href="javascript:;" class="btn btn-success action-save"><i class="fa fa-check-square"></i> Guardar calificación</a>
+                     <a href="javascript:;" class="btn btn-default action-close"><i class="fa fa-close"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <style>
+        .toggle_info {
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgb(0 0 0 / 10%);
+            border-top: 2px solid #1C3247;
+        }
+    </style>
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title|lower|capfirst }}</h3>
+                <h6>{{ persona.nombre_completo_minus }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class='card-body border-top border-6 rounded-3 border-dark-info'>
+            <table class="table table-bordered table-striped tabla_responsive">
+                <thead class="table-light">
+                <tr>
+                    <th style="width: 5%; font-weight: bold; text-align: center">N°Solicitud</th>
+                    <th style="width: 8%; font-weight: bold; text-align: center">Fecha Solicitud</th>
+                    <th style="width: 8%; font-weight: bold; text-align: center">Tipo</th>
+                    <th style="font-weight: bold; text-align: center">Motivo</th>
+                    <th style="width: 9%; font-weight: bold; text-align: center">Solicitud</th>
+                    <th style="width: 9%; font-weight: bold; text-align: center">Requisitos</th>
+                    <th style="width: 9%; font-weight: bold; text-align: center">Estado</th>
+                    <th style="width: 8%; font-weight: bold; text-align: center">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for solicitud in solicitudes %}
+                    <tr>
+                        <td data-title="N°Solicitud" style="text-align: center; vertical-align: middle"><span
+                                class="label label-success">{{ solicitud.numero|stringformat:"05d" }}</span></td>
+                        <td style="text-align: center; vertical-align: middle">
+                            {{ solicitud.fecha_creacion|date:'Y-m-d G:i' }}
+                        </td>
+                        <td data-title="Fechas Solicitud" style="text-align: center; vertical-align: middle">
+                            {{ solicitud.tiposolicitud }}</td>
+                        <td data-title="Tipo" style="text-align: justify; vertical-align: middle">
+                            {{ solicitud.descripcion }}<br>
+                        </td>
+                        <td data-title="Motivo" style="text-align: center; vertical-align: middle">
+                            {% if  solicitud.archivo %}
+                                {% if not solicitud.typefile == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu" title="VER SOLICITUD"
+                                       href="/media/{{ solicitud.archivo }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="VER SOLICITUD"
+                                       href="/media/{{ solicitud.archivo }}"><img style="margin-top: 2px;"
+                                                                                  src="/static/images/pdf.png"/></a>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td data-title="Solicitud" style="text-align: center; vertical-align: middle">
+                            {% for doc in solicitud.requisitossolicitud_set.all %}
+                                <a data-fancybox data-type="iframe" class="btn tu"
+                                   title="VER {{ doc.requisito.requisito.descripcion }}"
+                                   href="/media/{{ doc.archivo }}">
+                                    <img style="margin-top: 2px;" src="/static/images/pdf.png"/></a>
+                            {% endfor %}
+                        </td>
+                        <td data-title="Requisitos" style="text-align: center; vertical-align: middle">
+                            <b>
+                                <span
+                                        class="badge {{ solicitud.color_estado }}"
+                                        data-original-title="Estado">{{ solicitud.get_estado_display }}</span></b>
+                        </td>
+                        <td data-title="Acciones" style="text-align: center; vertical-align: middle">
+                            <div class="dropdown dropstart">
+                                <a href="javascript:void(0);"
+                                   class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                   data-bs-toggle="dropdown" data-offset="-140"
+                                   aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v"></i>
+                                </a>
+                                <ul class="dropdown-menu" x-placement="right-start">
+                                    {% if solicitud.estado == 1 %}
+                                        <li>
+                                            <a onclick="formModal('{{ solicitud.pk }}','EDITAR SOLICITUD','editsolicitudmodal')"
+                                               href="javascript:void(0);" class="dropdown-item">
+                                                <i class='fa fa-edit dropdown-item-icon'></i> Editar</a></li>
+                                        <li><a class="eliminacionmodal dropdown-item" href="javascript:;"
+                                               nhref="/alu_solicitudbalcon?action=delsolicitud&id={{ solicitud.id|encrypt }}"><span
+                                                class="fa fa-remove dropdown-item-icon"></span> Eliminar</a></li>
+                                    {% endif %}
+                                    {% if solicitud.detalle and not solicitud.estado == 1 %}
+                                        <li>
+                                            <a onclick="formModal('{{ solicitud.id }}','VER SEGUIMIENTO','verproceso', false)"
+                                               href="javascript:void(0);" class="dropdown-item"><span
+                                                    class="fa fa-comments dropdown-item-icon"></span> Seguimiento</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if solicitud.puede_calificar_proceso %}
+                                        <li>
+                                            <a onclick="uiModalSolicitudCalificarServicio.open('qualify','{{ solicitud.id|encrypt }}')"
+                                               href="javascript:void(0);" class="dropdown-item"><span
+                                                    class="fa fa-star dropdown-item-icon"></span> Calificar servicio</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td style="text-align: center" colspan="12">NO TIENE REGISTROS DE SOLICITUDES</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="divmostrartarea" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" id="w-modal" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Observaciones</h3>
+                </div>
+                <div class="modal-body panelbody2">
+
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td><a href="javascript:;" class="btn btn-default cerrartarea">Cerrar</a></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}

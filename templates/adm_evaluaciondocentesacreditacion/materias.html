@@ -1,0 +1,1075 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        var intentos = 0;
+        var materias;
+        var nivel = {{ nivel.id }};
+
+        function fallocierre(){
+            $.unblockUI();
+            $("#cerrarpanel").modal("hide");
+            smoke.alert("Fallo al intentar cerrar el nivel");
+        }
+
+        function terminarcierre(){
+            $("#cerrarpanelprogresshint").html("Finalizando Cierre de Nivel");
+            $("#progressbar").css({'width': '100%'});
+            $.ajax({
+                type: "POST",
+                url: "/niveles",
+                data: {"action": "cierren", "nid": {{ nivel.id }} },
+                success: function(data) {
+                    if (data.result=='ok'){
+                        intentos = 0;
+                        $("#cerrarpanel").modal("hide");
+                        bloqueointerface();
+                        location.href = "/adm_evaluaciondocentesacreditacion?action=materias&id={{ nivel.id }}";
+                    } else {
+                        intentos += 1;
+                        if (intentos>=100){
+                            fallocierre();
+                        } else {
+                            terminarcierre();
+                        }
+                    }
+                },
+                error: function() {
+                    intentos += 1;
+                    if (intentos>=100){
+                        fallocierre();
+                    } else {
+                        terminarcierre();
+                    }
+                },
+                dataType: "json"
+            });
+        }
+
+        function cierremateria(lista, elemento, cantidad){
+            var matricula = lista[elemento];
+            var cp = (100 / (cantidad+1)) * elemento + '%';
+            if (elemento>cantidad){
+                terminarcierre();
+            } else {
+                $("#cerrarpanelprogresshint").html(matricula.nombre);
+                $("#progressbar").css({'width': cp});
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {"action": "cierremag", "maid": matricula.id },
+                    success: function(data) {
+                        if (data.result=='ok'){
+                            intentos = 0;
+                            cierremateria(lista, elemento+1, cantidad);
+                        } else {
+                            intentos += 1;
+                            if (intentos>=100){
+                                fallocierre();
+                            } else {
+                                cierremateria(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function() {
+                        intentos += 1;
+                        if (intentos>=100){
+                            fallocierre();
+                        } else {
+                            cierremateria(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+        abrir_reportepar = function(){
+            if ($("#paralelo").val() == 0 || $("#nivelmalla").val() == 0){
+                smoke.alert("Seleccione nivel y paralelo");
+                return false;
+            } else {
+                actualizar_reporte();
+            }
+            var href = $(this).attr('nhref');
+            var tipos = $(this).attr('tipos');
+            if (!tipos){
+                tipos = "pdf, xls, csv, doc";
+            }
+            if(tipos.contains("pdf")){
+                $("#formatopdf").removeAttr("hidden");
+            }else{
+                $("#formatopdf").attr({"hidden":"hidden"});
+            }
+            if(tipos.contains("doc")){
+                $("#formatodoc").removeAttr("hidden");
+            }else{
+                $("#formatodoc").attr({"hidden":"hidden"});
+            }
+            if(tipos.contains("xls")){
+                $("#formatoxls").removeAttr("hidden");
+            }else{
+                $("#formatoxls").attr({"hidden":"hidden"});
+            }
+            if(tipos.contains("csv")){
+                $("#formatocsv").removeAttr("hidden");
+            }else{
+                $("#formatocsv").attr({"hidden":"hidden"});
+            }
+            if (tipos.length > 4) {
+                primero = $("#formatoreporte_formato").find("option:first").val();
+                $("#formatoreporte_formato").val(primero);
+                $('#formatoreporte').modal({'width':'400'}).modal('show');
+                $('#formatoreporte_run').attr('nhref', href);
+            }else{
+                primero = $("#formatoreporte_formato").find("option:first").val();
+                $("#formatoreporte_formato").val(primero);
+                ejecutar_reporte_directo(href);
+
+            }
+
+        };
+        $(function() {
+            $(".reportedirectoparalelo").bind("click.conectar_reportepar", abrir_reportepar);
+            conectar_reportepar = function(){
+                $(".reportedirectoparalelo").unbind("click.conectar_reportepar");
+                $(".reportedirectoparalelo").bind("click.conectar_reportepar", abrir_reportepar);
+            };
+
+
+
+            $("select").select2({minimumResultsForSearch: 4 });
+
+            $("#mclose").click(function(){
+                $(".modal-footer").show();
+                if (self.href!="#"){
+                    $(location).attr('href',self.href);
+                }
+            });
+
+            $("#afinidad_cerrar").click(function () {
+                $("#afinidad").modal("hide");
+                return false;
+            });
+
+            $(".afin").click(function(){
+                var id = $(this).attr("idprofesor");
+                var ancho = $(window).width()-200;
+                var alto = '300px';
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {"action": "afinidad", "idprofesor": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#afinidadbody").html(data.data);
+                                $("#afinidad").modal({backdrop:'static', width: ancho, height: alto}).modal('show');
+                            } else {
+                                $("#afinidad").modal("hide");
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                            $("#afinidad").hide();
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            fechainicio = $(".selectorfechainicio");
+
+            actualiza_fechainicio = function(elemento){
+                var mid;
+                var fechaanterior = elemento.attr("va");
+                var fechaactual = elemento.val();
+                $('.datepicker').css({"display": "none"});
+                if (fechaactual!=fechaanterior){
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/adm_evaluaciondocentesacreditacion", {'action': 'updatefechainicio', 'mid': mid, 'fecha': fechaactual}, function(data) {
+                        if (data.result=='ok') {
+                            fechaanterior = data.fecha;
+                            if (data.profesores > 0){
+                                location.href=location.href;
+                            } else {
+                                $.unblockUI();
+                                elemento.val(fechaactual);
+                                elemento.attr({'va': fechaactual});
+                                elemento.datepicker( "setValue", fechaactual).datepicker( "update").datepicker("hide");
+                            }
+                        } else {
+                            $.unblockUI();
+                            elemento.val(fechaanterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function(){
+                        $.unblockUI();
+                        elemento.val(fechaanterior);
+                        smoke.alert("Fallo al cambiar la fecha");
+                    });
+                }
+            };
+
+            fechainicio.datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+                actualiza_fechainicio($(this));
+            });
+
+            fechainicio.change(function(){
+                actualiza_fechainicio($(this));
+            });
+
+            fechafin = $(".selectorfechafin");
+
+            actualiza_fechafin = function(elemento){
+                var mid;
+                var fechaanterior = elemento.attr("va");
+                var fechaactual = elemento.val();
+                $('.datepicker').css({"display": "none"});
+                if (fechaactual!=fechaanterior){
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/adm_evaluaciondocentesacreditacion", {'action': 'updatefechafin', 'mid': mid, 'fecha': fechaactual}, function(data) {
+                        if (data.result=='ok') {
+                            fechaanterior = data.fecha;
+                            if (data.profesores > 0){
+                                location.href=location.href;
+                            } else {
+                                $.unblockUI();
+                                elemento.attr({'va': fechaactual});
+                                elemento.val(fechaactual);
+                                elemento.datepicker( "setValue", fechaactual).datepicker( "update").datepicker("hide");
+                            }
+                        } else {
+                            $.unblockUI();
+                            elemento.val(fechaanterior);
+                            smoke.alert("Fallo al cambiar la fecha");
+                        }
+                    }).error(function(){
+                        $.unblockUI();
+                        elemento.val(fechaanterior);
+                        smoke.alert("Fallo al cambiar la fecha");
+                    });
+                }
+            };
+
+            $('.cupos').blur(function(){
+                var elemento = $(this);
+                var mid;
+                var valoranterior = elemento.attr("va");
+                var valoractual = elemento.val();
+                if (valoractual!=valoranterior){
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/adm_evaluaciondocentesacreditacion", {'action': 'updatecupomateria', 'mid': mid, 'valor': valoractual}, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            elemento.attr({'va': data.valor});
+                            elemento.val(data.valor);
+                        } else {
+                            elemento.val(valoranterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function(){
+                        $.unblockUI();
+                        elemento.val(valoranterior);
+                        smoke.alert("Fallo al cambiar el cupo");
+                    });
+                }
+            });
+
+            fechafin.datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+                actualiza_fechafin($(this));
+            });
+
+            fechafin.change(function(){
+                actualiza_fechafin($(this));
+            });
+
+            {% if nivel.cerrar_disponible %}
+                $("#cerrarnivel").click(function() {
+                    var nid;
+                    bloqueointerface();
+                    nid = $(this).attr("nid");
+                    $.post("/adm_evaluaciondocentesacreditacion", {'action':'precierrem', 'nid': nid}, function(data) {
+                        var indice;
+                        var cantidad;
+                        if (data.result=='ok') {
+                            $.unblockUI();
+                            $("#cerrarpanel").modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            materias = data.materias;
+                            cantidad = materias.length;
+                            indice = 0;
+                            cierremateria(materias, indice, (cantidad-1));
+                        }
+                    }, "json");
+                });
+            {% endif %}
+
+            filtros = function(){
+                var mallaid = $("#malla").val();
+                var nivelmallaid = $("#nivelmalla").val();
+                var paralelomateriaid = $("#paralelo").val();
+                bloqueointerface();
+                actualizar_reporte();
+                location.href = '/adm_evaluaciondocentesacreditacion?action=materias&id='+nivel+'&mallaid='+mallaid+'&nivelmallaid='+nivelmallaid+'&paraleloid='+paralelomateriaid;
+            };
+
+            $("#malla, #nivelmalla, #paralelo").change(filtros);
+
+            $("#paralelo").change(function () {
+                actualizar_reporte();
+            });
+
+            $(".filterable tr:has(td)").each(function(){
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox").keyup(function(){
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable tr:hidden").show();
+                $.each(s, function(){
+                    $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            });
+            //$(".buscador").click(function(){
+            //    var finieval = $("#id_fechainicon").val()
+            //   var ffineval = $("#id_fechafincon").val()
+            //  var v = finieval + ' ' + ffineval
+            // {#var s = $(this).val().toLowerCase().split(" ");#}
+            //  var s = v.toLowerCase().split(" ");
+            //  $(".filterable tr:hidden").show();
+            //  $.each(s, function(){
+            //     {#alert(s)#}
+            //     $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+            //  });
+            //  $(".filterable3 tr:hidden").show();
+            //});
+            $(".buscador").click(function(){
+                var finieval = $("#id_fechainicon").val()
+                var ffineval = $("#id_fechafincon").val()
+                var mallaid = $("#malla").val();
+                var nivelmallaid = $("#nivelmalla").val();
+                var paralelomateriaid = $("#paralelo").val();
+                bloqueointerface();
+                actualizar_reporte();
+                location.href = '/adm_evaluaciondocentesacreditacion?action=materias&id='+nivel+'&mallaid='+mallaid+'&nivelmallaid='+nivelmallaid+'&paraleloid='+paralelomateriaid+'&finieval='+finieval+'&ffineval='+ffineval;
+            });
+            $(".todos").click(function(){
+                filtros();
+            });
+
+            $(".filterable2 tr:has(td)").each(function(){
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn2'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox2").keyup(function(){
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable2 tr:hidden").show();
+                $.each(s, function(){
+                    $(".filterable2 tr:visible .indexColumn2:not(:contains('" + this + "'))").parent().hide();
+                });
+            });
+
+            actualizar_reporte = function () {
+                var elemento = $("#reporte_horario");
+                var nombre=elemento.attr('nombre');
+                var nivel=elemento.attr('nivel');
+                var carrera=elemento.attr('carrera');
+                var nivelmalla=elemento.attr('nivelmalla');
+                var tipos=elemento.attr('tipos');
+                var paralelo = $('#paralelo').val();
+                $("#reporte_horario").attr({"nhref": "/reportes?action=run&n="+nombre+"&nivel="+nivel+"&carrera="+carrera+"&nivelmalla="+nivelmalla+"&paralelo="+paralelo+"&rt="+tipos});
+                {#                location.href = '/reportes?action=run&n='+name+'&nivel='+nivel+'&carrera='+carrera+'&nivelmalla='+nivelmalla+'&paralelo='+paralelo+'&rt='+tipos#}
+            };
+
+            $("#reporte_horario").click(function() {
+                actualizar_reporte();
+            });
+
+            $("#asignarhorarioprofe").click(function() {
+                var paralelo=$(this).attr('parale');
+                smoke.confirm("¿Está seguro que desea asignar horarios a profesor de teoria y principal.?", function(e){
+                    if (e){
+                        bloqueointerface();
+                        $.post("/niveles", {'action': 'asignarhorarioprofe','paraleloid':paralelo, 'id': {{ nivel.id }} {% if mallaid %},'mallaid':{{ mallaid }}{% endif %}{% if nivelmallaid %},'nivelmallaid':{{ nivelmallaid }}{% endif %}}, function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                if (data.existeconflicto) {
+                                    $("#conflicto_body").html(data.segmento);
+                                    $("#conflicto").modal({backdrop:'static', width: 1000}).modal('show');
+                                }
+                                else{
+                                    smoke.alert("Se asigno horario a profesor con exito y sin conflicto.\nClases asignadas con exitos: " + data.clasesafectadas);
+                                    location.reload();
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        }).error(function(){
+                            $.unblockUI();
+                            smoke.alert("Error al asignar horario profesor teoria/principal");
+                        });
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+            $("#asignargrupoprofe").click(function() {
+                var paralelo=$(this).attr('parale');
+                smoke.confirm("¿Está seguro que desea asignar grupos a profesor de prácticas.?", function(e){
+                    if (e){
+                        bloqueointerface();
+                        $.post("/niveles", {'action': 'asignargrupoprofe','paraleloid':paralelo, 'id': {{ nivel.id }} {% if mallaid %},'mallaid':{{ mallaid }}{% endif %}{% if nivelmallaid %},'nivelmallaid':{{ nivelmallaid }}{% endif %}}, function(data) {
+                            if (data.result=='ok') {
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }).error(function(){
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos");
+                        });
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+
+            actualizar_reporte();
+
+            $("#conflicto_cerrar").click(function() {
+                $("#conflicto").modal("hide");
+            });
+
+            $(".eliminarprofesor").click(function() {
+                var idpm=$(this).attr('idpm');
+                $("#eliminarprofe").modal('show');
+                $("#eliminarprofe_run").attr({"idpm":idpm});
+            });
+
+            $("#eliminarprofe_run").click(function(){
+                var id = $(this).attr("idpm");
+                var motivo =$("#motivo").val();
+                if (motivo.trim().length > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type:"POST",
+                        url:"/niveles",
+                        data:{'action':'delprofesor', 'id':id, 'motivo':motivo},
+                        error:function(){
+                            $.unblockUI();
+                        },
+                        success:function(data){
+                            if (data.result=="ok"){
+                                $("#eliminarprofe").modal('hide');
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#eliminarprofe_close").click(function(){
+                $("#eliminarprofe").modal('hide');
+            });
+
+            $(".auditoriaprofesor").click(function(){
+                var mid=$(this).attr('idm');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'auditoriaprofe', 'id': mid},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#selectauditoria-body").html(data.data);
+                            $('#auditoriaprofe').modal({'width': 800}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".auditoriaprofe_cerrar").click(function () {
+                $("#auditoriaprofe").modal('hide');
+            });
+
+            $(".grupospracticas").click(function(){
+                var pid=$(this).attr('idpm');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'grupospracticas', 'id': pid},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".modal-body-grupos").html(data.data);
+                            $('#grupospracticas').modal({'width': 600}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#grupo_close").click(function () {
+                $("#grupospracticas").modal('hide');
+            });
+
+            $('.informeestudiantepractica').click(function () {
+                var idn = $(this).attr('idn');
+                var idp = $(this).attr('parale');
+                openwindow('POST' ,'/niveles',{action: 'informeestudiantepractica',  idn: idn, pid:idp {% if mallaid %}, mid:{{ mallaid }}{% endif %}{% if nivelmallaid %}, nmid: {{ nivelmallaid }}{% endif %}}, '_blank');
+            });
+
+            $("#id_fechaini, #id_fechafin").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $("#id_fechainiindi, #id_fechafinindi,#id_fechainiindiauto, #id_fechafinindiauto").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $("#id_fechainicon, #id_fechafincon").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+
+            $("#id_fechainisas, #id_fechafinsas").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+
+            $("#modal_fechaeval").click(function() {
+                $("#id_fechaini").val('');
+                $("#id_fechafin").val('');
+                $("#idoperativoadd").val('');
+                $("#idoperativoadd").val(5);
+                if($("#carrera_list option:selected").val() == 0){
+                    smoke.alert("Seleccione carrera");
+                    return false;
+                }
+                var carrera=$("#carrera_list option:selected").text();
+                $(".carreraindicador").html(carrera);
+                $("#alertaingresoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicador").hide();
+                $("#modaladdindicadores").modal({backdrop:'static', width: '250px'}).modal('show');
+            });
+            $("#cerrarindicadoresadd").click(function() {
+                $("#modaladdindicadores .incompletoaddindicadores").hide();
+                $("#modaladdindicadores .incompletovaloindicadores").hide();
+                $("#modaladdindicadores").modal("hide");
+            });
+
+            $("#generar_reporte").click(function() {
+                var id_fini = $("#id_fechaini").val();
+                var id_ffin = $("#id_fechafin").val();
+                if (id_fini=='' || id_ffin==''){
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = '';
+                $(".tractivo").each(function () {
+                    if ($(this).is(":visible")) {
+                        listascodigos += $(this).attr('idcod') + ',';
+                    }
+                })
+                listascodigos = listascodigos.substring(0, listascodigos.length - 1);
+                bloqueointerface();
+                $.ajax({
+                    type:"POST",
+                    url:"/adm_evaluaciondocentesacreditacion",
+                    data:{'action': 'ingresofechaevaluacion', 'listascodigos': listascodigos, 'id_fini': id_fini, 'id_ffin': id_ffin},
+                    error:function(){
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success:function(data){
+                        {#$.unblockUI();#}
+                        if (data.result=="ok"){
+                            $("#modaladdindicadores .incompletoaddindicadores").hide();
+                            $("#modaladdindicadores .incompletovaloindicadores").hide();
+                            $("#modaladdindicadores").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $("#generar_reporteindi").click(function() {
+                var id_fini = $("#id_fechainiindi").val();
+                var id_ffin = $("#id_fechafinindi").val();
+                if (id_fini=='' || id_ffin==''){
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = $("#idcodmateria").val();
+                bloqueointerface();
+                $.ajax({
+                    type:"POST",
+                    url:"/adm_evaluaciondocentesacreditacion",
+                    data:{'action': 'ingresofechaevaluacion', 'listascodigos': listascodigos, 'id_fini': id_fini, 'id_ffin': id_ffin},
+                    error:function(){
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success:function(data){
+                        {#$.unblockUI();#}
+                        if (data.result=="ok"){
+                            $("#modaladdindicadoresindi .incompletoaddindicadoresindi").hide();
+                            $("#modaladdindicadoresindi .incompletovaloindicadoresindi").hide();
+                            $("#modaladdindicadoresindi").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $(".modal_fechaevalindi").click(function() {
+                $("#id_fechainiindi").val('');
+                $("#id_fechafinindi").val('');
+                $("#idcodmateria").val($(this).attr('idcmat'));
+                $("#alertaingresoaddindicadorindi").hide();
+                $("#itemspaneladdaciones .incompletoaddindicadorindi").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicadorindi").hide();
+                $("#modaladdindicadoresindi").modal({backdrop:'static', width: '250px'}).modal('show');
+            });
+            $("#cerrarindicadoresaddindi").click(function() {
+                $("#modaladdindicadoresindi .incompletoaddindicadoresindi").hide();
+                $("#modaladdindicadoresindi .incompletovaloindicadoresindi").hide();
+                $("#modaladdindicadoresindi").modal("hide");
+            });
+
+
+            $(".modal_fechaevalindiauto").click(function() {
+                $("#id_fechainiindiauto").val('');
+                $("#id_fechafinindiauto").val('');
+                $("#idcodmateriaauto").val($(this).attr('idcmat'));
+                $("#alertamodalauto").hide();
+                $("#modalconffechaevalauto").modal({backdrop:'static', width: '250px'}).modal('show');
+            });
+            $("#cerrarfechaauto").click(function() {
+                $("#modalconffechaevalauto").modal("hide");
+            });
+
+            $("#guardarfechaauto").click(function() {
+                var id_fini = $("#id_fechainiindiauto").val();
+                var id_ffin = $("#id_fechafinindiauto").val();
+                if (id_fini=='' || id_ffin==''){
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = $("#idcodmateriaauto").val();
+                bloqueointerface();
+                $.ajax({
+                    type:"POST",
+                    url:"/adm_evaluaciondocentesacreditacion",
+                    data:{'action': 'ingresofechaevaluacionauto', 'listascodigos': listascodigos, 'id_fini': id_fini, 'id_ffin': id_ffin},
+                    error:function(){
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success:function(data){
+                        {#$.unblockUI();#}
+                        if (data.result=="ok"){
+                            $("#modalconffechaevalauto").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $(".modal_fechasatisfaccion").click(function() {
+                $("#id_fechainisas").val('');
+                $("#id_fechafinsas").val('');
+                $("#idcodmateriaauto2").val($(this).attr('idcmat'));
+                $("#id_encuesta").val('');
+                $("#alertamodalsatisfaction").hide();
+                $("#modalsatisfaction").modal({backdrop:'static', width: '250px'}).modal('show');
+            });
+            $("#cerrarfechassas").click(function() {
+                $("#modalsatisfaction").modal("hide");
+            });
+
+            $("#guardarfechassas").click(function() {
+                var id_encuesta = $("#id_encuesta").val();
+                var id_fini = $("#id_fechainisas").val();
+                var id_ffin = $("#id_fechafinsas").val();
+                if (id_fini=='' || id_ffin==''){
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = $("#idcodmateriaauto2").val();
+                bloqueointerface();
+                $.ajax({
+                    type:"POST",
+                    url:"/adm_evaluaciondocentesacreditacion",
+                    data:{'action': 'planificarfechassatisfaccion', 'listascodigos': listascodigos, 'id_fini': id_fini, 'id_ffin': id_ffin, 'ide':id_encuesta},
+                    error:function(){
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success:function(data){
+                        {#$.unblockUI();#}
+                        if (data.result=="ok"){
+                            $("#modalconffechaevalauto").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_evaluaciondocentesacreditacion?action=consultacarreras{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            {% if nivel.nivelmalla %}
+                <h5>Nivel: {{ nivel.nivelmalla }}</h5>
+            {% endif %}
+            <h5>{{ nivel.coordinacion }} </h5>
+            <h5>{{ nivel.paralelo }} </h5>
+            <h5>Fechas: {{ nivel.inicio|date:"d-m-Y" }} - {{ nivel.fin|date:"d-m-Y" }}</h5>
+            {% if nivel.distributivoaprobado %}
+                <h5>Aprobado por: {{ nivel.responsableaprobacion }} - {{ nivel.fechaprobacion|date:"d-m-Y" }}</h5>
+            {% endif %}
+            {% if nivel.cerrado %}
+                <br><label class='label label-important'>CERRADO</label>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='span6'>
+            {% if matriculacion_libre %}
+                <form class="form-search">
+                    <select id='malla' nid="{{ nivel.id }}" style="width: 100%">
+                        {% for malla in mallas %}
+                            <option value="{{ malla.id }}" {% if mallaid == malla.id %}selected="selected"{% endif %}>{{ malla }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            {% endif %}
+        </div>
+        <div class='span3'>
+            {% if matriculacion_libre %}
+                <form class="form-search">
+                    <select id='nivelmalla' nid="{{ nivel.id }}">
+                        <option value="0" selected="selected">TODOS</option>
+                        {% for ni in nivelesmalla %}
+                            <option value="{{ ni.id }}" {% if nivelmallaid == ni.id %} selected="selected" {% endif %}>{{ ni }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            {% endif %}
+        </div>
+        <div class='span3'>
+            <form class="form-search">
+                <select id='paralelo'>
+                    <option value="0" selected="selected">TODOS</option>
+                    {% for paralelo in paralelos %}
+                        <option value="{{ paralelo.nombre }}" {% if paraleloid == paralelo.nombre %} selected="selected" {% endif %}>{{ paralelo.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>&nbsp;
+        {% if reporte_9 and malla and not nivelmalla %}
+            <a href="javascript:;" tipos="{{ reporte_9.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_9 }}&nivel={{ nivel.id }}&carrera={{ malla.carrera.id }}" class='btn btn-warning reportedirecto'><span class="fa fa-print" ></span> Horario nivel</a>
+        {% endif %}
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            Fecha Inicio: <input type="text" name="id_fechainicon" id="id_fechainicon" placeholder="Fecha Inicio" value="{{ finieval }}">
+            Fecha Fin: <input type="text" name="id_fechafincon" id="id_fechafincon" placeholder="Fecha Fin" value="{{ ffineval }}">
+            <a href="#" class="btn btn-info buscador"><i class="fa fa-search"></i> Buscar</a>
+            {% if finieval %}
+                <a href="#" class="btn btn-info todos"><i class="fa fa-refresh"></i> Todos</a>
+                <a href="#" id="modal_fechaeval" class="btn btn-warning"><i class="fa fa-table"></i> Ingresar fecha evaluación</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered table-striped filterable'>
+                <thead>
+                <tr>
+                    <th>Asignatura </th>
+                    <th style="width: 25px;text-align: center;">Insc.</th>
+                    <th style="width: 25px;text-align: center;">Mat.</th>
+                    <th style="width: 25px;text-align: center;">Cap.</th>
+                    {#                    <th style="width: 200px;">Aula</th>#}
+                    <th style="width: 30px;text-align: center;">Hrs. Sem.</th>
+                    <th style="width: 30px;text-align: center;">Hrs. Tot.</th>
+                    <th style="width: 30px;text-align: center;">Crd.</th>
+                    <th style="width: 80px;text-align: center;">Inicio/Fin<br>Fin Asis.</th>
+                    <th style="width: 400px;">Profesor(es)</th>
+                    <th style="width: 80px;"> </th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for materia in materias %}
+                    <tr class="tractivo" idcod="{{ materia.id }}">
+                        <td>
+                            <input type="hidden"  name="codigomateria" id="codigomateria" value="{{ materia.id }}">
+                            {{ materia.nombre_completo }}<br/>
+                            {% if materia.asignaturamalla.nivelmalla %}
+                                <span class="smaller">{{ materia.asignaturamalla.nivelmalla }}</span>
+                                <br/>
+                            {% endif %}
+{#                            <span class="smaller">M.E.: {{ materia.modeloevaluativo.nombre|default_if_none:"" }}</span>#}
+{#                            <br>#}
+                            {% if materia.cerrado %}
+                                <span class="label label-important">CERRADA {{ materia.fechacierre|date:"d-m-Y" }}</span>
+                            {% else %}
+                                <span class="label label-success">ABIERTA</span>
+                            {% endif %}
+
+                            <br><strong>Cron. Calif:</strong> {% if materia.usaperiodocalificaciones %}SI{% else %}No <strong> DÍas:</strong> {{ materia.diasactivacioncalificaciones }}{% endif %}
+                            <br><strong>Cron. Eval:</strong> {% if materia.usaperiodoevaluacion %}SI{% else %}No {% if materia.inicioeval %} <strong> INI:</strong> {{ materia.inicioeval|date:"Y-m-d" }} <strong> FIN:</strong>{{ materia.fineval|date:"Y-m-d" }} {% else %}<strong> DÍas:</strong> {{ materia.diasactivacion }}{% endif %}{% endif %}
+
+                            {% if materia.inicioeval %}
+                                <br>
+                                <b>Fechas de evaluación hétero</b>
+                                <b>Inicio: </b>{{ materia.inicioeval|date:"d-m-Y" }} <b>Fin: </b>{{ materia.fineval|date:"d-m-Y" }}
+                            {% endif %}
+                            {% if materia.inicioevalauto %}
+                                <br>
+                                <b>Fechas de evaluación auto</b>
+                                <b>Inicio: </b>{{ materia.inicioevalauto|date:"d-m-Y" }} <b>Fin: </b>{{ materia.finevalauto|date:"d-m-Y" }}
+                            {% endif %}
+                            {% for eIns in materia.inscripciones_sa %}
+                                <br>
+                                <b>Fechas de E.S {{ eIns.encuesta|title }}</b>
+                                <b>Inicio: </b>{{ eIns.inicio|date:"d-m-Y" }} <b>Fin: </b>{{ eIns.fin|date:"d-m-Y" }}
+                            {% endfor %}
+                        </td>
+                        <td style="text-align: center;">{{ materia.cantidad_asignados_a_esta_materia_sinretirados_inscritos }}</td>
+                        <td style="text-align: center;">{{ materia.cantidad_asignados_a_esta_materia_sinretirados }}</td>
+                        <td style="text-align: center;">
+                            {% if cupo_por_materia %}
+
+                                {{ materia.cupo }}
+
+                            {% else %}
+                                {{ materia.capcidad_total }}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">{{ materia.horassemanales|floatformat:0 }}</td>
+                        <td style="text-align: center;">{{ materia.horas|floatformat:0 }}</td>
+                        <td style="text-align: center;">{{ materia.creditos|floatformat:4 }}</td>
+                        <td style="text-align: center;">
+                            <br>
+                            {{ materia.inicio|date:'d-m-Y' }}
+                            {{ materia.fin|date:'d-m-Y' }}
+                        <td>
+                            <table class="table table-bordered table-condensed filterable3">
+                                {% for profesormateria in materia.profesores_materia %}
+                                    <tr>
+                                        <td>
+                                            <div style="float: left;width: 100%;">
+
+                                                {% if profesormateria.principal %}
+                                                    <label class="label label-info tu" title="Principal">P</label>
+                                                {% endif %}
+                                                <span class="btn-mini btn-info tu" title="Tiempo de Dedicación">{{ materia.abreviatura_dedicacion }}</span>
+                                                {% if profesormateria.novalidahorario %}
+                                                    <label class="label label-warning tu" title="No valida Hor.">NVH</label>
+                                                {% endif %}
+                                                {% if perms.sga.puede_modificar_materias and profesormateria.tipoprofesor_id == 2 and periodo.id >= 76 %}
+                                                    <a class='btn btn-tini btn-success' title="Grupos">{{ profesormateria.contargrupoprofesormateria }} GRUP.</a>
+                                                {% endif %}
+                                                {% if not profesormateria.horario_profesor_materia and not profesormateria.tipoprofesor.id == 3 and periodo.id >= 76 %}<span class="label label-important tu" title="No tiene horario">NH</span>{% endif %}
+                                                <br>
+                                                {{ profesormateria.tipoprofesor }} - <span style="font-weight: bold;">{{ profesormateria.profesor.persona.nombre_completo_inverso }}  </span>
+                                                <br>
+{#                                                <span class="fechas{{ materia.id }}">[{{ profesormateria.desde|date:'d-m-Y' }} al {{ profesormateria.hasta|date:'d-m-Y' }}] Horas semanal: {{ profesormateria.hora }} Tot.Cup:{{ profesormateria.totalcupoprofesormateria_grupos }} Tot.Ins:{{ profesormateria.totalinscritosprofesormateria_grupos }}</span>#}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+
+                            </table>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right">
+                                    {% if periodo.tipo.id == 3 %}
+                                        {% if perms.posgrado.puede_configurar_evaluaciones_posgrado or persona.usuario.is_superuser %}
+                                            <li><a href="#" class="modal_fechaevalindi" idcmat="{{ materia.id }}"><i
+                                                    class="fa fa-calendar"></i> Planificar fecha de evaluación (Hetero)</a>
+                                            </li>
+                                            <li><a href="#" class="modal_fechaevalindiauto" idcmat="{{ materia.id }}"><i
+                                                    class="fa fa-calendar"></i> Planificar fecha de evaluación
+                                                (Auto)</a></li>
+                                            <li>
+                                                <a href="#" class="modal_fechasatisfaccion" idcmat="{{ materia.id }}"><i
+                                                    class="fa fa-calendar"></i> Planificar fecha de encuesta de satisfacción
+                                                </a>
+
+                                            </li>
+                                        {% endif %}
+                                    {% else %}
+                                        <li><a href="#" class="modal_fechaevalindi" idcmat="{{ materia.id }}"><i
+                                                class="fa fa-calendar"></i> Planificar fecha de evaluación (Hetero)</a>
+                                        </li>
+                                        <li><a href="#" class="modal_fechaevalindiauto" idcmat="{{ materia.id }}"><i
+                                                class="fa fa-calendar"></i> Planificar fecha de evaluación
+                                            (Auto)</a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="modaladdindicadores" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Fecha evaluación</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger" id="alertaingresoaddindicadores" style="display: none;"> FECHAS YA FUERON INGRESADAS</div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-vertical' action="" method="POST" >
+                    {#                    <b><span class="carreraindicador"> </span></b><br>#}
+                    Fecha Inicio.:<br><input type="text" name="id_fechaini" id="id_fechaini" placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafin" id="id_fechafin" placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="generar_reporte"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarindicadoresadd"><i class="fa fa-trash"></i> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="modaladdindicadoresindi" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleindi">Fecha evaluación hétero</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbodyindi">
+            <div class="alert alert-danger" id="alertaingresoaddindicadoresindi" style="display: none;"> FECHAS YA FUERON INGRESADAS</div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-vertical' action="" method="POST" >
+                    <input type="hidden" id="idcodmateria" name="idcodmateria">
+                    Fecha Inicio.:<br><input type="text" name="id_fechainiindi" id="id_fechainiindi" placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinindi" id="id_fechafinindi" placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="generar_reporteindi"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarindicadoresaddindi"><i class="fa fa-trash"></i> Cerrar</a>
+        </div>
+    </div>
+
+
+
+    <div class="modal fade static" id="modalconffechaevalauto" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleindi">Fecha evaluación auto</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbodyindi">
+            <div class="alert alert-danger" id="alertamodalauto" style="display: none;"> FECHAS YA FUERON INGRESADAS</div>
+            <div class="row-fluid">
+                <form id="formularioauto" class='form-vertical' action="" method="POST" >
+                    <input type="hidden" id="idcodmateriaauto" name="idcodmateriaauto">
+                    Fecha Inicio.:<br><input type="text" name="id_fechainiindiauto" id="id_fechainiindiauto" placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinindiauto" id="id_fechafinindiauto" placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="guardarfechaauto"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarfechaauto"><i class="fa fa-trash"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalsatisfaction" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleindi">Configurar evaluación de satisfacción</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbodyindi">
+            <div class="alert alert-danger" id="alertamodalsatisfaction" style="display: none;"> FECHAS YA FUERON INGRESADAS
+            </div>
+            <div class="row-fluid">
+                <form id="formularioauto" class='form-vertical' action="" method="POST">
+                    <input type="hidden" id="idcodmateriaauto2" name="id_fechainisas">
+                        <label for="id_encuesta"><b>Encuestas:</b></label>
+                        <select name="id_encuesta" class="form-control select2-hidden-accessible"
+                                id="id_encuesta" tabindex="-1" aria-hidden="true"
+                                style="width: 100%">
+                            <option value="0" selected>---------</option>
+                            {% for eEncuesta in eEncuestasSatisfaccion %}
+                                <option value="{{ eEncuesta.id }}">{{ eEncuesta.descripcion }}</option>
+                            {% endfor %}
+                        </select><br>
+                    Fecha Inicio.:<br><input type="text" name="id_fechainisas" id="id_fechainisas"
+                                             placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinsas" id="id_fechafinsas"
+                                              placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="guardarfechassas"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarfechassas"><i class="fa fa-trash"></i>
+                Cerrar</a>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+{#    <link rel="stylesheet" href="/static/css/stylesfc.css">#}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode === 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            busqueda = function () {
+                let desde = $("#desde").val();
+                let hasta = $("#hasta").val();
+                let estado = $("#estado").val();
+                let term = $("#searchinput").val().toUpperCase().trim();
+                let criterios = `desde=${desde}&hasta=${hasta}&estadoid=${estado}`;
+                if (term.length > 0){
+                    criterios = criterios + `&s=${term}`
+                }
+                location.href = `/adm_docenteinvitado?action=informes&${criterios}`
+            };
+            
+            $(".agregarsolictud").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'addsolicitudasistencia'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyaddsolicitud").html(data.data);
+                            $(".paneltitleaddsolicitud").html(data.title);
+                            $("#itemspaneladdsolicitud").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            if(data.swalType === 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspaneladdsolicitud .guardar").click(function () {
+                enviarFormulario("/adm_docenteinvitado", "addsolicitudasistencia");
+                return false;
+            });
+            
+            $(".imprimirsolicitud").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'solicitudvalidacionpdf', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok'){
+                            location.href = `/adm_docenteinvitado?action=asistencias&idsol=${data.idsol}`;
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".firmardocumento").click(function() {
+                let id = $(this).attr('id');
+                let idper = $(this).attr('idper');
+                let tipofirma = $(this).attr('tipofirma');
+                let accion = $(this).attr('acc');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': accion, 'id': id, 'idper': idper, 'tipofirma': tipofirma},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyfirmardocumento").html(data.data);
+                            $(".paneltitlefirmardocumento").html(data.title);
+                            $("#itemspanelfirmardocumento").modal({backdrop:'static'}).modal('show');
+                            $("#itemspanelfirmardocumento .guardar").attr('accion', accion);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelfirmardocumento .guardar").click(function () {
+                enviarFormulario("/adm_docenteinvitado", $(this).attr("accion"));
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action === 'addsolicitudasistencia'){
+                    $("#frmAddSolicitudAsistencia").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAddSolicitudAsistencia").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'firmarsolicitudasistencia'){
+                    $("#frmFirmarDocumento").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFirmarDocumento").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'addsolicitudasistencia')
+                        formdata = new FormData($("#frmAddSolicitudAsistencia")[0]);
+                    else if(action === 'firmarsolicitudasistencia')
+                        formdata = new FormData($("#frmFirmarDocumento")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                if(action === 'firmarsolicitudasistencia')
+                                    urlDestino = `/adm_docenteinvitado?action=asistencias&idsol=${data.idsol}`;
+                                else
+                                    urlDestino = "/adm_docenteinvitado?action=asistencias";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            {% if solicitudasistencia %}
+                Fancybox.show([
+                    {
+                        src: "{{ solicitudasistencia }}",
+                        width: 2048,
+                        height: 1365,
+                        caption:"{{ titulo }}"
+                    }
+                ]);
+            {% endif %}
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_docenteinvitado{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Validación de Asistencias de los Docentes Invitados por parte de Talento Humano</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {% if icsinfirma %}
+            {# FILA DEL MENSAJE DE ALERTA #}
+            <div class='row'>
+                <div class="col-sm-12 pb-2">
+                    <div class="alert alert-warning" style="text-align: justify">
+                        <strong>{{ mensaje }}</strong>
+                    </div>
+                </div>
+            </div>
+            {# FILA DEL MENSAJE DE ALERTA #}
+        {% endif %}
+        {# FILA DE MENÚ #}
+        <div class='row'>
+            <div class="col-sm-12 pb-2">
+                {% if not esuath and not icsinfirma %}
+                    <a href="javascript:;" class='btn btn-success agregarsolictud' data-bs-toggle="tooltip" title="Agregar Solicitud Validación"><span class="fa fa-plus" ></span> Agregar</a>
+                {% endif %}
+                <div class="btn-group">
+                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Configuraciones <i class="fa fa-angle-down"></i></button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item" href="/adm_docenteinvitado"><i class="fa fa-users"></i>&nbsp;Docentes Invitados</a>
+                    </div>
+                </div>
+                {% if not esuath %}
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item" href="/adm_docenteinvitado?action=informes"><i class="fa fa-file-text"></i>&nbsp;Informes de Actividades</a>
+                            <div class="dropdown-divider"></div>
+                            <a class="dropdown-item" href="/adm_docenteinvitado?action=informesconformidad"><i class="fa fa-file-text"></i>&nbsp;Informes de Conformidad</a>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {# FILA DE MENÚ #}
+        {# FILA DE FILTROS #}
+        <div class="form-row pb-0 pt-0">
+            <div class="col-md-4 col-lg-2 col-12 pe-md-2">
+                <label for="desde"><i class="fa fa-calendar tu" title="Solicitud recibida desde"></i> Desde:</label>
+                <div class="input-group mb-2">
+                    <input type="date" class="form-control" name="desde" id="desde" value="{% if desde %}{{ desde|date:"Y-m-d" }}{% endif %}"/>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2 col-12 pe-md-2">
+                <label for="hasta"><i class="fa fa-calendar tu" title="Solicitud recibida hasta"></i> Hasta:</label>
+                <div class="input-group mb-2">
+                    <input type="date" class="form-control" name="hasta" id="hasta" value="{% if hasta %}{{ hasta|date:"Y-m-d" }}{% endif %}"/>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2 col-12 pe-md-2">
+                <label for="estado"><i class="fa fa-traffic-light tu" title="Estado"></i> Estado:</label>
+                <div class="input-group mb-2">
+                    <select id="estado" name="estado">
+                    <option value="0" selected>Todos</option>
+                    {% for estado in estados %}
+                        <option {% if estado.id == estadoid %}selected{% endif %} value="{{ estado.id }}">{{ estado.descripcion|title }}</option>
+                    {% endfor %}
+                </select>
+                </div>
+            </div>
+            <div class="col-12 col-md-5 col-lg-6 pe-md-2">
+                <label for="searchinput"><i class="fa fa-search"></i> Criterio:</label>
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control" autocomplete="off" placeholder="Apellidos del profesor" aria-label="Buscar" id='searchinput' name="searchinput" value="{{ s }}">
+                    <div class="input-group-append">
+                        <button class="btn btn-primary-old" id="search" type="button"><i class="fa fa-search"></i></button>
+                        {% if url_vars %}
+                            {% if s or desde or hasta or estadoid %}
+                                <a title="Ver todo" href="{{ request.path }}?action=informes" class="btn btn-default tr"><i class="fas fa-sync-alt"></i></a>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# FILA DE FILTROS #}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead class="table-light cabecera-fija">
+                            <tr>
+                                <th style="width: 8%; font-weight: bold; text-align: center">F.Solicitud</th>
+                                <th style="width: 8%; font-weight: bold; text-align: center">F.Envío</th>
+                                <th style="width: 15%; font-weight: bold; text-align: center">N°Solicitud</th>
+                                <th style="width: 4%; font-weight: bold; text-align: center">Archivo</th>
+                                <th style="width: 25%; font-weight: bold; text-align: center">Profesores</th>
+                                <th style="width: 8%; font-weight: bold; text-align: center">F.Aprobación</th>
+                                <th style="width: 14%; font-weight: bold; text-align: center">N°Reporte</th>
+                                <th style="width: 3%; font-weight: bold; text-align: center">Archivo</th>
+                                <th style="width: 10%; font-weight: bold; text-align: center">Estado</th>
+                                <th style="width: 5%; font-weight: bold; text-align: center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for solicitud in solicitudes %}
+                                <tr>
+                                    <td class="text-center">
+                                        {{ solicitud.fecha_creacion|date:"d-m-Y" }}<br>
+                                    </td>
+                                    <td class="text-center">
+                                        {{ solicitud.fechaenvio|date:"d-m-Y" }}<br>
+                                    </td>
+                                    <td class="text-center">
+                                        {{ solicitud.numero }}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if solicitud.archivosolfirmada %}
+                                            <a href="{{ solicitud.archivosolfirmada.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="solicitudasistencia{{ forloop.counter }}" data-caption="Solicitud de Validación de Asistencia Firmada: {{ solicitud.numero }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Archivo"><i class="fa fa-eye"></i> </a>
+                                        {% elif solicitud.archivosol %}
+                                            <a href="{{ solicitud.archivosol.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="solicitudasistencia{{ forloop.counter }}" data-caption="Solicitud de Validación de Asistencia sin firmar: {{ solicitud.numero }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Archivo"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: left">
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header" id="panelsStayOpen-heading{{ solicitud.id }}">
+                                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ solicitud.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ solicitud.id }}">
+                                                <span class="fa fa-list"></span>&nbsp;Profesores&nbsp;
+                                                </button>
+                                            </h2>
+                                            <div id="panelsStayOpen-collapse{{ solicitud.id }}" class="accordion-collapse collapse" aria-labelledby="panelsStayOpen-heading{{ solicitud.id }}">
+                                                <div class="accordion-body">
+                                                    {% for detalle in solicitud.detalles %}
+                                                        <div class="arrow-content">
+                                                            <i class="arrow-item" style="bottom: 1px"></i>
+                                                            <div class="arrow-text" data-bs-toggle="tooltip">{{ detalle.informe.docente.profesor.persona.nombre_completo_inverso|title }}</div>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if solicitud.fechaaprueba %}
+                                            {{ solicitud.fechaaprueba|date:"d-m-Y" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if solicitud.numerorep %}
+                                            {{ solicitud.numerorep }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if solicitud.archivorepfirmado %}
+                                            <a href="{{ solicitud.archivorepfirmado.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="reporteasistencia{{ forloop.counter }}" data-caption="Reporte de Validación de Aistencia Firmado: {{ solicitud.numerorep }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Archivo"><i class="fa fa-eye"></i> </a>
+                                        {% elif solicitud.archivorep %}
+                                            <a href="{{ solicitud.archivorep.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="reporteasistencia{{ forloop.counter }}" data-caption="Reporte de Validación de Asistencia sin firmar: {{ solicitud.numerorep }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Archivo"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="label label-{{ solicitud.color_estado }}">{{ solicitud.get_estado_display|title }}</span>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <div class="dropbottom" style="text-align: left">
+                                            <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                            <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                {% if not esuath %}
+                                                    {% if solicitud.puede_imprimir_solicitud %}
+                                                        {% if not solicitud.solimpresa %}
+                                                            <li class="dropdown-item"><a href="javascript:;" class="imprimirsolicitud" id="{{ solicitud.id|encrypt }}" tipo="ACT"><i class="fa fa-print"></i> Imprimir Solicitud</a></li>
+                                                        {% else %}
+                                                            <li class="dropdown-item"><a href="{{ solicitud.archivosol.url }}" data-width="2048" data-height="1380" data-fancybox="solicitud{{ forloop.counter }}" data-caption="Solicitud de Validación de asistencia sin firma {{ solicitud.numero }}"><i class="fa fa-print"></i> Imprimir Solicitud</a></li>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                    {% if solicitud.puede_firmar_solicitud %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="firmardocumento" id="{{ solicitud.id|encrypt }}" idper="{{ solicitud.solicita.id|encrypt }}" tipofirma="SOL" acc="firmarsolicitudasistencia"><i class="fa fa-signature"></i> Firmar Solicitud</a></li>
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% if solicitud.enviada_uath %}
+                                                        <li class="dropdown-item"><a href="/adm_docenteinvitado?action=detalleasistencia&id={{ solicitud.id|encrypt }}"><i class="fa fa-users"></i> Profesores</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr><td style="text-align: center" colspan="10">NO EXISTEN REGISTROS DE SOLICITUDES DE VALIDACIÓN DE ASISTENCIAS</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+    
+    <div class="modal fade static"  id="itemspaneladdsolicitud" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i>&nbsp;<span class="paneltitleaddsolicitud">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyaddsolicitud">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelfirmardocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-signature"></i>&nbsp;<span class="paneltitlefirmardocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyfirmardocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Firmar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

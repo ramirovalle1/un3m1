@@ -1,0 +1,366 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script>
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+        });
+        function generarreporte(){
+            idmateria = {{ profesormateria.materia.id }};
+            idprofesor = {{ profesormateria.profesor.id }};
+            openwindow('GET' ,'/niveles', {action:'reporte_matri_prac',idmateria:idmateria,idprofesor:idprofesor}, '_blank');
+        }
+        $(function() {
+            $("#guardar").click(function () {
+                var lista = actualizar_lista();
+                if (lista.length > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {'action': 'alumnospractica', 'id': '{{ profesormateria.id }}', 'listamaterias': lista},
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        success: function (data) {
+                            if (data.result == "ok") {
+                                location.href = '/niveles?action=materias&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }
+                    });
+                } else {
+                    smoke.alert("Debe seleccionar al menos un estudiante.");
+                }
+            });
+
+            $('#selectortodos').click(function () {
+                if ($('#selectortodos').is(":checked")) {
+                    $('.selector').prop('checked', true);
+                } else {
+                    $('.selector').prop('checked', false);
+                }
+            });
+
+            actualizar_lista = function () {
+                var lista = '';
+                $('.selector').each(function () {
+                    if ($(this).is(":checked")) {
+                        lista += $(this).attr('idm') + ',';
+                    }
+                });
+                if (lista.length > 0) {
+                    lista = lista.substring(0, lista.length - 1);
+                }
+                return lista;
+            };
+
+            $(".asignargrupo").click(function () {
+                var idm = $(this).attr('idm');
+                enviar('asignargrupopractica', idm, true)
+            });
+
+
+            enviar = function (action, idm, asignar_o_designar) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': action, 'id': '{{ profesormateria.id }}', 'idm': idm},
+                    error: function () {
+                        $.unblockUI();
+                        $('.asignargrupo').attr('checked', false);
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            if (asignar_o_designar){
+                                $.unblockUI();
+                                $(".panelbody_pract").html(data.datos);
+                                $("#materiaspracticamodal").modal({backdrop: 'static', width: '870px'}).modal('show');
+                            }
+                            else{
+                                location.reload();
+                            }
+                        } else {
+                            $.unblockUI();
+                            $('.asignargrupo').attr('checked', false);
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            };
+
+            $(".designargrupo").click(function () {
+                var idm = $(this).attr('idg');
+                enviar('designargrupopractica', idm, false)
+            });
+
+            $('#btn-cerrar-practicar').click(function(){
+                $('.asignargrupo').attr('checked', false);
+                $("#materiaspracticamodal").modal('hide');
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/niveles?action=materias&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Materia: {{ profesormateria.materia.nombre_completo }}</h5>
+            <h5>Profesor: {{ profesormateria.profesor.persona.nombre_completo }} {% for grupo in profesormateria.grupoprofesormateria %} <span class="label label-info tu" title="Grupo-Cupo">{{ grupo.get_paralelopractica_display }} - {{ grupo.cupo }}</span> {% endfor %}</h5>
+            <a class="btn btn-warning " href="javascript:;" onclick="generarreporte()">
+                <span class="fa fa-print"></span> Imprimir
+            </a>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            {% if periodo.id >= 76 %}
+                {% for grupoprofesor in profesormateria.grupoprofesormateria %}
+                    <table class='table table-bordered table-striped' >
+                        <thead>
+                        <tr>
+                            <th colspan="7">{{ grupoprofesor.get_paralelopractica_display }} (<b>Cupos:</b> {{ grupoprofesor.cupo }})</th>
+                        </tr>
+                        <tr>
+                            <th style="width: 50px;text-align: center;">Desmatricular</th>
+                            <th style="width: 50px; text-align: center">No.</th>
+                            <th>Inscripci&oacute;n</th>
+                            <th style="width: 100px;">Cedula</th>
+                            <th style="width: 200px;">Email</th>
+                            <th style="width: 150px;">Telefono</th>
+                            <th style="width:60px;text-align: center">Foto</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for estudiantepractica in grupoprofesor.listado_inscritos_grupos_practicas %}
+                            <tr>
+                                <td style="text-align: center;">
+                                    {% if perms.sga.puede_modificar_profesor_materia %}
+                                        <input class="designargrupo" type="checkbox" checked idg="{{ estudiantepractica.id|encrypt }}">
+                                    {% else %}
+                                        <span class="fa fa-check"></span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;"> {{ forloop.counter }} </td>
+                                <td>{{ estudiantepractica.materiaasignada.matricula.inscripcion.persona }}<br>
+                                    {% if estudiantepractica.materiaasignada.alumnopracticamateria %}
+                                        {% if estudiantepractica.materiaasignada.alumnopracticamateria.grupoprofesor %}
+                                            <span class='label label-info'>{{ estudiantepractica.materiaasignada.alumnopracticamateria.grupoprofesor.get_paralelopractica_display }}</span>
+                                             {% if not estudiantepractica.materiaasignada.alumnopracticamateria.grupoprofesor.profesormateria.id == estudiantepractica.profesormateria.id %}
+                                                 <span class='label label-important'>NO ES EL MISMO PROFESOR</span>
+                                             {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if nivel != estudiantepractica.materiaasignada.matricula.nivel %}
+                                        <span class="label">{{ estudiantepractica.materiaasignada.matricula.nivel.paralelo }}</span>
+                                    {% endif %}
+                                    {% if estudiantepractica.materiaasignada.retirado %}
+                                        <span class="label label-important">RETIRADO</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ estudiantepractica.materiaasignada.matricula.inscripcion.persona.cedula }}</td>
+                                <td>{%  for email in estudiantepractica.materiaasignada.matricula.inscripcion.persona.lista_emails %}
+                                    <a href="mailto:{{ email }}">{{ email }}</a><br/>
+                                {% endfor %}
+                                </td>
+                                <td>
+                                    {%  for telefono in estudiantepractica.materiaasignada.matricula.inscripcion.persona.lista_telefonos %}
+                                        {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% if estudiantepractica.materiaasignada.matricula.inscripcion.persona.foto %}
+                                        <a title="{{ estudiantepractica.materiaasignada.matricula.inscripcion.persona.nombre_completo }}" href='{{ estudiantepractica.materiaasignada.matricula.inscripcion.persona.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ estudiantepractica.materiaasignada.matricula.inscripcion.persona.foto.foto.url }}" width="30px"></a>
+                                    {% else %}
+                                        {% if estudiantepractica.materiaasignada.matricula.inscripcion.persona.sexo_id == 1 %}
+                                            <img src="/static/images/iconos/mujer_small.png" width="30px">
+                                        {% else %}
+                                            <img src="/static/images/iconos/hombre_small.png" width="30px">
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="15">NO EXISTEN ESTUDIANTES REGISTRADOS EN ESTE GRUPO</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                {% endfor %}
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        <th colspan="7">Estudiantes sin grupos</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 50px;text-align: center;">Matricular Todos
+
+                        </th>
+                        <th style="width: 50px; text-align: center">No.</th>
+                        <th>Inscripci&oacute;n</th>
+                        <th style="width: 100px;">Cedula</th>
+                        <th style="width: 200px;">Email</th>
+                        <th style="width: 150px;">Telefono</th>
+                        <th style="width:60px;text-align: center">Foto</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for materiaasignada in materiasasignadas %}
+                        <tr>
+                            <td style="text-align: center;">
+                                {% with seleccionado=materiaasignada|args:profesormateria|call:"seleccionado_practica" %}
+                                    {% if perms.sga.puede_modificar_profesor_materia %}
+                                        <input class="asignargrupo" type="checkbox" idm="{{ materiaasignada.id|encrypt }}">
+                                    {% else %}
+                                        {% if seleccionado %}
+                                            <span class="fa fa-check"></span>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td style="text-align: center;"> {{ forloop.counter }} </td>
+                            <td>{{ materiaasignada.matricula.inscripcion.persona }}<br>
+                                {% if nivel != materiaasignada.matricula.nivel %}
+                                    <span class="label">{{ materiaasignada.matricula.nivel.paralelo }}</span>
+                                {% endif %}
+                                {% if materiaasignada.retirado %}
+                                    <span class="label label-important">RETIRADO</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ materiaasignada.matricula.inscripcion.persona.cedula }}</td>
+                            <td>{%  for email in materiaasignada.matricula.inscripcion.persona.lista_emails %}
+                                <a href="mailto:{{ email }}">{{ email }}</a><br/>
+                            {% endfor %}
+                            </td>
+                            <td>
+                                {%  for telefono in materiaasignada.matricula.inscripcion.persona.lista_telefonos %}
+                                    {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if materiaasignada.matricula.inscripcion.persona.foto %}
+                                    <a title="{{ materiaasignada.matricula.inscripcion.persona.nombre_completo }}" href='{{ materiaasignada.matricula.inscripcion.persona.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ materiaasignada.matricula.inscripcion.persona.foto.foto.url }}" width="30px"></a>
+                                {% else %}
+                                    {% if materiaasignada.matricula.inscripcion.persona.sexo_id == 1 %}
+                                        <img src="/static/images/iconos/mujer_small.png" width="30px">
+                                    {% else %}
+                                        <img src="/static/images/iconos/hombre_small.png" width="30px">
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="15" STYLE="text-align: center">NO EXISTEN ESTUDIANTES SIN GRUPOS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        <th style="width: 50px;text-align: center;">
+                            {% if perms.sga.puede_modificar_profesor_materia %}
+                                <input id="selectortodos" type="checkbox">
+                            {% endif %}
+                        </th>
+                        <th style="width: 50px; text-align: center">No.</th>
+                        <th>Inscripci&oacute;n</th>
+                        <th style="width: 100px;">Cedula</th>
+                        <th style="width: 200px;">Email</th>
+                        <th style="width: 150px;">Telefono</th>
+                        <th style="width:60px;text-align: center">Foto</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for materiaasignada in materiasasignadas %}
+                        <tr>
+                            <td style="text-align: center;">
+                                {% with seleccionado=materiaasignada|args:profesormateria|call:"seleccionado_practica" %}
+                                    {% if perms.sga.puede_modificar_profesor_materia %}
+                                        <input class="selector" type="checkbox" {% if seleccionado %}checked{% endif %} id="ma{{ materiaasignada.id }}" idm="{{ materiaasignada.id }}">
+                                    {% else %}
+                                        {% if seleccionado %}
+                                            <span class="fa fa-check"></span>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td style="text-align: center;"> {{ forloop.counter }} </td>
+                            <td>{{ materiaasignada.matricula.inscripcion.persona }}<br>
+                                {% if nivel != materiaasignada.matricula.nivel %}
+                                    <span class="label">{{ materiaasignada.matricula.nivel.paralelo }}</span>
+                                {% endif %}
+                                {% if materiaasignada.retirado %}
+                                    <span class="label label-important">RETIRADO</span>
+                                {% endif %}
+                                {% if materiaasignada.alumnopracticamateria %}
+                                    {% if materiaasignada.alumnopracticamateria.grupoprofesor %}
+                                        <span class='label label-info'>{{ materiaasignada.alumnopracticamateria.grupoprofesor.get_paralelopractica_display }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>{{ materiaasignada.matricula.inscripcion.persona.cedula }}</td>
+                            <td>{%  for email in materiaasignada.matricula.inscripcion.persona.lista_emails %}
+                                <a href="mailto:{{ email }}">{{ email }}</a><br/>
+                            {% endfor %}
+                            </td>
+                            <td>
+                                {%  for telefono in materiaasignada.matricula.inscripcion.persona.lista_telefonos %}
+                                    {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if materiaasignada.matricula.inscripcion.persona.foto %}
+                                    <a title="{{ materiaasignada.matricula.inscripcion.persona.nombre_completo }}" href='{{ materiaasignada.matricula.inscripcion.persona.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ materiaasignada.matricula.inscripcion.persona.foto.foto.url }}" width="30px"></a>
+                                {% else %}
+                                    {% if materiaasignada.matricula.inscripcion.persona.sexo_id == 1 %}
+                                        <img src="/static/images/iconos/mujer_small.png" width="30px">
+                                    {% else %}
+                                        <img src="/static/images/iconos/hombre_small.png" width="30px">
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="15">NO EXISTEN ESTUDIANTES REGISTRADOS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <div class='row-fluid'>
+                    <div class='span12'>
+                        {% if perms.sga.puede_modificar_profesor_materia %}
+                            <a class="btn btn-success" href="javascript:;" id="guardar">Guardar</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="modal fade static" id="materiaspracticamodal" style="display: none;">
+        <div class="modal-header">
+            <h4>Seleccione la práctica de la asignatura</h4>
+        </div>
+        <div class="modal-body">
+            <div class="panelbody_pract"></div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="btn-practica">Guardar masivo</a>
+            <a href="javascript:;" class="btn btn-info" id="btn-practica-individual">Guardar Individual</a>
+            <a href="javascript:;" id="btn-cerrar-practicar" class="btn">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

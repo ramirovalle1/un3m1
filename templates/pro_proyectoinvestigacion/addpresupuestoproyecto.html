@@ -1,0 +1,1283 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <style type="text/css">
+        .hiddenRow {
+            padding: 0 !important;
+        }
+
+        .jGrowl .jGrowl-notification {
+            border: none;
+            color: #fff;
+            opacity: .95;
+            filter: alpha(Opacity=95);
+            width: 230px;
+            padding: 12px 18px;
+            margin-top: 5px;
+            text-align: left;
+            display: none;
+            background: silver;
+        }
+
+        .jGrowl-notification.growl-error {
+            background-color: rgb(185, 74, 72)
+        }
+    </style>
+
+    <link rel="stylesheet" href="/static/autocomplete/jquery-ui.css">
+    <script src="/static/autocomplete/jquery-1.12.4.js"></script>
+    <script src="/static/autocomplete/jquery-ui.js"></script>
+    <script type="text/javascript">
+        var jQAutocomplete = jQuery.noConflict();
+        window.jQuery = jQAutocomplete;
+    </script>
+
+    <script type="text/javascript">
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 20 });
+            $("#id_totalpresupuesto").addClass("validate[required, min[1], max[{{ totalafinanciar }}]]");
+            var totalpasajes = 0;
+            var totalviaticos = 0;
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    var nf_{{ tiporecurso.abreviatura }} = 0;
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        var nf_pasaje_VTI = 0;
+                        var nf_viatico_VTI = 0;
+                        var nf_movilizacion_VTI = 0;
+                    {% else %}
+                        var nf_pasaje_VTN = 0;
+                        var nf_viatico_VTN = 0;
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    valoresUnitarios_{{ tiporecurso.abreviatura }} = function (){
+                        numerico($(this), 0.01, 9999999, 2);
+                        sumarcuotas_{{ tiporecurso.abreviatura }}();
+                    };
+
+                    valoresCantidades_{{ tiporecurso.abreviatura }} = function (){
+                        numerico($(this), 1, 9999, 0);
+                        sumarcuotas_{{ tiporecurso.abreviatura }}();
+                    };
+
+                    incluyeIva_{{ tiporecurso.abreviatura }} = function (){
+                        sumarcuotas_{{ tiporecurso.abreviatura }}();
+                    };
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        valoresUnitarios_pasaje_VTI = function (){
+                            numerico($(this), 0.01, 9999999, 2);
+                            sumarcuotas_pasaje_VTI();
+                        };
+
+                        valoresUnitarios_viatico_VTI = function (){
+                            numerico($(this), 0.01, 9999999, 2);
+                            sumarcuotas_viatico_VTI();
+                        };
+
+                        valoresNoche_VTI = function (){
+                            numerico($(this), 1, 9999, 0);
+                            sumarcuotas_viatico_VTI();
+                        };
+
+                        valoresDias_movilizacion_VTI = function (){
+                            numerico($(this), 0, 999, 0);
+                        };
+
+                        incluyeIva_pasaje_VTI = function (){
+                            sumarcuotas_pasaje_VTI();
+                        };
+
+                        incluyeIva_viatico_VTI = function (){
+                            sumarcuotas_viatico_VTI();
+                        };
+                    {% else %}
+                        valoresUnitarios_pasaje_VTN = function (){
+                            numerico($(this), 0.01, 9999999, 2);
+                            sumarcuotas_pasaje_VTN();
+                        };
+
+                        valoresUnitarios_viatico_VTN = function (){
+                            numerico($(this), 0.01, 9999999, 2);
+                            sumarcuotas_viatico_VTN();
+                        };
+
+                        valoresNoche_VTN = function (){
+                            numerico($(this), 1, 9999, 0);
+                            sumarcuotas_viatico_VTN();
+                        };
+
+                        incluyeIva_pasaje_VTN = function (){
+                            sumarcuotas_pasaje_VTN();
+                        };
+
+                        incluyeIva_viatico_VTN = function (){
+                            sumarcuotas_viatico_VTN();
+                        };
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    sumarcuotas_{{ tiporecurso.abreviatura }} = function (){
+                        var aunitarios = new Array();
+                        var acantidades = new Array();
+                        var aincluyeiva = new Array();
+                        var avaloriva = new Array();
+                        var atotal = new Array();
+
+                        $('input[name="valorunitario_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            valor_{{ tiporecurso.abreviatura }} = parseFloat($(this).val());
+                            aunitarios.push(parseFloat($(this).val()));
+                        });
+
+                        $('input[name="incluyeiva_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            aincluyeiva.push($(this).is(":checked"));
+                        });
+
+                        $('input[name="cantidad_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            cantidad_{{ tiporecurso.abreviatura }} = parseFloat($(this).val());
+                            acantidades.push(parseFloat($(this).val()));
+                        });
+
+                        var suma = 0;
+                        for (i = 0; i < acantidades.length; i++) {
+                            var inciva = aincluyeiva[i];
+                            var valoriva = 0;
+                            var total = 0;
+
+                            if(!inciva){
+                                valoriva = 0;
+                                total = acantidades[i] * aunitarios[i];
+                            }else{
+                                valoriva = redondeo(aunitarios[i] * 0.12, 2);
+                                total = acantidades[i] * (valoriva + aunitarios[i])
+                            }
+
+                            avaloriva.push(valoriva);
+                            atotal.push(total);
+                            suma += total;
+                        }
+                        var i =0;
+
+                        $('input[name="valoriva_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            $(this).val(avaloriva[i].toFixed(2));
+                            i++;
+                        });
+
+                        i = 0;
+                        $('input[name="valortotal_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            $(this).val(atotal[i].toFixed(2));
+                            i++;
+                        });
+
+                        $("#lbl_total_{{ tiporecurso.abreviatura }}").html("$ " + suma.toFixed(2));
+                        $("#lbl_totaltipo_{{ tiporecurso.abreviatura }}").html("$ " + suma.toFixed(2));
+                        $("#bdg_cantidaditems_{{ tiporecurso.abreviatura }}").html(acantidades.length);
+
+
+                        {% if tiporecurso.abreviatura == 'EQP' %}
+                            $("#totalpresupuestoequipo").val(suma.toFixed(2));
+                        {% endif %}
+
+                        calculartotalpresupuesto();
+                    };
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        sumarcuotas_pasaje_VTI = function (){
+                            var aunitarios = new Array();
+                            var acantidades = new Array();
+                            var aincluyeiva = new Array();
+                            var avaloriva = new Array();
+                            var atotal = new Array();
+
+                            $('input[name="valorunitario_pasaje_VTI[]"]').each(function () {
+                                aunitarios.push(parseFloat($(this).val()));
+                                acantidades.push(parseFloat("1"));
+                            });
+
+                            $('input[name="incluyeiva_pasaje_VTI[]"]').each(function () {
+                                aincluyeiva.push($(this).is(":checked"));
+                            });
+
+                            var suma = 0;
+                            for (i = 0; i < acantidades.length; i++) {
+                                var inciva = aincluyeiva[i];
+                                var valoriva = 0;
+                                var total = 0;
+
+                                if(!inciva){
+                                    valoriva = 0;
+                                    total = acantidades[i] * aunitarios[i];
+                                }else{
+                                    valoriva = redondeo(aunitarios[i] * 0.12, 2);
+                                    total = acantidades[i] * (valoriva + aunitarios[i])
+                                }
+
+                                avaloriva.push(valoriva);
+                                atotal.push(total);
+                                suma += total;
+                            }
+                            var i =0;
+
+                            $('input[name="valoriva_pasaje_VTI[]"]').each(function () {
+                                $(this).val(avaloriva[i].toFixed(2));
+                                i++;
+                            });
+
+                            i = 0;
+                            $('input[name="valortotal_pasaje_VTI[]"]').each(function () {
+                                $(this).val(atotal[i].toFixed(2));
+                                i++;
+                            });
+
+                            totalpasajes = suma;
+                            var totalvti = totalpasajes + totalviaticos;
+
+                            $("#lbl_total_pasaje_VTI").html("$ " + suma.toFixed(2));
+                            $("#lbl_totaltipo_VTI").html("$ " + totalvti.toFixed(2));
+                            $("#bdg_cantidaditems_VTI").html(acantidades.length);
+                            calculartotalpresupuesto();
+                        };
+
+                        sumarcuotas_viatico_VTI = function (){
+                            var aunitarios = new Array();
+                            var acantidades = new Array();
+                            var aincluyeiva = new Array();
+                            var avaloriva = new Array();
+                            var atotal = new Array();
+
+                            $('input[name="valorunitario_viatico_VTI[]"]').each(function () {
+                                aunitarios.push(parseFloat($(this).val()));
+                            });
+
+                            $('input[name="incluyeiva_viatico_VTI[]"]').each(function () {
+                                aincluyeiva.push($(this).is(":checked"));
+                            });
+
+                            $('input[name="nocheestancia_viatico_VTI[]"]').each(function () {
+                                acantidades.push(parseFloat($(this).val()));
+                            });
+
+                            var suma = 0;
+                            for (i = 0; i < acantidades.length; i++) {
+                                var inciva = aincluyeiva[i];
+                                var valoriva = 0;
+                                var total = 0;
+
+                                if(!inciva){
+                                    valoriva = 0;
+                                    total = acantidades[i] * aunitarios[i];
+                                }else{
+                                    valoriva = redondeo(aunitarios[i] * 0.12, 2);
+                                    total = acantidades[i] * (valoriva + aunitarios[i])
+                                }
+
+                                avaloriva.push(valoriva);
+                                atotal.push(total);
+                                suma += total;
+                            }
+                            var i =0;
+
+                            $('input[name="valoriva_viatico_VTI[]"]').each(function () {
+                                $(this).val(avaloriva[i].toFixed(2));
+                                i++;
+                            });
+
+                            i = 0;
+                            $('input[name="valortotal_viatico_VTI[]"]').each(function () {
+                                $(this).val(atotal[i].toFixed(2));
+                                i++;
+                            });
+                            totalviaticos = suma;
+                            totalvti = totalviaticos + totalpasajes;
+
+                            //$("#lbl_total_pasaje_VTI").html("$ " + suma.toFixed(2));
+                            $("#lbl_totaltipo_VTI").html("$ " + totalvti.toFixed(2));
+                            $("#lbl_total_viatico_VTI").html("$ " + suma.toFixed(2));
+                            calculartotalpresupuesto();
+                        };
+                    {% else %}
+                        sumarcuotas_pasaje_VTN = function (){
+                            var aunitarios = new Array();
+                            var acantidades = new Array();
+                            var aincluyeiva = new Array();
+                            var avaloriva = new Array();
+                            var atotal = new Array();
+
+                            $('input[name="valorunitario_pasaje_VTN[]"]').each(function () {
+                                aunitarios.push(parseFloat($(this).val()));
+                                acantidades.push(parseFloat("1"));
+                            });
+
+                            $('input[name="incluyeiva_pasaje_VTN[]"]').each(function () {
+                                aincluyeiva.push($(this).is(":checked"));
+                            });
+
+                            var suma = 0;
+                            for (i = 0; i < acantidades.length; i++) {
+                                var inciva = aincluyeiva[i];
+                                var valoriva = 0;
+                                var total = 0;
+
+                                if(!inciva){
+                                    valoriva = 0;
+                                    total = acantidades[i] * aunitarios[i];
+                                }else{
+                                    valoriva = redondeo(aunitarios[i] * 0.12, 2);
+                                    total = acantidades[i] * (valoriva + aunitarios[i])
+                                }
+
+                                avaloriva.push(valoriva);
+                                atotal.push(total);
+                                suma += total;
+                            }
+                            var i =0;
+
+                            $('input[name="valoriva_pasaje_VTN[]"]').each(function () {
+                                $(this).val(avaloriva[i].toFixed(2));
+                                i++;
+                            });
+
+                            i = 0;
+                            $('input[name="valortotal_pasaje_VTN[]"]').each(function () {
+                                $(this).val(atotal[i].toFixed(2));
+                                i++;
+                            });
+
+                            totalpasajes = suma;
+                            var totalvtn = totalpasajes + totalviaticos;
+
+                            $("#lbl_total_pasaje_VTN").html("$ " + suma.toFixed(2));
+                            $("#lbl_totaltipo_VTN").html("$ " + totalvtn.toFixed(2));
+                            $("#bdg_cantidaditems_VTN").html(acantidades.length);
+                            calculartotalpresupuesto();
+                        };
+
+                        sumarcuotas_viatico_VTN = function (){
+                            var aunitarios = new Array();
+                            var acantidades = new Array();
+                            var aincluyeiva = new Array();
+                            var avaloriva = new Array();
+                            var atotal = new Array();
+
+                            $('input[name="valorunitario_viatico_VTN[]"]').each(function () {
+                                aunitarios.push(parseFloat($(this).val()));
+                            });
+
+                            $('input[name="incluyeiva_viatico_VTN[]"]').each(function () {
+                                aincluyeiva.push($(this).is(":checked"));
+                            });
+
+                            $('input[name="nocheestancia_viatico_VTN[]"]').each(function () {
+                                acantidades.push(parseFloat($(this).val()));
+                            });
+
+                            var suma = 0;
+                            for (i = 0; i < acantidades.length; i++) {
+                                var inciva = aincluyeiva[i];
+                                var valoriva = 0;
+                                var total = 0;
+
+                                if(!inciva){
+                                    valoriva = 0;
+                                    total = acantidades[i] * aunitarios[i];
+                                }else{
+                                    valoriva = redondeo(aunitarios[i] * 0.12, 2);
+                                    total = acantidades[i] * (valoriva + aunitarios[i])
+                                }
+
+                                avaloriva.push(valoriva);
+                                atotal.push(total);
+                                suma += total;
+                            }
+                            var i =0;
+
+                            $('input[name="valoriva_viatico_VTN[]"]').each(function () {
+                                $(this).val(avaloriva[i].toFixed(2));
+                                i++;
+                            });
+
+                            i = 0;
+                            $('input[name="valortotal_viatico_VTN[]"]').each(function () {
+                                $(this).val(atotal[i].toFixed(2));
+                                i++;
+                            });
+                            totalviaticos = suma;
+                            totalvtn = totalviaticos + totalpasajes;
+
+                            //$("#lbl_total_pasaje_VTI").html("$ " + suma.toFixed(2));
+                            $("#lbl_totaltipo_VTN").html("$ " + totalvtn.toFixed(2));
+                            $("#lbl_total_viatico_VTN").html("$ " + suma.toFixed(2));
+                            calculartotalpresupuesto();
+                        };
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            calculartotalpresupuesto = function (){
+                var totalpresupuesto = 0;
+                {% for tiporecurso in tiposrecursos %}
+                    {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                        $('input[name="valortotal_{{ tiporecurso.abreviatura }}[]"]').each(function () {
+                            totalpresupuesto += parseFloat($(this).val());
+                        });
+                    {% else %}
+                        {% if tiporecurso.abreviatura == 'VTI' %}
+                            $('input[name="valortotal_pasaje_VTI[]"]').each(function () {
+                                totalpresupuesto += parseFloat($(this).val());
+                            });
+
+                            $('input[name="valortotal_viatico_VTI[]"]').each(function () {
+                                totalpresupuesto += parseFloat($(this).val());
+                            });
+                        {% else %}
+                            $('input[name="valortotal_pasaje_VTN[]"]').each(function () {
+                                totalpresupuesto += parseFloat($(this).val());
+                            });
+
+                            $('input[name="valortotal_viatico_VTN[]"]').each(function () {
+                                totalpresupuesto += parseFloat($(this).val());
+                            });
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                $("#id_totalpresupuesto").val(totalpresupuesto.toFixed(2));
+            };
+
+
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    $(".agregaitem_{{ tiporecurso.abreviatura }}").click(function() {
+                        if(datos_{{ tiporecurso.abreviatura }}_completo()) {
+                            nf_{{ tiporecurso.abreviatura }} += 1;
+
+                            valoresSelect = '<option value="0" selected="selected">--Selecc--</option>';
+                            {% for unidadmedida in unidadesmedida %}
+                                opcion = '<option value="{{ unidadmedida.id }}">{{ unidadmedida.nombre }}</option>';
+                                valoresSelect = valoresSelect + opcion;
+                            {% endfor %}
+
+                            {% if tiporecurso.abreviatura == 'MAT' %}
+                                lista_materiales = []
+                                {% for pro in productos %}
+                                    lista_materiales.push("{{ pro }}")
+                                {% endfor %}
+                            {% endif %}
+
+                            nueva = '<tr id="fila_{{ tiporecurso.abreviatura }}_' + nf_{{ tiporecurso.abreviatura }}.toString() + '">' +
+                                '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="recurso_{{ tiporecurso.abreviatura }}[]" name="recurso_{{ tiporecurso.abreviatura }}[]" type="text" value="" ></td></td>' +
+                                '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="descripcion_{{ tiporecurso.abreviatura }}[]" name="descripcion_{{ tiporecurso.abreviatura }}[]" type="text" value="" ></td></td>' +
+                                '<td> <select style="width: 100%;" class="umedida" id="unidadmedida_{{ tiporecurso.abreviatura }}[]" name="unidadmedida_{{ tiporecurso.abreviatura }}[]" >'+valoresSelect+' </select>  </td>' +
+                                '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="4" id="cantidad_{{ tiporecurso.abreviatura }}[]" name="cantidad_{{ tiporecurso.abreviatura }}[]" type="text" value="0" class="valorescantidades_{{ tiporecurso.abreviatura }}" ></td></td>' +
+                                '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="valorunitario_{{ tiporecurso.abreviatura }}[]" name="valorunitario_{{ tiporecurso.abreviatura }}[]" type="text" value="0.00" class="valoresunitarios_{{ tiporecurso.abreviatura }}"></td></td>' +
+                                '<td style="text-align: center"><input type="checkbox" style="display: none;" id="incluyeiva_{{ tiporecurso.abreviatura }}[]" name="incluyeiva_{{ tiporecurso.abreviatura }}[]" value="" class="incluyeiva_{{ tiporecurso.abreviatura }}"></td>' +
+                                '<td><input style="text-align: right; width: 100%; text-transform: none; display: none;" maxlength="20" id="valoriva_{{ tiporecurso.abreviatura }}[]" name="valoriva_{{ tiporecurso.abreviatura }}[]" type="text" value="0.00" readonly="readonly" ></td></td>' +
+                                '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valortotal_{{ tiporecurso.abreviatura }}[]" name="valortotal_{{ tiporecurso.abreviatura }}[]" type="text" value="0.00" readonly="readonly" ></td></td>' +
+                                '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_{{ tiporecurso.abreviatura }}[]" name="observacion_{{ tiporecurso.abreviatura }}[]" type="text" value="" ></td></td>' +
+                                '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_{{ tiporecurso.abreviatura }} tu" idf="' + nf_{{ tiporecurso.abreviatura }}.toString() + '" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+
+                            $("#detalle_recurso_{{ tiporecurso.abreviatura }}").append(nueva);
+                            $("#detalle_recurso_{{ tiporecurso.abreviatura }}").find(".umedida").select2();
+
+                            $(".eliminaritem_{{ tiporecurso.abreviatura }}").unbind("click.eliminarItem_{{ tiporecurso.abreviatura }}");
+                            $(".eliminaritem_{{ tiporecurso.abreviatura }}").bind("click.eliminarItem_{{ tiporecurso.abreviatura }}", eliminarItem_{{ tiporecurso.abreviatura }});
+                            $(".valoresunitarios_{{ tiporecurso.abreviatura }}").unbind("blur.valoresUnitarios_{{ tiporecurso.abreviatura }}");
+                            $(".valoresunitarios_{{ tiporecurso.abreviatura }}").bind("blur.valoresUnitarios_{{ tiporecurso.abreviatura }}", valoresUnitarios_{{ tiporecurso.abreviatura }});
+                            $(".valorescantidades_{{ tiporecurso.abreviatura }}").unbind("blur.valoresCantidades_{{ tiporecurso.abreviatura }}");
+                            $(".valorescantidades_{{ tiporecurso.abreviatura }}").bind("blur.valoresCantidades_{{ tiporecurso.abreviatura }}", valoresCantidades_{{ tiporecurso.abreviatura }});
+
+                            $(".incluyeiva_{{ tiporecurso.abreviatura }}").unbind("click.incluyeIva_{{ tiporecurso.abreviatura }}");
+                            $(".incluyeiva_{{ tiporecurso.abreviatura }}").bind("click.incluyeIva_{{ tiporecurso.abreviatura }}", incluyeIva_{{ tiporecurso.abreviatura }});
+
+                            {% if tiporecurso.abreviatura == 'MAT' %}
+                                jQAutocomplete("input[name^='recurso_MAT']:last").autocomplete({
+                                    source: lista_materiales,
+                                    minLength: 3
+                                });
+                            {% endif %}
+
+                        }
+                    });
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        $(".agregaitempasaje_VTI").click(function() {
+                            if(datos_pasaje_VTI_completo()) {
+                                nf_pasaje_VTI += 1;
+                                nf_viatico_VTI += 1;
+                                nf_movilizacion_VTI += 1;
+
+                                valoresSelect = '<option value="0" selected="selected">--Selecc--</option>';
+                                {% for integrante in personalproyecto %}
+                                    opcion = '<option value="{{ integrante.persona.id }}">{{ integrante.persona }}</option>';
+                                    valoresSelect = valoresSelect + opcion;
+                                {% endfor %}
+
+                                nueva = '<tr id="fila_pasaje_VTI_' + nf_pasaje_VTI.toString() + '">' +
+                                    '<td> <select style="width: 100%;" class="integrantepasaje" id="integrante_pasaje_VTI[]" name="integrante_pasaje_VTI[]" >'+valoresSelect+' </select>  </td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="itinerario_pasaje_VTI[]" name="itinerario_pasaje_VTI[]" type="text" value="" ></td>' +
+                                    '<td style="text-align: center"><input type="text" class="selectorfecha" id="fechasalida_pasaje_VTI[]" name="fechasalida_pasaje_VTI[]" value="" readonly style="cursor:text; background-color: #FFFFFF"/></td>' +
+                                    '<td style="text-align: center"><input type="text" class="selectorfecha" id="fecharetorno_pasaje_VTI[]" name="fecharetorno_pasaje_VTI[]" value="" readonly style="cursor:text; background-color: #FFFFFF"/></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="actividad_pasaje_VTI[]" name="actividad_pasaje_VTI[]" type="text" value="" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="valorunitario_pasaje_VTI[]" name="valorunitario_pasaje_VTI[]" type="text" value="0.00" class="valoresunitarios_pasaje_VTI"></td>' +
+                                    '<td style="text-align: center"><input type="checkbox" style="display: none;" id="incluyeiva_pasaje_VTI[]" name="incluyeiva_pasaje_VTI[]" value="" class="incluyeiva_pasaje_VTI"></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; display: none;" maxlength="20" id="valoriva_pasaje_VTI[]" name="valoriva_pasaje_VTI[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valortotal_pasaje_VTI[]" name="valortotal_pasaje_VTI[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_pasaje_VTI[]" name="observacion_pasaje_VTI[]" type="text" value="" ></td>' +
+                                    '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_pasaje_VTI tu" idf="' + nf_pasaje_VTI.toString() + '" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+
+
+                                $("#detalle_pasaje_VTI").append(nueva);
+                                $("#detalle_pasaje_VTI").find(".integrantepasaje").select2();
+                                $("#detalle_pasaje_VTI").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide');calcularDiasviatico(); });
+                                $(".eliminaritem_pasaje_VTI").unbind("click.eliminaritem_pasaje_VTI");
+                                $(".eliminaritem_pasaje_VTI").bind("click.eliminaritem_pasaje_VTI", eliminarItem_pasaje_VTI);
+                                $(".valoresunitarios_pasaje_VTI").unbind("blur.valoresunitarios_pasaje_VTI");
+                                $(".valoresunitarios_pasaje_VTI").bind("blur.valoresunitarios_pasaje_VTI", valoresUnitarios_pasaje_VTI);
+                                $(".incluyeiva_pasaje_VTI").unbind("click.incluyeiva_pasaje_VTI");
+                                $(".incluyeiva_pasaje_VTI").bind("click.incluyeiva_pasaje_VTI", incluyeIva_pasaje_VTI);
+                                $(".integrantepasaje").unbind("change.integrantepasaje");
+                                $(".integrantepasaje").bind("change.integrantepasaje", comboIntegrantepasaje);
+
+
+                                nueva_viatico = '<tr id="fila_viatico_VTI_' + nf_viatico_VTI.toString() + '">' +
+                                    '<td> <input type="hidden" id="idpersonaviatico[]" name="idpersonaviatico[]"> <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none; " maxlength="5000" id="persona_viatico_VTI[]" name="persona_viatico_VTI[]" type="text" value="" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none; " maxlength="4" id="nocheestancia_viatico_VTI[]" name="nocheestancia_viatico_VTI[]" type="text" value="0" class="valoresnoche_VTI" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="valorunitario_viatico_VTI[]" name="valorunitario_viatico_VTI[]" type="text" value="0.00" class="valoresunitarios_viatico_VTI"></td>' +
+                                    '<td style="text-align: center"><input type="checkbox" style="display: none; " id="incluyeiva_viatico_VTI[]" name="incluyeiva_viatico_VTI[]" value="" class="incluyeiva_viatico_VTI"></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; display: none;" maxlength="20" id="valoriva_viatico_VTI[]" name="valoriva_viatico_VTI[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valortotal_viatico_VTI[]" name="valortotal_viatico_VTI[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_viatico_VTI[]" name="observacion_viatico_VTI[]" type="text" value="" ></td>';
+
+                                $("#detalle_viatico_VTI").append(nueva_viatico);
+                                $(".valoresnoche_VTI").unbind("blur.valoresnoche_VTI");
+                                $(".valoresnoche_VTI").bind("blur.valoresnoche_VTI", valoresNoche_VTI);
+
+                                $(".valoresunitarios_viatico_VTI").unbind("blur.valoresunitarios_viatico_VTI");
+                                $(".valoresunitarios_viatico_VTI").bind("blur.valoresunitarios_viatico_VTI", valoresUnitarios_viatico_VTI);
+
+                                $(".incluyeiva_viatico_VTI").unbind("click.incluyeiva_viatico_VTI");
+                                $(".incluyeiva_viatico_VTI").bind("click.incluyeiva_viatico_VTI", incluyeIva_viatico_VTI);
+
+
+                                nueva_movilizacion = '<tr id="fila_movilizacion_VTI_' + nf_movilizacion_VTI.toString() + '">' +
+                                    '<td> <input type="hidden" id="idpersonamovilizacion[]" name="idpersonamovilizacion[]"> <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none; " maxlength="5000" id="persona_movilizacion_VTI[]" name="persona_movilizacion_VTI[]" type="text" value="" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="ciudades_movilizacion_VTI[]" name="ciudades_movilizacion_VTI[]" type="text" value="" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="dias_movilizacion_VTI[]" name="dias_movilizacion_VTI[]" type="text" value="0" class="valoresdias_movilizacion_VTI"></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_movilizacion_VTI[]" name="observacion_movilizacion_VTI[]" type="text" value="" ></td>';
+
+                                $("#detalle_movilizacion_VTI").append(nueva_movilizacion);
+                                $(".valoresdias_movilizacion_VTI").unbind("blur.valoresdias_movilizacion_VTI");
+                                $(".valoresdias_movilizacion_VTI").bind("blur.valoresdias_movilizacion_VTI", valoresDias_movilizacion_VTI);
+                            }
+                        });
+                    {% else %}
+                        $(".agregaitempasaje_VTN").click(function() {
+                            if(datos_pasaje_VTN_completo()) {
+                                nf_pasaje_VTN += 1;
+                                nf_viatico_VTN += 1;
+
+                                valoresSelect = '<option value="0" selected="selected">--Selecc--</option>';
+                                {% for integrante in personalproyecto %}
+                                    opcion = '<option value="{{ integrante.persona.id }}">{{ integrante.persona }}</option>';
+                                    valoresSelect = valoresSelect + opcion;
+                                {% endfor %}
+
+                                nueva = '<tr id="fila_pasaje_VTN_' + nf_pasaje_VTN.toString() + '">' +
+                                    '<td> <select style="width: 100%;" class="integrantepasajenac" id="integrante_pasaje_VTN[]" name="integrante_pasaje_VTN[]" >'+valoresSelect+' </select>  </td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="itinerario_pasaje_VTN[]" name="itinerario_pasaje_VTN[]" type="text" value="" ></td>' +
+                                    '<td style="text-align: center"><input type="text" class="selectorfecha" id="fechasalida_pasaje_VTN[]" name="fechasalida_pasaje_VTN[]" value="" readonly style="cursor:text; background-color: #FFFFFF"/></td>' +
+                                    '<td style="text-align: center"><input type="text" class="selectorfecha" id="fecharetorno_pasaje_VTN[]" name="fecharetorno_pasaje_VTN[]" value="" readonly style="cursor:text; background-color: #FFFFFF"/></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="actividad_pasaje_VTN[]" name="actividad_pasaje_VTN[]" type="text" value="" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="valorunitario_pasaje_VTN[]" name="valorunitario_pasaje_VTN[]" type="text" value="0.00" class="valoresunitarios_pasaje_VTN"></td>' +
+                                    '<td style="text-align: center"><input type="checkbox" id="incluyeiva_pasaje_VTN[]" name="incluyeiva_pasaje_VTN[]" value="" class="incluyeiva_pasaje_VTN"></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valoriva_pasaje_VTN[]" name="valoriva_pasaje_VTN[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valortotal_pasaje_VTN[]" name="valortotal_pasaje_VTN[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_pasaje_VTN[]" name="observacion_pasaje_VTN[]" type="text" value="" ></td>' +
+                                    '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_pasaje_VTN tu" idf="' + nf_pasaje_VTN.toString() + '" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+
+                                $("#detalle_pasaje_VTN").append(nueva);
+                                $("#detalle_pasaje_VTN").find(".integrantepasajenac").select2();
+                                $("#detalle_pasaje_VTN").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide');calcularDiasviaticoNac(); });
+                                $(".eliminaritem_pasaje_VTN").unbind("click.eliminaritem_pasaje_VTN");
+                                $(".eliminaritem_pasaje_VTN").bind("click.eliminaritem_pasaje_VTN", eliminarItem_pasaje_VTN);
+                                $(".valoresunitarios_pasaje_VTN").unbind("blur.valoresunitarios_pasaje_VTN");
+                                $(".valoresunitarios_pasaje_VTN").bind("blur.valoresunitarios_pasaje_VTN", valoresUnitarios_pasaje_VTN);
+                                $(".incluyeiva_pasaje_VTN").unbind("click.incluyeiva_pasaje_VTN");
+                                $(".incluyeiva_pasaje_VTN").bind("click.incluyeiva_pasaje_VTI", incluyeIva_pasaje_VTN);
+                                $(".integrantepasajenac").unbind("change.integrantepasajenac");
+                                $(".integrantepasajenac").bind("change.integrantepasajenac", comboIntegrantepasajeNac);
+
+
+                                nueva_viatico = '<tr id="fila_viatico_VTN_' + nf_viatico_VTN.toString() + '">' +
+                                    '<td> <input type="hidden" id="idpersonaviaticonac[]" name="idpersonaviaticonac[]"> <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none; " maxlength="5000" id="persona_viatico_VTN[]" name="persona_viatico_VTN[]" type="text" value="" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none; " maxlength="4" id="nocheestancia_viatico_VTN[]" name="nocheestancia_viatico_VTN[]" type="text" value="0" class="valoresnoche_VTN" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="20" id="valorunitario_viatico_VTN[]" name="valorunitario_viatico_VTN[]" type="text" value="0.00" class="valoresunitarios_viatico_VTN"></td>' +
+                                    '<td style="text-align: center"><input type="checkbox" id="incluyeiva_viatico_VTN[]" name="incluyeiva_viatico_VTN[]" value="" class="incluyeiva_viatico_VTN"></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valoriva_viatico_VTN[]" name="valoriva_viatico_VTN[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input style="text-align: right; width: 100%; text-transform: none; " maxlength="20" id="valortotal_viatico_VTN[]" name="valortotal_viatico_VTN[]" type="text" value="0.00" readonly="readonly" ></td>' +
+                                    '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5000" id="observacion_viatico_VTN[]" name="observacion_viatico_VTN[]" type="text" value="" ></td>';
+
+                                $("#detalle_viatico_VTN").append(nueva_viatico);
+                                $(".valoresnoche_VTN").unbind("blur.valoresnoche_VTN");
+                                $(".valoresnoche_VTN").bind("blur.valoresnoche_VTN", valoresNoche_VTN);
+
+                                $(".valoresunitarios_viatico_VTN").unbind("blur.valoresunitarios_viatico_VTN");
+                                $(".valoresunitarios_viatico_VTN").bind("blur.valoresunitarios_viatico_VTN", valoresUnitarios_viatico_VTN);
+
+                                $(".incluyeiva_viatico_VTN").unbind("click.incluyeiva_viatico_VTN");
+                                $(".incluyeiva_viatico_VTN").bind("click.incluyeiva_viatico_VTN", incluyeIva_viatico_VTN);
+
+                            }
+                        });
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    datos_{{ tiporecurso.abreviatura }}_completo = function (){
+                        var c1e = true, c2e = true, c3e = true, c4e = true, c5e = true, c6e = true, c7e = true;
+
+                        $('input[name="recurso_{{ tiporecurso.abreviatura }}[]"]').each(function() {
+                            if($(this).val().trim()==''){
+                                c1e = false;
+                                return false;
+                            }
+                        });
+
+                        $('input[name="descripcion_{{ tiporecurso.abreviatura }}[]"]').each(function() {
+                            if($(this).val().trim()==''){
+                                c2e = false;
+                                return false;
+                            }
+                        });
+
+                        $('select[name="unidadmedida_{{ tiporecurso.abreviatura }}[]"]').each(function() {
+                            valor = parseInt($(this).val());
+                            if(valor == 0){
+                                c3e = false;
+                                return false;
+                            }
+                        });
+
+                        $('input[name="cantidad_{{ tiporecurso.abreviatura }}[]"]').each(function() {
+                            if($(this).val().trim()==''){
+                                c4e = false;
+                                return false;
+                            }
+                            else if(parseInt($(this).val()) == 0){
+                                c4e = false;
+                                return false;
+                            }
+                        });
+
+                        $('input[name="valorunitario_{{ tiporecurso.abreviatura }}[]"]').each(function() {
+                            if($(this).val().trim()==''){
+                                c5e = false;
+                                return false;
+                            }
+                            else if(parseFloat($(this).val()) == 0){
+                                c5e = false;
+                                return false;
+                            }
+                        });
+
+                        if(parseFloat($("#id_totalpresupuesto").val()) > parseFloat($("#id_montototal").val())){
+                            smoke.alert("El total presupuestado no debe exceder a " + $("#id_montototal").val());
+                            c7e = false;
+                            return false;
+                        }
+                        return (c1e && c2e && c3e && c4e && c5e && c6e && c7e);
+                    };
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        datos_pasaje_VTI_completo = function (){
+                            var c1e = true, c2e = true, c3e = true, c4e = true, c5e = true, c6e = true, c7e = true, c8e = true, c9e = true, c10e = true;
+
+                            $('select[name="integrante_pasaje_VTI[]"]').each(function() {
+                                valor = parseInt($(this).val());
+                                if(valor == 0){
+                                    c1e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="itinerario_pasaje_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c2e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="fechasalida_pasaje_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c3e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="fecharetorno_pasaje_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c4e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="actividad_pasaje_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c5e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="valorunitario_pasaje_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c6e = false;
+                                    return false;
+                                }
+                                else if(parseFloat($(this).val()) == 0){
+                                    c6e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="nocheestancia_viatico_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c7e = false;
+                                    return false;
+                                }
+                                else if(parseInt($(this).val()) == 0){
+                                    c7e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="valorunitario_viatico_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c8e = false;
+                                    return false;
+                                }
+                                else if(parseFloat($(this).val()) == 0){
+                                    c8e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="ciudades_movilizacion_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c9e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="dias_movilizacion_VTI[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c10e = false;
+                                    return false;
+                                }
+                                else if(parseInt($(this).val()) == 0){
+                                    c10e = false;
+                                    return false;
+                                }
+                            });
+
+                            return (c1e && c2e && c3e && c4e && c5e && c6e && c7e && c8e && c9e && c10e);
+                        };
+                    {% else %}
+                        datos_pasaje_VTN_completo = function (){
+                            var c1e = true, c2e = true, c3e = true, c4e = true, c5e = true, c6e = true, c7e = true, c8e = true;
+
+                            $('select[name="integrante_pasaje_VTN[]"]').each(function() {
+                                valor = parseInt($(this).val());
+                                if(valor == 0){
+                                    c1e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="itinerario_pasaje_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c2e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="fechasalida_pasaje_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c3e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="fecharetorno_pasaje_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c4e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="actividad_pasaje_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c5e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="valorunitario_pasaje_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c6e = false;
+                                    return false;
+                                }
+                                else if(parseFloat($(this).val()) == 0){
+                                    c6e = false;
+                                    return false;
+                                }
+                            });
+
+                            $('input[name="nocheestancia_viatico_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c7e = false;
+                                    return false;
+                                }
+                                /*else if(parseInt($(this).val()) == 0){
+                                    c7e = false;
+                                    return false;
+                                }*/
+                            });
+
+                            $('input[name="valorunitario_viatico_VTN[]"]').each(function() {
+                                if($(this).val().trim()==''){
+                                    c8e = false;
+                                    return false;
+                                }
+                                /*else if(parseFloat($(this).val()) == 0){
+                                    c8e = false;
+                                    return false;
+                                }*/
+                            });
+
+                            return (c1e && c2e && c3e && c4e && c5e && c6e && c7e  && c8e);
+                        };
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            {% for tiporecurso in tiposrecursos %}
+                {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                    eliminarItem_{{ tiporecurso.abreviatura }} = function() {
+                        var id = $(this).attr("idf");
+                        $("#fila_{{ tiporecurso.abreviatura }}_"+id).remove();
+                        sumarcuotas_{{ tiporecurso.abreviatura }}();
+                    };
+                {% else %}
+                    {% if tiporecurso.abreviatura == 'VTI' %}
+                        eliminarItem_pasaje_VTI = function() {
+                            var id = $(this).attr("idf");
+                            $("#fila_pasaje_VTI_"+id).remove();
+                            $("#fila_viatico_VTI_"+id).remove();
+                            $("#fila_movilizacion_VTI_"+id).remove();
+                            sumarcuotas_pasaje_VTI();
+                            sumarcuotas_viatico_VTI();
+                        };
+                    {% else %}
+                        eliminarItem_pasaje_VTN = function() {
+                            var id = $(this).attr("idf");
+                            $("#fila_pasaje_VTN_"+id).remove();
+                            $("#fila_viatico_VTN_"+id).remove();
+                            sumarcuotas_pasaje_VTN();
+                            sumarcuotas_viatico_VTN();
+                        };
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            calcularDiasviatico = function (){
+                var fechassalida = new Array();
+                var fechasretorno = new Array();
+                var diasviatico = new Array();
+
+                $('input[name="fechasalida_pasaje_VTI[]"]').each(function () {
+                    fechassalida.push($(this).val());
+                });
+
+                $('input[name="fecharetorno_pasaje_VTI[]"]').each(function () {
+                    fechasretorno.push($(this).val());
+                });
+
+                var i = total_days = 0;
+                var fs = fr = "";
+                for(i=0; i<fechassalida.length; i++){
+
+                    if(fechassalida[i]!='' && fechasretorno[i]!=''){
+                        fs = fechassalida[i];
+                        fr = fechasretorno[i];
+                        fs = fs.substring(5,7) + "/" + fs.substring(8,10) + "/" + fs.substring(0, 4);
+                        fr = fr.substring(5,7) + "/" + fr.substring(8,10) + "/" + fr.substring(0, 4);
+                        total_days = totaldaysdifference(fs, fr);
+                        diasviatico.push(total_days.toString());
+                    }else{
+                        diasviatico.push('0');
+                    }
+                }
+
+                i =0;
+                $('input[name="nocheestancia_viatico_VTI[]"]').each(function () {
+                    $(this).val(diasviatico[i]);
+                    i++;
+                });
+
+                sumarcuotas_viatico_VTI();
+                calculartotalpresupuesto();
+
+            }
+
+            calcularDiasviaticoNac = function (){
+                var fechassalida = new Array();
+                var fechasretorno = new Array();
+                var diasviatico = new Array();
+
+                $('input[name="fechasalida_pasaje_VTN[]"]').each(function () {
+                    fechassalida.push($(this).val());
+                });
+
+                $('input[name="fecharetorno_pasaje_VTN[]"]').each(function () {
+                    fechasretorno.push($(this).val());
+                });
+
+                var i = total_days = 0;
+                var fs = fr = "";
+                for(i=0; i<fechassalida.length; i++){
+
+                    if(fechassalida[i]!='' && fechasretorno[i]!=''){
+                        fs = fechassalida[i];
+                        fr = fechasretorno[i];
+                        fs = fs.substring(5,7) + "/" + fs.substring(8,10) + "/" + fs.substring(0, 4);
+                        fr = fr.substring(5,7) + "/" + fr.substring(8,10) + "/" + fr.substring(0, 4);
+                        total_days = totaldaysdifference(fs, fr);
+                        diasviatico.push(total_days.toString());
+                    }else{
+                        diasviatico.push('0');
+                    }
+                }
+
+                i =0;
+                $('input[name="nocheestancia_viatico_VTN[]"]').each(function () {
+                    $(this).val(diasviatico[i]);
+                    i++;
+                });
+
+
+                i =0;
+                $('input[name="valorunitario_viatico_VTN[]"]').each(function () {
+                    if(diasviatico[i] == '0')
+                        $(this).prop('readonly', true).val('0.00');
+                    else
+                        $(this).prop('readonly', false);
+                    i++;
+                });
+
+                i =0;
+                $('input[name="incluyeiva_viatico_VTN[]"]').each(function () {
+                    if(diasviatico[i] == '0')
+                        $(this).prop('disabled', true).prop('checked', false);
+                    else
+                        $(this).prop('disabled', false);
+                    i++;
+                });
+
+                sumarcuotas_viatico_VTN();
+                calculartotalpresupuesto();
+
+            }
+
+            totaldaysdifference = function (firstDate,secondDate){
+                var sourceDay = new Date(firstDate);
+                var lastDay = new Date(secondDate);
+
+                var diff_between = sourceDay.getTime() - lastDay.getTime();
+                var total_days = diff_between / (1000 * 3600 * 24);
+
+                return Math.round(Math.abs(total_days));
+            }
+
+            comboIntegrantepasaje = function (){
+                actualizar_integrante_viatico();
+            };
+
+            comboIntegrantepasajeNac = function (){
+                actualizar_integrante_viatico_nac();
+            };
+
+            actualizar_integrante_viatico = function (){
+                var ids = new Array();
+                var nombres = new Array();
+                $('select[name="integrante_pasaje_VTI[]"]').each(function() {
+                    var combo = $(this);
+                    var idopcion = combo.find(":selected").val();
+                    var textoopcion = combo.find(":selected").text();
+
+                    ids.push(idopcion);
+                    nombres.push(textoopcion);
+                });
+
+                var i =0;
+                $('input[name="persona_viatico_VTI[]"]').each(function () {
+                    $(this).val(nombres[i]);
+                    i++;
+                });
+
+                var i =0;
+                $('input[name="idpersonaviatico[]"]').each(function () {
+                    $(this).val(ids[i]);
+                    i++;
+                });
+
+                var i =0;
+                $('input[name="persona_movilizacion_VTI[]"]').each(function () {
+                    $(this).val(nombres[i]);
+                    i++;
+                });
+
+                var i =0;
+                $('input[name="idpersonamovilizacion[]"]').each(function () {
+                    $(this).val(ids[i]);
+                    i++;
+                });
+
+            }
+
+            actualizar_integrante_viatico_nac = function (){
+                var ids = new Array();
+                var nombres = new Array();
+                $('select[name="integrante_pasaje_VTN[]"]').each(function() {
+                    var combo = $(this);
+                    var idopcion = combo.find(":selected").val();
+                    var textoopcion = combo.find(":selected").text();
+
+                    ids.push(idopcion);
+                    nombres.push(textoopcion);
+                });
+
+                var i =0;
+                $('input[name="persona_viatico_VTN[]"]').each(function () {
+                    $(this).val(nombres[i]);
+                    i++;
+                });
+
+                var i =0;
+                $('input[name="idpersonaviaticonac[]"]').each(function () {
+                    $(this).val(ids[i]);
+                    i++;
+                });
+            }
+
+            {% if anioconvocatoria < 2022 %}
+                $("#fieldset_minimocompraequipo").hide();
+            {% endif %}
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?action=propuestas&id={{ id }}&idc={{ idconvocatoria|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/pro_proyectoinvestigacion?action=propuestas&id={{ id }}&idc={{ idconvocatoria|encrypt }}{% endblock %}
+{% block formwidth %}form-xxl{%  endblock %}
+{% block formdestinationswal %}/pro_proyectoinvestigacion?action=propuestas&id={{ id }}&idc={{ idconvocatoria|encrypt }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addpresupuestoproyecto'/>
+    <input type='hidden' name='id' value='{{ id }}'/>
+    <input type='hidden' id="totalpresupuestoequipo" name='totalpresupuestoequipo' value='0'/>
+{% endblock %}
+{% block formback %}/pro_proyectoinvestigacion?action=propuestas&id={{ id }}&idc={{ idconvocatoria|encrypt }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid" id="detallepresupuesto">
+        <div style="width: 100%; height: max-content; display: inline-block">
+            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span style="padding:0 10px; background: #f5f5f5;">Prespuesto del Proyecto</span></h6>
+        </div>
+        <div class="accordion" id="accordion2">
+        {% for tiporecurso in tiposrecursos %}
+            <div class="accordion-group">
+                <div class="accordion-heading" style="smoke">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapse_{{ tiporecurso.abreviatura }}">
+                        {{ tiporecurso.descripcion }}
+                        <span class="badge badge-info tu" title="Total Items" id="bdg_cantidaditems_{{ tiporecurso.abreviatura }}">0</span>
+                        <span class="label label-success tu" title="Total Tipo Recurso" id="lbl_totaltipo_{{ tiporecurso.abreviatura }}">$ 0.00</span>
+                    </a>
+                </div>
+                <div id="collapse_{{ tiporecurso.abreviatura }}" class="accordion-body collapse in">
+                    <div class="accordion-inner" style="padding: 5px">
+                        {% if tiporecurso.abreviatura != 'VTI' and tiporecurso.abreviatura != 'VTN' %}
+                            <table class="table table-bordered" id="tbrecurso_{{ tiporecurso.abreviatura }}">
+                                <thead>
+                                    <tr>
+                                        <th width="24%" style="text-align: center">Recurso</th>
+                                        <th width="25%" style="text-align: center">Descripcion</th>
+                                        <th width="10%" style="text-align: center">Unidad de Medida</th>
+                                        <th width="2%" style="text-align: center">Cant.</th>
+                                        <th width="5%" style="text-align: center">Valor Unitario</th>
+                                        <th width="0%" style="text-align: center"></th> {# 2% Iva #}
+                                        <th width="0%" style="text-align: center"></th> {# 5% Valor Iva #}
+                                        <th width="5%" style="text-align: center">Valor Total</th>
+                                        <th width="27%" style="text-align: center">Observaciones</th>
+                                        <th width="2%"><a href="javascript:;" class="btn btn-success btn-mini agregaitem_{{ tiporecurso.abreviatura }}" title="Agregar Item"><i class="fa fa-plus"></i> </a></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detalle_recurso_{{ tiporecurso.abreviatura }}">
+
+                                </tbody>
+                                <tfoot>
+                                    <td colspan="7"><strong>TOTAL {{ tiporecurso.descripcion }}</strong></td>
+                                    <td style="text-align: right"><strong><span id="lbl_total_{{ tiporecurso.abreviatura }}">$ 0.00</span></strong></td>
+                                    <td colspan="2"></td>
+                                </tfoot>
+                            </table>
+                        {% else %}
+                            {% if tiporecurso.abreviatura == 'VTI' %}
+                                <table class="table table-bordered" id="tbpasaje_VTI">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="11">DETALLE DE PASAJES</th>
+                                        </tr>
+                                        <tr>
+                                            <th width="20%" style="text-align: center">Integrante</th>
+                                            <th width="26%" style="text-align: center">Itinerario (Ciudad Origen / Ciudad Destino)</th>
+                                            <th width="5%" style="text-align: center">Fecha Salida</th>
+                                            <th width="5%" style="text-align: center">Fecha Retorno</th>
+                                            <th width="15%" style="text-align: center">Actividad a desarrollar</th>
+                                            <th width="5%" style="text-align: center">Costo Pasaje</th>
+                                            <th width="0%" style="text-align: center"></th> {# 2% Iva #}
+                                            <th width="0%" style="text-align: center"></th> {# 5% Valor Iva  #}
+                                            <th width="5%" style="text-align: center">Valor Total</th>
+                                            <th width="17%" style="text-align: center">Observaciones</th>
+                                            <th width="2%"><a href="javascript:;" class="btn btn-success btn-mini agregaitempasaje_VTI" title="Agregar Item"><i class="fa fa-plus"></i> </a></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detalle_pasaje_VTI">
+
+                                    </tbody>
+                                    <tfoot>
+                                        <td colspan="8"><strong>TOTAL PASAJES</strong></td>
+                                        <td style="text-align: right"><strong><span id="lbl_total_pasaje_VTI">$ 0.00</span></strong></td>
+                                        <td colspan="2"></td>
+                                    </tfoot>
+                                </table>
+
+                                <table class="table table-bordered" id="tbviatico_VTI">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="7">DETALLE DE VIÁTICOS</th>
+                                        </tr>
+                                        <tr>
+                                            <th width="20%" style="text-align: center">Integrante</th>
+                                            <th width="10%" style="text-align: center">Noches estancia</th>
+                                            <th width="10%" style="text-align: center">Valor Viático</th>
+                                            <th width="0%" style="text-align: center"></th> {# 2% Iva  #}
+                                            <th width="0%" style="text-align: center"></th> {# 10% Valor Iva  #}
+                                            <th width="10%" style="text-align: center">Valor Total</th>
+                                            <th width="50%" style="text-align: center">Observaciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detalle_viatico_VTI">
+
+                                    </tbody>
+                                    <tfoot>
+                                        <td colspan="5"><strong>TOTAL VIATICOS</strong></td>
+                                        <td style="text-align: right"><strong><span id="lbl_total_viatico_VTI">$ 0.00</span></strong></td>
+                                        <td></td>
+                                    </tfoot>
+                                </table>
+
+                                <table class="table table-bordered" id="tbmovilizacion_VTI">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="4">DETALLE DE MOVILIZACIÓN</th>
+                                        </tr>
+                                        <tr>
+                                            <th width="20%" style="text-align: center">Integrante</th>
+                                            <th width="30%" style="text-align: center">Ciudades donde se moviliza</th>
+                                            <th width="10%" style="text-align: center">Cantidad de días</th>
+                                            <th width="40%" style="text-align: center">Observaciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detalle_movilizacion_VTI">
+
+                                    </tbody>
+                                    <tfoot>
+                                        <td colspan="7"><strong>&nbsp;</strong></td>
+                                    </tfoot>
+                                </table>
+                            {% else %}
+                                <table class="table table-bordered" id="tbpasaje_VTN">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="11">DETALLE DE PASAJES</th>
+                                        </tr>
+                                        <tr>
+                                            <th width="20%" style="text-align: center">Integrante</th>
+                                            <th width="20%" style="text-align: center">Itinerario (Ciudad Origen / Ciudad Destino)</th>
+                                            <th width="5%" style="text-align: center">Fecha Salida</th>
+                                            <th width="5%" style="text-align: center">Fecha Retorno</th>
+                                            <th width="15%" style="text-align: center">Actividad a desarrollar</th>
+                                            <th width="5%" style="text-align: center">Costo Pasaje</th>
+                                            <th width="2%" style="text-align: center">Iva</th>
+                                            <th width="5%" style="text-align: center">Valor Iva</th>
+                                            <th width="5%" style="text-align: center">Valor Total</th>
+                                            <th width="10%" style="text-align: center">Observaciones</th>
+                                            <th width="2%"><a href="javascript:;" class="btn btn-success btn-mini agregaitempasaje_VTN" title="Agregar Item"><i class="fa fa-plus"></i> </a></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detalle_pasaje_VTN">
+
+                                    </tbody>
+                                    <tfoot>
+                                        <td colspan="8"><strong>TOTAL PASAJES</strong></td>
+                                        <td style="text-align: right"><strong><span id="lbl_total_pasaje_VTN">$ 0.00</span></strong></td>
+                                        <td colspan="2"></td>
+                                    </tfoot>
+                                </table>
+
+                                <table class="table table-bordered" id="tbviatico_VTN">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="7">DETALLE DE VIÁTICOS</th>
+                                        </tr>
+                                        <tr>
+                                            <th width="20%" style="text-align: center">Integrante</th>
+                                            <th width="10%" style="text-align: center">Noches estancia</th>
+                                            <th width="10%" style="text-align: center">Valor Viático</th>
+                                            <th width="2%" style="text-align: center">Iva</th>
+                                            <th width="10%" style="text-align: center">Valor Iva</th>
+                                            <th width="10%" style="text-align: center">Valor Total</th>
+                                            <th width="30%" style="text-align: center">Observaciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detalle_viatico_VTN">
+
+                                    </tbody>
+                                    <tfoot>
+                                        <td colspan="5"><strong>TOTAL VIATICOS</strong></td>
+                                        <td style="text-align: right"><strong><span id="lbl_total_viatico_VTN">$ 0.00</span></strong></td>
+                                        <td></td>
+                                    </tfoot>
+                                </table>
+                            {% endif %}
+                        {% endif %}
+
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+{% endblock %}

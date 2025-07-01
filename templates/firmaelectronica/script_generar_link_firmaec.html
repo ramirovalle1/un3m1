@@ -1,0 +1,208 @@
+<script>
+    $('body').append(`<div class="modal fade" id="firmaEcModal" tabindex="-1" role="dialog" aria-labelledby="firmaEcModalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="firmaEcModalLabel">
+
+                    </h5>
+                    <button type="button" class="btn-close cerrarModal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body text-center">
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary continuarModal">Continuar</button>
+                </div>
+            </div>
+        </div>
+    </div>`);
+    const firmaEcModal = $('#firmaEcModal');
+    let codigoDocumentoFirmado = '';
+    let archivoForm = null;
+    const txtFirmas = $('#id_txtFirmas');
+    const txtRazon = $('#id_razon');
+    const archivoParaFirmar = $('#id_archivo');
+    firmaEcModal.find('.cerrarModal').on('click', e => {
+        if (confirm("¿Cancelar firma?")) {
+            firmaEcModal.modal("hide");
+        }
+    });
+
+    async function confirmarFirma(title, text) {
+        return await new Promise((resolve, reject) => {
+            firmaEcModal.find('.modal-title').html(title);
+            firmaEcModal.find('.modal-body').html(text);
+            firmaEcModal.find('.continuarModal').prop("disabled", true);
+            let segundos = 5;
+            if (!firmaEcModal.hasClass("show")) {
+                firmaEcModal.modal({backdrop: 'static'}).modal("show");
+            }
+            firmaEcModal.on('hidden.bs.modal', e => {
+                reject(e);
+            });
+            firmaEcModal.find('.continuarModal').on('click', e => {
+                pantallaespera();
+                obtenerArchivoBase64(codigoDocumentoFirmado).then(data => {
+                    if (data.archivoBase64) {
+                        archivoForm = data.archivoBase64;
+                        resolve(e);
+                    } else {
+                        Swal.fire("Error", "El archivo aún no está firmado, intenta nuevamente.", "error");
+                    }
+                }).finally(() => $.unblockUI());
+            });
+            let interval = setInterval(() => {
+                segundos = segundos - 1;
+                if (segundos <= 0) {
+                    clearInterval(interval);
+                }
+            }, 1000);
+        });
+    }
+
+    let intervalDesbloquearBoton = null;
+
+    function desbloquearBotonContinuar() {
+        firmaEcModal.find('.continuarModal').prop('disabled', true);
+        if (intervalDesbloquearBoton) {
+            clearInterval(intervalDesbloquearBoton);
+        }
+        let segundos = 10;
+        firmaEcModal.find('.continuarModal').html(`Continuar (${segundos})`);
+        intervalDesbloquearBoton = setInterval(() => {
+            segundos = segundos - 1;
+            firmaEcModal.find('.continuarModal').html(`Continuar (${segundos})`);
+            if (segundos <= 0) {
+                clearInterval(intervalDesbloquearBoton);
+                firmaEcModal.find('.continuarModal').prop('disabled', false);
+                firmaEcModal.find('.continuarModal').html(`Continuar`);
+            }
+        }, 1000);
+    }
+
+    async function abrirFirmaEc(ctr) {
+        pantallaespera();
+        const data = await obtenerArchivoBase64(codigoDocumentoFirmado);
+        $.unblockUI();
+        if (!data.archivoBase64) {
+            const fechaExpira = new Date(ctr.getAttribute("data-fechaexpira"));
+            const href = ctr.getAttribute("data-href");
+            const firma_json = ctr.getAttribute("data-firma_json");
+            const now = new Date();
+            const now_utc = new Date(now.toUTCString().slice(0, -4));
+            if (fechaExpira > now_utc) {
+                desbloquearBotonContinuar();
+                location = href;
+            } else {
+                pantallaespera();
+                let data = await generarLinkFirma(archivoForm, txtRazon.val() || '', firma_json, codigoDocumentoFirmado);
+                codigoDocumentoFirmado = data.codigoDocumentoFirmado;
+                ctr.setAttribute("data-fechaexpira", data.fecha_expira);
+                ctr.setAttribute("data-href", data.firma_ec_link);
+                ctr.click();
+                $.unblockUI();
+            }
+        } else {
+            Swal.fire("Error", "Ya está completado este paso, da clic en continuar para ir al siguiente.", "error");
+        }
+    }
+
+    async function empezarFirma() {
+        const json = txtFirmas.val();
+        codigoDocumentoFirmado = '';
+        archivoForm = null;
+        console.log(json)
+        if (json) {
+            const firmas = JSON.parse(json);
+            const cantidadFirmas = firmas.length;
+            {% if archivo_base64 %}
+                archivoForm = '{{ archivo_base64 }}';
+                let filename = '{{ archivo_base64_filename }}';
+            {% else %}
+                archivoForm = archivoParaFirmar[0].files[0];
+                let filename = archivoForm.name;
+            {% endif %}
+            for (let index = 0; index < firmas.length; index++) {
+                let f = firmas[index];
+                let firma_json = JSON.stringify(f);
+                let data = await generarLinkFirma(archivoForm, txtRazon.val() || '', firma_json, codigoDocumentoFirmado);
+                if (data.firma_ec_link) {
+                    codigoDocumentoFirmado = data.codigoDocumentoFirmado;
+                    await confirmarFirma(
+                        `Firma ${index + 1} de ${cantidadFirmas}`,
+                        `
+                            <div style="font-size: 15px;" class="my-1 alert alert-info mb-3" role="alert">
+                                <i class="fa-regular fa-bookmark"></i> Cuando termines de firmar, clic en <b>Continuar</b>
+                            </div>
+                            <a class="btn btn-light border w-100" onclick="abrirFirmaEc(this)" style="font-size: 15px;" data-firma_json='${firma_json}' data-fechaexpira="${data.fecha_expira}" data-href="${data.firma_ec_link}" href="javascript:;">
+                                <b>
+                                    <img src="/static/firmaelectronica/firma_ec_logo.png" width="70" /> | Abrir FirmaEC (${index + 1} de ${cantidadFirmas})
+                                </b>
+                            </a>
+                        `
+                    );
+                } else {
+                    Swal.fire("Error", "", "error");
+                    firmaEcModal.modal('hide');
+                    return;
+                }
+            }
+            let formData = new FormData();
+            formData.append('codigoDocumentoFirmado', codigoDocumentoFirmado);
+            formData.append('action', 'guardar_archivo_firmado');
+            formData.append('filename', filename);
+            formData.append('firmauser_id', $('input[name=firmauser_id]').val() || '');
+            formData.append('documento_id', $('input[name=documento_id]').val() || '');
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            formData.append('razon', txtRazon.val() || '');
+            formData.append('cantidad_veces_firmado', firmas.length);
+            let response = await fetch('{{ request.path }}', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: formData
+            });
+            let data = await response.json();
+            firmaEcModal.modal('hide');
+            console.log(data);
+            if (data.result === "ok") {
+                if (typeof funcionDespuesDeTerminarDeFirmar === 'function') {
+                    funcionDespuesDeTerminarDeFirmar(data);
+                } else {
+                    location = `{{ request.path }}?pk=${data.id}`;
+                }
+            }
+        }
+    }
+
+    async function generarLinkFirma(archivo, razon, firma_json, codigoDocumentoFirmado = '') {
+        let formData = new FormData();
+        formData.append('archivo', archivo);
+        formData.append('action', 'generar_link_firma');
+        formData.append('razon', razon || '');
+        formData.append('firma_json', firma_json);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('codigoDocumentoFirmado', codigoDocumentoFirmado);
+        let response = await fetch('{{ request.path }}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData
+        });
+        return (await response.json());
+    }
+
+    async function obtenerArchivoBase64(codigoDocumentoFirmado) {
+        let formData = new FormData();
+        formData.append('action', 'get_archivo_base64');
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('codigoDocumentoFirmado', codigoDocumentoFirmado);
+        let response = await fetch('{{ request.path }}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData
+        });
+        return (await response.json());
+    }
+</script>

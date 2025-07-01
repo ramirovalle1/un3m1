@@ -1,0 +1,246 @@
+{% load sga_extras %}
+<script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+<script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0'></script>
+<link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+<script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1"
+        data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+<script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+<link href="/static/bootstrap5/libs/datepicker/css/bootstrap-datepicker.css" rel="stylesheet">
+<script src="/static/bootstrap5/libs/datepicker/js/bootstrap-datepicker.js"></script>
+<link rel="stylesheet" href="/static/dropify/css/dropify.min.css">
+<script type="text/javascript" src='/static/dropify/js/dropify.min.js?v=1.0.0'></script>
+<input type="hidden" name="id" value="{{ id }}"/>
+<input type="hidden" name="action" value="{{ action }}"/>
+ <div class="scrollable scrollspy-example-2">
+<input type="hidden" name="id" value="{{ eEncuestaTitulacionPosgrado.id }}"/>
+<input type="hidden" name="action" value="{{ action }}"/>
+
+<div class="row-fluid">
+    <label for="" class="control-label">Importar archivo:</label>
+        <input   data-allowed-file-extensions="xlsx xls " type="file" id = "id_archivo_excel" name="archivo_excel" class="dropify" data-height="150" />
+</div>
+<div class="alert alert-success alert-dismissable">
+    Listado de graduados que participan en la ceremonia de graduación <br>
+    <b>
+        <a href="/adm_configuracionpropuesta?action=dowload_formato_resultados_sede_graduacion_posgrado&id={{ eEncuestaTitulacionPosgrado.id }}" target="_blank"><i class="fa fa-download"></i> Descargar</a>
+    </b>
+</div>
+<span class="text-warning"> Solo puede editar los campo BLOQUE, FILA, ASIENTO <b></b>. No alterar las demas columnas. </span>
+<div class="row-fluid">
+    <div style="text-align: right; float: left; width: 100%">
+        <button type="button" id="formbutton" class="btn btn-success"><i class="fa fa-check-circle"></i> Importar</button>
+        <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-window-close"></i>
+            Cancelar</a>
+    </div>
+</div>
+
+
+
+<script>
+
+   $('.dropify').dropify({
+    messages: {
+        'default': 'Arrastre y suelte un archivo .xlsx aquí o haga clic ',
+        'replace': 'Arrastrar y soltar o hacer clic para reemplazar',
+        'remove':  'Remover',
+        'error':   'Solo archivos .xlsx'
+    }
+});
+    $("#id_archivo_excel").addClass("validate[required]");
+
+
+</script>
+    </div>
+<script>
+    $(function () {
+
+        $("select").select2({width: '100%'});
+    });
+</script>
+
+<script>
+    var switchery = {};
+    tooltips = function () {
+        $(".tl").tooltip({placement: "left"});
+        $(".tr").tooltip({placement: "right"});
+        $(".tu").tooltip({placement: "top"});
+        $(".tb").tooltip({placement: "bottom"});
+    };
+
+    $(function () {
+
+        tooltips();
+
+        let lastinput = $('input[type="text"]')[-1]
+
+        $(lastinput).on('keypress', function (e) {
+            if (e.keyCode == 13) {
+                $('#formbutton').click();
+            }
+        })
+
+        $('.cerrarmodal').click(function () {
+            $('.btn-close').click();
+        });
+
+        try {
+            $('.ckeditor').each(function () {
+                CKEDITOR.replace(this.name);
+            });
+        } catch (err) {
+            console.error(err.message);
+        }
+
+        $.each($('input[type="date"]'), function (e) {
+            $(this).attr('value') ? $(this).val($(this).attr('value').split(' ')[0]) : null;
+        });
+
+        ItemsDisplay = function (item) {
+            if (item.text) {
+                return $('<span>' + item.text + '</span>');
+            } else {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '---------';
+                }
+            }
+        };
+
+        $("select").select2({width: '100%'});
+
+        $("#id_persona").select2({
+            placeholder: "--------",
+            allowClear: true,
+            width: '100%',
+            ajax: {
+                url: function (params) {
+                    return "{{ request.path }}?action=buscarpersona&q=" + params.term;
+                },
+                dataType: 'json',
+                delay: 400,
+                data: function (params) {
+                    return {
+                        q: params.term,
+                        page: params.page
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.results,
+                        pagination: {
+                            more: (params.page * 30) < data.total_count
+                        }
+                    };
+                },
+                cache: true
+            },
+            escapeMarkup: function (markup) {
+                return markup;
+            },
+            minimumInputLength: 1,
+            templateResult: ItemsDisplay,
+            templateSelection: ItemsDisplay
+        }).on("select2:select", function (evt) {
+            $("#id_persona").attr({"value": (evt.params.data.id)});
+        });
+
+
+
+        $("#id_carrera").on("select2:select", function (evt) {
+            $('#id_cohorte').empty().trigger('change');
+            $.ajax({
+                type: 'GET',
+                url: "{{ request.path }}?action=buscarperiodoporcarrera&id=" + evt.params.data.id,
+                dataType: "json",
+                enctype: $(this).attr('enctype'),
+                cache: false,
+                contentType: false,
+                processData: false,
+                beforeSend: function () {
+                    bloqueointerface();
+                }
+            }).done(function (data) {
+                if (data.result) {
+                    $.each(data.data, function (key, value) {
+                        let newOption = new Option(value.value, value.id, false, false);
+                        $('#id_cohorte').append(newOption).trigger('change');
+                    })
+                } else {
+                    smoke.alert(data.mensaje);
+                }
+                $.unblockUI();
+            }).fail(function (jqXHR, textStatus, errorThrown) {
+                smoke.alert('Error en el servidor');
+                $.unblockUI();
+            });
+        });
+
+        $("#itemspanel form").validationEngine({autoHidePrompt: true, autoHideDelay: 1000});
+
+        //switchery['id_estado'] = new Switchery(document.getElementById('id_estado'), {size: 'small', color: '#5DADE2'});
+        $('#formbutton').click(function () {
+            var valid = $("#itemspanel form").validationEngine('validate');
+            if (valid) {
+                bloqueointerface();
+                try {
+                    for (instance in CKEDITOR.instances) {
+                        CKEDITOR.instances[instance].updateElement();
+                    }
+                } catch (err) {
+                    console.error(err.message);
+                }
+                var formdata = new FormData($("#itemspanel form")[0]);
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: formdata,
+                    success: function (data) {
+                        if ((data.result === 'ok') || (data.result === true)) {
+
+                            NotificationJG.success(data.mensaje)
+                            if (data.rt) {
+                                location.href = data.rt
+                            } else {
+                                 location.reload();
+                            }
+                        } else {
+                            if (data.form) {
+                                $(".mensaje_error").empty()
+                                data.form.forEach(function (val, indx) {
+                                    var keys = Object.keys(val);
+                                    keys.forEach(function (val1, indx1) {
+                                        {#$("#id_" + val1).addClass("is-invalid");#}
+                                        $("#errorMessage" + val1).html('* ' + val[val1]);
+                                    });
+                                });
+                            }
+                            $.unblockUI();
+                            alertaDanger(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json",
+                    cache: false,
+                    contentType: false,
+                    processData: false
+                });
+            } else {
+                $.unblockUI();
+                setInterval(function () {
+                    $('.help-text').html("");
+                }, 8000);
+            }
+
+        });
+
+
+
+    });
+
+
+</script>

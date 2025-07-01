@@ -1,0 +1,186 @@
+{% extends 'ajaxformmodal.html' %}
+{% load sga_extras %}
+{% block replace_id %}
+    <input type="hidden" name="id" value="{{ contrato.id|encrypt }}"/>
+    <input type="hidden" name="action" value="{{ action }}"/>
+{% endblock %}
+{% block col_lg_left %}col-lg-12{% endblock %}
+{% block col_lg_rigth %}col-lg-12{% endblock %}
+{% block block_form_seccion %}
+    <table class='table table_primary' id="id_tabla_registro">
+            <thead>
+            <tr>
+                <th><input type="checkbox" id="all_informes"></th>
+                <th>Informe</th>
+                <th>Horas</th>
+                <th>Fecha generación</th>
+                <th class="text-center w-20">% cumplimiento</th>
+                <th class="text-center w-20">Archivo</th>
+            </tr>
+            </thead>
+            <tbody id="tbody_informes">
+
+            </tbody>
+        </table>
+{% endblock %}
+{% block extra_js %}
+    <script type="text/javascript">
+        var lista_items1 = []
+        function validarfechas(event){
+            try{
+                if(lista_items1.length <= 0){
+                    throw new Error("No hay informes seleccionados");
+                }
+            } catch (error){
+                mensajeWarning(error);
+                event.preventDefault();
+            }
+        }
+        function funcionAntesDeGuardar() {
+            validarfechas();
+        }
+        function toggleCheckboxes(checkbox) {
+            // Encuentra todos los checkboxes con la clase "informe-checkbox"
+            var checkboxes = $(".informe-checkbox");
+
+            // Establece el estado de cada checkbox según el estado del checkbox "all_informes"
+            checkboxes.prop("checked", checkbox.checked);
+            if (!checkbox.checked) {
+                checkboxes.removeAttr("checked");
+            }
+            obtenerDataPKSeleccionados();
+        }
+        function obtenerDataPKSeleccionados() {
+            // Encuentra todos los checkboxes con la clase "informe-checkbox" que están seleccionados
+            $(".informe-checkbox").each(function() {
+                // Agrega el valor de data-pk a la lista
+                var dataPK = $(this).data("pk");
+                console.log($(this).is(':checked'));
+                // Verifica si el checkbox está marcado
+                if ($(this).is(':checked')) {
+                // Si está marcado y aún no está en la lista, agrégalo
+                    if (lista_items1.indexOf(dataPK) === -1) {
+                        lista_items1.push(dataPK);
+                    }
+                } else {
+                    // Si no está marcado y está en la lista, quítalo
+                    var index = lista_items1.indexOf(dataPK);
+                    if (index !== -1) {
+                        lista_items1.splice(index, 1);
+                    }
+                }
+            });
+
+            // Imprime la lista en la consola (puedes eliminar esto en tu código final)
+            console.log("Lista de data-pk seleccionados:", lista_items1);
+
+            // Puedes utilizar la lista_items1 como desees en tu aplicación
+        }
+
+        function consultarinformers(fini,ffin){
+            bloqueointerface();
+            $.ajax({
+                url: '{{ request.path }}',
+                type: 'GET',
+                data: {'fini': fini, 'ffin': ffin, 'action': 'loadinformes'},
+                success: function (response) {
+                    $.unblockUI();
+                    var tbody = $("#tbody_informes");
+                    tbody.empty();
+                    if(response.result){
+                        console.log(response.list)
+                        var lista = response.list;
+                        lista.forEach(function(inf){
+
+                            var accordionId = `criteriosAccordion_${inf.pk}`;
+                            var accordion = $(`
+                                <div class="accordion" id="${accordionId}">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingOne${accordionId}">
+                                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne${accordionId}" aria-expanded="false" aria-controls="collapseOne${accordionId}">
+                                                Criterios
+                                            </button>
+                                        </h2>
+                                        <div id="collapseOne${accordionId}" class="accordion-collapse collapse" aria-labelledby="headingOne${accordionId}" data-bs-parent="#${accordionId}">
+                                            <div class="accordion-body">
+                                                <!-- Contenido del acordeón -->
+                                                <ul>
+                                                    ${inf.criterios_hora.map(criterio => `
+                                                        <li>Criterio: ${criterio.criterio}, Horas: ${criterio.horas}</li>
+                                                    `).join('')}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `);
+
+                            var newRow = $("<tr></tr>");
+                            // Crea celdas para cada columna
+                            var checkboxCell = $("<td></td>").html('<input type="checkbox" class="informe-checkbox" data-pk="' + inf.pk + '">');
+                            var informeCell = $("<td></td>").html(`${inf.periodo}`).append(accordion);
+                            var horasCell = $("<td></td>").html(`${inf.total_horas?inf.total_horas:0}`);
+                            var fechaGeneracionCell = $("<td></td>").text(inf.fechainicio + ' - ' + inf.fechafin);
+                            var cumplimientoCell = $("<td class='text-center'></td>").text(inf.promedio + '%');
+                            var archivoCell = $("<td class='text-center' ></td>").html('<a href="' + inf.file + '" data-fancybox="informe_'+ inf.pk +'" data-width="2048" data-height="1380" data-caption="Informe: ' + inf.file + '"><i class="fa fa-file-pdf-o fs-4 text-danger"></i></a>');
+
+                            // Agrega las celdas a la fila
+                            newRow.append(checkboxCell, informeCell, horasCell, fechaGeneracionCell, cumplimientoCell, archivoCell);
+
+                            // Agrega la fila al tbody
+                            tbody.append(newRow);
+                        });
+
+                    }else{
+                        mensajeDanger(response.message);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    $.unblockUI();
+                    // Manejar el error de la consulta AJAX si es necesario
+                    mensajeDanger("Error de conexión");
+                }
+            });
+        }
+
+         $(document).ready(function (){
+            $("#id_fechainicio").change(function(){
+                var finicio = $(this).val();
+                var ffin = $("#id_fechafin").val();
+                if(ffin == '' || ffin == null || ffin == undefined) {
+                    NotificationJG.error("Seleccione una fecha de inicio válida")
+                    return false;
+                }
+                consultarinformers(finicio,ffin);
+            });
+            $("#id_fechafin").change(function(){
+                var finicio = $("#id_fechainicio").val();
+                var ffin = $(this).val();
+                if(finicio == '' || finicio == null || finicio == undefined){
+                    NotificationJG.error("Seleccione una fecha de inicio válida")
+                    return false;
+                }
+                consultarinformers(finicio,ffin);
+            });
+            $("#all_informes").on("change", function() {
+              toggleCheckboxes(this);
+            });
+
+            // Evento para manejar el cambio en los checkboxes individuales y obtener los data-pk seleccionados
+            $(document).on("change", ".informe-checkbox", function() {
+                obtenerDataPKSeleccionados();
+            });
+        });
+    </script>
+{% endblock %}
+{% block replace_button %}
+    <div class="row mt-3">
+        <div class="col-12 {% block button_align %}text-end{% endblock %}">
+            {% block extra_button %}{% endblock %}
+            <button type="submit" id="submit" class="btn btn-orange fs-5"><i class="fa fa-check-circle"></i> Guardar
+            </button>
+            <a href="javascript:void(0)" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"> <i
+                    class="fa fa-close"></i> Cancelar</a>
+        </div>
+    </div>
+{% endblock %}

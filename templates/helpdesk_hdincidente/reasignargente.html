@@ -1,0 +1,228 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function() {
+
+            $('#fieldset_categoria').css('display', 'none');
+            $('#fieldset_subcategoria').css('display', 'none');
+            $('#fieldset_detallesubcategoria').css('display', 'none');
+            $('#fieldset_revisionequipoexterno').css('display', 'none');
+            $('#fieldset_revisionequiposincodigo').css('display', 'none');
+            $('#fieldset_asunto').css('display', 'none');
+            $('#fieldset_bloque').css('display', 'none');
+            $('#fieldset_ubicacion').css('display', 'none');
+            {#$('#fieldset_resolucion').css('display', 'none');#}
+            $('#fieldset_medioreporte').css('display', 'none');
+            $('#fieldset_persona').css('display', 'none');
+
+
+
+            $("select").select2({minimumResultsForSearch: 5 });
+            $("#id_asunto, #id_persona_select2, #id_departamento_select2, #id_grupo,#id_agente,#id_categoria,#id_subcategoria").addClass("validate[required]");
+            $("#id_activo_select2,#id_medioreporte,id_estado,#id_resolucion").addClass("validate[required]");
+            {% if es_tics %}
+                if (document.getElementById('id_revisionequipoexterno').checked==true){
+                    $("#id_revisionequiposincodigo").prop('checked', false);
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    if (document.getElementById('id_revisionequiposincodigo').checked==true){
+                        $("#id_revisionequipoexterno").prop('checked', false);
+                        $("#fieldset_serie").show();
+                        $("#fieldset_activo").hide();
+                        $("#fieldset_fechacompra").hide();
+                        $("#fieldset_vidautil").hide();
+                        $("#fieldset_tiemporestante").hide();
+                    }else{
+                        $("#fieldset_serie").hide();
+                        $("#fieldset_fechacompra").show();
+                        $("#fieldset_vidautil").show();
+                        $("#fieldset_tiemporestante").show();
+                        $("#fieldset_activo").show();
+                    }
+                }
+            {% else %}
+                $("#fieldset_revisionequiposincodigo").hide();
+                $("#fieldset_revisionequipoexterno").hide();
+                $("#fieldset_serie").hide();
+            {% endif %}
+            ItemsDisplay = function (item) {
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+
+            $("#id_activo_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        {#                        return "/reportes?action=data&model=ActivoFijo&p=1&s=10&q=" + params.term;#}
+                        return "/adm_hdagente?action=buscaractivo&q=" + params.term+"&idt="+$('#id_tipoincidente').val();
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_activo").attr({"value":(evt.params.data.id)});
+                datos_activo();
+                {#                $("#id_fechacompra").attr({"value":(evt.params.data.fecha)});#}
+            });
+            datos_activo=function () {
+                id = $("#id_activo").val();
+                $.post("/adm_hdagente", {'action': 'datosactivo', 'id': id}, function(data) {
+                    if (data.result) {
+                        document.getElementById('id_fechacompra').value=data.fechaingreso;
+                        document.getElementById('id_vidautil').value=data.vidautil;
+                        document.getElementById('id_tiemporestante').value=data.tiempo;
+                    }
+                }, 'json');
+            };
+
+            $('#id_grupo').change(function (){
+                $('#id_agente').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                id = $(this).val();
+                $.post("/adm_hdagente", {'action': 'selectagentes', 'id': id}, function(data) {
+                    if (data.results) {
+                        if (data.tiene_responsable==true){
+                            for (elemento in data.lista) {
+                                $('#id_agente').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                        }else{
+                            smoke.alert('El Grupo que solecciono no tiene definido un responsable');
+                        }
+                    }
+                }, 'json');
+            });
+
+            $('#id_categoria').change(function (){
+                $('#id_subcategoria').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var idr = $(this).val();
+                var id_tipoincidente=$("#id_tipoincidente").val();
+                $.post("/helpdesk_hdincidente", {'action': 'selectcategoria', 'id': idr}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_subcategoria').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                    }
+                }, 'json');
+                if(id_tipoincidente==3 ){
+                    if(idr == 9 ){
+                        $("#fieldset_activo").show();
+                        $("#fieldset_fechacompra").show();
+                        $("#fieldset_vidautil").show();
+                        $("#fieldset_tiemporestante").show();
+                    }else {
+                        $("#fieldset_activo").hide();
+                        $("#fieldset_fechacompra").hide();
+                        $("#fieldset_vidautil").hide();
+                        $("#fieldset_tiemporestante").hide();
+                    }
+                }
+            });
+
+            $('#id_subcategoria').change(function (){
+                $('#id_detallesubcategoria').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                id = $(this).val();
+                $.post("/adm_hdagente", {'action': 'selectdetalle', 'id': id}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_detallesubcategoria').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                    }
+                }, 'json');
+            });
+
+            $('#id_detallesubcategoria').change(function (){
+                id = $(this).val();
+                $.post("/adm_hdagente", {'action': 'valiprioridad', 'id': id}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        if (data.tiene_prioridad==false){
+                            smoke.alert('El detalle seleccionado no tiene configurada la prioridad');
+                        }
+                    }
+                }, 'json');
+            });
+            $("#id_revisionequipoexterno").click(function () {
+                if (document.getElementById('id_revisionequipoexterno').checked==true){
+                    $("#id_revisionequiposincodigo").prop('checked', false);
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_fechacompra").show();
+                    $("#fieldset_vidautil").show();
+                    $("#fieldset_tiemporestante").show();
+                    $("#fieldset_activo").show();
+                }
+            });
+            $("#id_revisionequiposincodigo").click(function () {
+                if (document.getElementById('id_revisionequiposincodigo').checked==true){
+                    $("#id_revisionequipoexterno").prop('checked', false);
+                    $("#fieldset_serie").show();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_fechacompra").show();
+                    $("#fieldset_vidautil").show();
+                    $("#fieldset_tiemporestante").show();
+                    $("#fieldset_activo").show();
+                }
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block formaction %}/helpdesk_hdincidente{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='reasignaragente'/>
+    <input type='hidden' name='id' value='{{ incidente.id }}'/>
+{% endblock %}
+{% block formback %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

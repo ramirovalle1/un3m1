@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <script type="text/javascript">
+        busqueda = function () {
+            //debugger;
+            var term = $("#searchinput").val().trim().toUpperCase();
+            var idt = $("#id_estado").val();
+
+            if (term.length > 0) {
+                bloqueointerface();
+                location.href = "/adm_evaluacionposgrado?action=ver_encuestas_satisfaccion" + "&idt=" + idt + "&s=" + term
+            } else {
+                location.href = "/adm_evaluacionposgrado?action=ver_encuestas_satisfaccion" + "&idt=" + idt
+            }
+
+            return false;
+        };
+
+        function formModal(id, text, action, footer = true, va) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'men': va
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminar(pk, nombre, accion) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar este registro:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        }else{
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+
+        $(function (e) {
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("#id_estado").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+
+            if ('{{ idt }}'.length){
+                $('#id_estado').val('{{ idt }}').trigger('change');
+            }
+
+
+            $('.refreshbutton').click(function (e) {
+                bloqueointerface();
+                //let producto = $('#id_servicio').val();
+                //let href = parseInt(producto) ? '?p=' + producto : '';
+                location.href = "/adm_evaluacionposgrado?action=ver_encuestas_satisfaccion";
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_evaluacionposgrado?action=ver_encuestas_satisfaccion{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Pregunta N° {{ ePregunta.orden }}: {{ ePregunta.descripcion|lower|capfirst }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class="col-lg-6 col-md-3 col-sm-12">
+
+            <div class="card mb-4">
+                <div class="card-header border-bottom-0">
+                    <div class="col-lg-12 col-md-12 col-12">
+                        <div class="d-md-flex align-items-center">
+                            <a href="javascript:;" class="btn btn-success"
+                               onclick="formModal('{{ ePregunta.id }}','Adicionar columna apregunta','addcolumnafila', false, 'colu')"><i
+                                    class="fa fa-plus"></i> Adicionar columna</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body border-top border-6 rounded-3 border-dark-info ms-2">
+                <table class='tabla_responsive table table-bordered table-striped'>
+                    <thead>
+                        <tr>
+                            <th colspan="4">Opciones de columna</th>
+                        </tr>
+                        <tr>
+                            <th style="text-align: center; width: 10%">Orden</th>
+                            <th style="text-align: center; width: 40%">Descripción</th>
+                            <th style="text-align: center; width: 35%">Valor</th>
+                            <th style="text-align: center; width: 15%">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for eColumna in ePregunta.opciones_cuadricula_columnas %}
+                            <tr>
+                                <td style="text-align: center;">{{ eColumna.orden }}</td>
+                                <td style="text-align: center;">{{ eColumna.descripcion|lower|capfirst }}</td>
+                                <td style="text-align: center;">{{ eColumna.valor }}</td>
+                                <td style="text-align: center;">
+                                    <div class="dropbottom">
+                                        <a href="javascript:void(0);"
+                                           class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                           data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                           aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                        </a>
+                                        <ul class="dropdown-menu" x-placement="right-start">
+                                            <span class="dropdown-header">ACCIONES</span>
+                                            <li class="dropdown-item"><a href='javascript:;'
+                                                                         onclick="eliminar('{{ eColumna.id }}', '{{ eColumna|upper }}', 'deleteopcion')"><span
+                                                    class="fa fa-trash"></span> Eliminar</a></li>
+                                            <li class="dropdown-item">
+                                                <a href='javascript:;'
+                                                   onclick="formModal('{{ eColumna.id }}','Editar opcion de encuesta de satisfacción','editopcionsatisfaccion', false)">
+                                                    <i class="fa fa-pencil"></i> Editar
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" style="text-align: center">No existen opciones de columna de cuadrícula </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-md-3 col-sm-12">
+
+            <div class="card mb-4">
+                <div class="card-header border-bottom-0">
+                    <div class="col-lg-12 col-md-12 col-12">
+                        <div class="d-md-flex align-items-center">
+                            <a href="javascript:;" class="btn btn-success"
+                               onclick="formModal('{{ ePregunta.id }}','Adicionar fila a la pregunta','addcolumnafila', false, 'fila')"><i
+                                    class="fa fa-plus"></i> Adicionar fila</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body border-top border-6 rounded-3 border-dark-info ms-2">
+                <table class='tabla_responsive table table-bordered table-striped'>
+                    <thead>
+                        <tr>
+                            <th colspan="4">Opciones de fila</th>
+                        </tr>
+                        <tr>
+                            <th style="text-align: center; width: 10%">Orden</th>
+                            <th style="text-align: center; width: 40%">Descripción</th>
+                            <th style="text-align: center; width: 35%">Valor</th>
+                            <th style="text-align: center; width: 15%">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for eFila in ePregunta.opciones_cuadricula_filas %}
+                            <tr>
+                                <td style="text-align: center;">{{ eFila.orden }}</td>
+                                <td style="text-align: center;">{{ eFila.descripcion|lower|capfirst }}</td>
+                                <td style="text-align: center;">{{ eFila.valor }}</td>
+                                <td style="text-align: center;">
+                                    <div class="dropbottom">
+                                        <a href="javascript:void(0);"
+                                           class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                           data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                           aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                        </a>
+                                        <ul class="dropdown-menu" x-placement="right-start">
+                                            <span class="dropdown-header">ACCIONES</span>
+                                            <li class="dropdown-item"><a href='javascript:;'
+                                                                         onclick="eliminar('{{ eFila.id }}', '{{ eFila|upper }}', 'deleteopcion')"><span
+                                                    class="fa fa-trash"></span> Eliminar</a></li>
+                                            <li class="dropdown-item">
+                                                <a href='javascript:;'
+                                                   onclick="formModal('{{ eFila.id }}','Editar fila a la pregunta','editcolumnafila', false, 'fil')">
+                                                    <i class="fa fa-pencil"></i> Editar
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" style="text-align: center">No existen opciones de fila de cuadrícula </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

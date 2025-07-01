@@ -1,0 +1,272 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        $(function() {
+
+            $(".aprobarrechazar").click(function() {
+                var idp = $(this).attr('idp');
+                var idc = {{ id }};
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_becas",
+                    data: {'action': 'aprobarrechazararchivo', 'id': idp,'idc':idc },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $(".paneltitle").html(data.title);
+                            $("#itemspanel").modal({backdrop:'static', width: '700px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#edit_cancel").click(function(){
+                $('#itemspaneledit').modal('hide');
+            });
+
+            $(".detallerequisito").click(function() {
+                $("#aprobarcerrar").css('display', 'none');
+                var idr = $(this).attr('idr');
+                var ids = $(this).attr('ids');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_becas",
+                    data: {'action': 'detallerquisito', 'idr': idr,'ids':ids},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyrequisito").html(data.data);
+                            $("#itemspanelrequisito").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelrequisito .btn-cerrar").click(function() {
+                $("#itemspanelrequisito").modal("hide");
+                return false;
+            });
+
+            $("#btnaprobar").click(function() {
+                if(parseInt($("#treq").val()) == parseInt($("#tac").val())){
+                    procesar_solicitud('A');
+                }else {
+                    smoke.alert("Para APROBAR la solicitud todos los detalles deben estar aprobados");
+                    {#return false;#}
+                }
+            });
+
+            $("#btnrechazar").click(function() {
+                if(parseInt($("#tanc").val()) > 0) {
+                    procesar_solicitud('R');
+                }else{
+                    smoke.alert("Para RECHAZAR la solicitud debe haber mínimo un detalle rechazado");
+                    {#return false;#}
+                }
+            });
+
+            procesar_solicitud = function (tipo) {
+                var id = $("#idsol").val();
+                var tipoaccion = tipo == 'A' ? "APROBAR" : "RECHAZAR"
+                smoke.confirm("¿Está seguro de "+tipoaccion+" la solicitud de beca?", function(e){
+                    if (e){
+                        $.blockUI({message: null});
+                        $.post("/adm_becas",
+                            {"action" : "aprobar_rechazar_solicitud", "tipoaccion" : tipo, "id": id},
+                            function(data) {
+                            if (data.result=='ok') {
+                                //smoke.alert("Grabado con exito");
+                                location.href = '/adm_becas?action=listasolicitudes';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }, "json").error(function(){
+                            $.unblockUI();
+                            smoke.alert("No se pudo grabar el Registro");
+                        });
+                    }
+                }, {
+                    ok: "SI",
+                    cancel: "NO",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            };
+
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_becas?action=listasolicitudes{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }} </h4>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <div class="row-fluid">
+                <table class="table table-bordered" >
+                    <thead>
+                    <tr>
+                        <th style="vertical-align: middle">Alumno:</th>
+                        <td><input type="hidden" name="idsol" id="idsol" value="{{ cabecerasolicitud.id|encrypt }}"> {{ cabecerasolicitud.inscripcion.persona.nombre_completo_inverso }}
+                            {% if documentopersonal.cedula %}
+                                <a target="_blank" href="{{ documentopersonal.cedula.url }}" class="btn btn-mini btn-info tu" title="Descargar Documento"><i class="fa fa-download"> CÉDULA</i></a>
+                                {% if documentopersonal.verificadocedula %}<label class="label label-success">VERIFICADO</label>{% else %}<label class="label label-warning">POR VERIFICAR</label>{% endif %}
+                            {% endif %}
+                        </td>
+                        <th>Número Solicitud:</th>
+                        <td style="text-align: center"><span class="label label-success">{{ cabecerasolicitud.id }}</span></td>
+                    </tr>
+                    <tr>
+                        <th>Tipo Beca:<input type="hidden" id="treq" name="treq" value="{{ totalitems }}">
+                        <input type="hidden" id="tcum" name="tcum" value="{{ totalcumple }}">
+                        <input type="hidden" id="tac" name="tac" value="{{ totalarchivocumple }}">
+                        <input type="hidden" id="tanc" name="tanc" value="{{ totalarchivonocumple }}">
+                        </th>
+                        <td ><span class="label label-info">{{ cabecerasolicitud.becatipo.nombre|upper }}</span></td>
+                        <th>Estado:</th>
+                        <td style="text-align: center"><b>
+                            <span class="label label-{% if cabecerasolicitud.estado == 1 %}info{% elif cabecerasolicitud.estado == 2 %}success{% elif cabecerasolicitud.estado == 3 %}important{% else %}warning{% endif %} tu" data-original-title="Estado">{{ cabecerasolicitud.get_estado_display }}</span></b>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Usuario Solicita:</th>
+                        <td>{{ cabecerasolicitud.usuario_creacion }}</td>
+                        <th>Fecha Solicitud:</th>
+                        <td style="text-align: center">{{ cabecerasolicitud.fecha_creacion|date:"d-m-Y" }} | {{ cabecerasolicitud.fecha_creacion|time:'h:i a'}}</td>
+                    </tr>
+                    </thead>
+                </table>
+            </div>
+            <div class="row-fluid">
+                <table class="table table-bordered">
+                    <thead>
+                    <tr>
+                        <th style=" width: 20px; font-weight: bold; text-align: center">#</th>
+                        <th style=" width: 100px; font-weight: bold; text-align: center">Requisito</th>
+                        <th style="text-align: center; font-weight: bold; width: 90px;">Estado Requisito</th>
+                        <th style="text-align: center; font-weight: bold; width: 70px;">Archivo</th>
+                        <th style="text-align: center; font-weight: bold; width: 70px;">Detalles</th>
+                        <th style="text-align: center; font-weight: bold; width: 70px;">Verificar Archivo</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for detalle in detallesolicitud %}
+                        <tr>
+                            <td style="text-align: right"><b>{{ forloop.counter }}</b></td>
+                            <td style="text-align: justify">{{ detalle.requisito.nombre }}
+                                {% if detalle.requisito.id == 9 %}
+                                    {% with matriculado=cabecerasolicitud.inscripcion|args:periodo|call:"matriculado_periodo" %}
+                                        {% if not matriculado %}
+                                            <span class="label label-important">NO SE ENCUENTRA MATRICULADO EN EL PERIODO ACTUAL</span>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endif %}
+
+                                {% if detalle.requisito.id == 10 %}
+                                    {% with matriculado=cabecerasolicitud.inscripcion|args:periodo|call:"matriculado_periodo" %}
+                                        {% if not matriculado %}
+                                            <span class="label label-important">NO SE ENCUENTRA MATRICULADO EN EL PERIODO ACTUAL</span>
+                                        {% else %}
+                                            {% with matriculaactual=cabecerasolicitud.inscripcion|args:periodo|call:"matricula_periodo_actual" %}
+                                                {% with tipomatricula=matriculaactual.0|call:"tipomatriculalumno" %}
+                                                    {% if tipomatricula != 'REGULAR' %}
+                                                        <span class="label label-important">ESTUDIANTE NO ES REGULAR</span>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% endwith %}
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if detalle.cumple %}
+                                    <i style="color: #55ea55" class="fa fa-check"></i>
+                                {% else %}
+                                    <i style="color: #c82829" class="fa fa-close"></i>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if detalle.archivo %}
+                                    <a target="_blank" href="{{ detalle.download_link }}" class="btn btn-success btn-mini"><i class="fa fa-arrow-down"></i> Descargar</a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                <a href="javascript:;" idr="{{ detalle.requisito.id }}" ids="{{ cabecerasolicitud.id }}" class="btn detallerequisito btn-mini tu" data-original-title="Detalles de Requisito"><i class="fa fa-info-circle"></i></a>
+                                <b><span class="label label-{% if detalle.estado == 1 %}info{% elif detalle.estado == 2 %}success{% elif detalle.estado == 3 %}important{% else %}warning{% endif %} tu" data-original-title="Estado">{{ detalle.get_estado_display }}</span></b>
+                            </td>
+                            <td style="text-align: center">
+                                {% if cabecerasolicitud.estado == 1 or cabecerasolicitud.estado == 4 %}
+                                    {% if not detalle.estado == 2 %}
+                                        <a title="Aprobar / Rechazar" href="javascript:;" idp="{{ detalle.id }}" class=" btn btn-mini tu aprobarrechazar"><span class="fa fa-edit"></span> Aprobar / Rechazar </a>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" style="text-align: center">NINGUN REGISTRO</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+
+
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12' style="text-align: center">
+            <a href="javascript:;" class="btn btn-success btn-small" id="btnaprobar">Aprobar</a>
+            <a href="javascript:;" class="btn btn-danger btn-small" id="btnrechazar">Rechazar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitle">Aprobar o Rechazar Evidencia</h4></td>
+                    <td><a href="javascript:;" id="cerrarpanel" class="btn btn-danger btn-mini pull-right"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelrequisito" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitlerequisito">Detalles de Requisito</h4>
+        </div>
+        <div class="modal-body panelbodyrequisito">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+{% endblock %}

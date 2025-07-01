@@ -1,0 +1,170 @@
+{% extends "ajaxformbs.html" %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block extraheading %}
+ <script type="text/javascript">
+        var lista_items1 = [];
+        $(function() {
+            var items = 1;
+            $("#id_departamento, #id_participante_select2,#id_observacion").addClass("validate[required]");
+            $("#id_departamento").attr("disabled", "disabled");
+            $("#tablalistado").hide();
+            $('#check_individual' ).on( 'click', function() {
+                if( $(this).is(':checked') ){
+                     $("#id_participante_select2").removeAttr("disabled");
+                     $("#id_departamento").attr("disabled", "disabled");
+
+                     $("#tablalistado").hide();
+                }
+            });
+             $('#check_grupal' ).on( 'click', function() {
+                if( $(this).is(':checked') ){
+                     $("#id_departamento").removeAttr("disabled");
+                     $("#id_participante_select2").attr("disabled", "disabled");
+                     $("#tablalistado").show();
+
+                }
+            });
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+            $("#id_participante_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=DistributivoPersona&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_participante").attr({"value":(evt.params.data.id)});
+            });
+            $("#id_departamento").change(function() {
+                    $(".elementoslisto").remove();
+                    items=0;
+                    bloqueointerface();
+                    $.ajax({
+                            type: "GET",
+                            url: "/adm_capeventoperiodo",
+                            data: {'action': 'listadodistributivo',"id":$("#id_departamento").val(), 'ide':{{ eventoperiodo }}},
+                            success: function (data) {
+                                $.unblockUI();
+                                if (data.result == 'ok')
+                                {
+                                    if (data.results) {
+                                        for (var i in data.results){
+                                            var dato = data.results[i];
+                                            $("#contenidopersona").append('<tr class="elementoslisto" id="fila_'+items+'">' +
+                                                '<td style="text-align: center">' +
+                                                '<label><input type="checkbox" name="selectorinscribir" value="'+dato.id+'"></label>' +
+                                                '</td>' +
+                                                '<td style="text-align: center" class="cedula">'+dato.cedula+'</td>' +
+                                                '<td style="text-align: left" class="nombres">'+dato.apellidos+'</td>' +
+                                                '<td style="text-align: left" class="cargo">'+dato.cargo+'</td>' +
+                                                '</tr>');
+                                            tooltips();
+                                            items += 1;
+                                        }
+                                    }
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error de conexion.");
+                            },
+                            dataType: "json"
+                        });
+            });
+        });
+    </script>
+{% endblock %}
+{% block formdestination %}/adm_capeventoperiodo?action=inscritos&id={{ eventoperiodo }}{% endblock %}
+{% block formaction %}/adm_capeventoperiodo{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addinscribir'/>
+    <input type='hidden' name='eventoperiodo' value='{{ eventoperiodo }}'/>
+    <div align="center">
+        <label class="btn btn-info">
+            <input type="radio" name="options" id="check_individual" autocomplete="off" value="2" checked  onclick="seleccionar(this.value)"> <strong>Individual</strong>
+            <span class="glyphicon glyphfa fa-check"></span>
+        </label>
+        <label class="btn btn-info">
+            <input type="radio" name="options" id="check_grupal" autocomplete="off" value="3" onclick="seleccionar(this.value)"> <strong>Grupal</strong>
+            <span class="glyphicon glyphfa fa-check"></span>
+        </label>
+    </div>    <br>
+{% endblock %}
+{% block atras %}/adm_capeventoperiodo?action=inscritos&id={{ eventoperiodo }}{% endblock %}
+{% block formback %}/adm_capeventoperiodo?action=inscritos&id={{ eventoperiodo }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class='row-fluid' >
+        <div class='span12' style=" overflow-y:auto;height:auto;width:790px;">
+            <table style="width: 700px; margin-right: 20px; " align="center" class='table table-striped table-bordered' id ="tablalistado">
+                <thead>
+                <tr>
+                    <th style="width: 70px;"></th>
+                    <th style="width: 70px;"> Cédula </th>
+                    <th style="width: 250px;"> Apellidos y Nombres </th>
+                    <th style="width: 250px;"> Cargo</th>
+                </tr>
+                </thead>
+                <tbody id="contenidopersona" class="datatable">
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+{% block validaciones %}
+     if($('#check_individual').attr('checked')) {
+                     if ($("#id_participante").val()==0)
+                     {
+                         $.unblockUI();
+                         smoke.alert('Debe seleccionar un participante');
+                         var valid= false;
+                         return false;
+                     }
+     }
+     else {
+             lista_items1 = [];
+             $('input[name=selectorinscribir]:checked').not(":disabled").each(function(){
+                 var elemento={
+                 iddistributivo: $(this).val()
+                 };
+                 lista_items1.push(elemento);
+             });
+             if ($('input[name=selectorinscribir]:checked').length === 0)
+             {
+                 $.unblockUI();
+                 smoke.alert('Debe seleccionar participante de la tabla');
+                 var valid= false;
+                 return false;
+             }
+     }
+{% endblock %}

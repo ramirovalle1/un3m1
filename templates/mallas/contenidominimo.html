@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+
+    <script src="/static/adicionalesjs/formquestionb4.js?0.23"></script>
+    <script type="text/javascript">
+        $(function () {
+            const my_table_responsive2 = $('.my_table_responsive2').DataTable({
+                responsive: false,
+                ordering: false,
+                paging: true,
+                searching: true,
+                language: {
+                    "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+                },
+                bInfo: true,
+                dom: 'Bfrtip',
+                buttons: [],
+                columnDefs: [
+                    {targets: 0, width:'5%', className:'text-center'},
+                    {targets: 1, width:'85%'},
+                    {targets: 2, width:'10%', className:'text-center'}
+                ]
+            });
+        });
+
+        // Validar el límite de caracteres en el textarea (tanto al agregar como al editar)
+        function validateCharacterLimit(textarea) {
+            var maxChars = 1000;
+            var currentLength = textarea.value.length;
+
+            if (currentLength > maxChars) {
+                textarea.value = textarea.value.substring(0, maxChars);
+                currentLength = maxChars;
+            }
+
+            var remainingChars = maxChars - currentLength;
+            var messageElementId = textarea.id.startsWith('edit') ? `charCountMessageEdit_${textarea.id.split('_')[2]}` : 'charCountMessage';
+            document.getElementById(messageElementId).textContent = `Te quedan ${remainingChars} caracteres.`;
+            autoGrow(textarea);
+        }
+
+        // Función para evitar que se inserten saltos de línea con Enter
+        function preventEnter(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                addContenido();
+            }
+        }
+
+        // Ajustar el tamaño del textarea dinámicamente
+        function autoGrow(textarea) {
+            textarea.style.height = '38px';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+            textarea.style.overflow = 'hidden';
+        }
+
+        // Función para sanitizar el texto eliminando saltos de línea
+        function sanitizeText(text) {
+            return text.replace(/\n/g, ' '); // Reemplaza saltos de línea con espacios
+        }
+
+        function addContenido() {
+            bloqueointerface();
+            var descripcion = sanitizeText(document.getElementById('descripcion').value);
+
+            if (descripcion.trim() === '') {
+                $.unblockUI();
+                mensajeDanger('Debe ingresar un contenido');
+                return false;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'addcontenidosminimos',
+                    'contenido_minimo': descripcion,
+                    'id': '{{ asignaturamalla.id|encrypt }}',
+                    'csrfmiddlewaretoken': '{{ csrf_token }}'
+                },
+                success: function (response) {
+                    if (response.result === false) {
+                        location.reload();
+                    } else {
+                        $.unblockUI();
+                        mensajeDanger(response.mensaje);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    $.unblockUI();
+                    mensajeDanger("Ocurrió un error al intentar guardar el contenido.");
+                },
+                dataType: "json"
+            });
+
+            return false;
+        }
+
+        function enableEdit(contenidoId, descripcion, asignaturaId) {
+            descripcion = sanitizeText(descripcion);  // Sanitizar el texto al habilitar la edición
+            var row = document.getElementById('contenido_' + contenidoId);
+        
+            row.innerHTML = `
+                <textarea id="edit_descripcion_${contenidoId}" class="form-control"
+                oninput="validateCharacterLimit(this)" onkeydown="preventEnter(event)"
+                style="width: 100%; resize:none; overflow:hidden;">${descripcion}</textarea>
+                <small id="charCountMessageEdit_${contenidoId}" class="text-muted"></small>
+                <div id="editButtons_${contenidoId}" class="mt-2">
+                    <a href="javascript:void(0);" class="btn btn-success" onclick="saveEdit(${contenidoId}, ${asignaturaId})">
+                        Guardar
+                    </a>
+                    <a href="javascript:void(0);" class="btn btn-danger ms-2" onclick="cancelEdit(${contenidoId}, '${descripcion.replace(/'/g, "\\'")}')">
+                        Cancelar
+                    </a>
+                </div>
+            `;
+        
+            var textarea = document.getElementById('edit_descripcion_' + contenidoId);
+            textarea.focus();
+            autoGrow(textarea);
+
+            var currentLength = descripcion.length;
+            var remainingChars = 1000 - currentLength;
+            document.getElementById(`charCountMessageEdit_${contenidoId}`).textContent = `Te quedan ${remainingChars} caracteres.`;
+        }
+
+        function cancelEdit(contenidoId, descripcion) {
+            var row = document.getElementById('contenido_' + contenidoId);
+            row.innerHTML = sanitizeText(descripcion);  // Sanitizar el texto al cancelar la edición
+        }
+
+        function saveEdit(contenidoId, asignaturaId) {
+            bloqueointerface();
+            var descripcion = sanitizeText(document.getElementById('edit_descripcion_' + contenidoId).value);
+
+            if (descripcion.trim() === '') {
+                $.unblockUI();
+                mensajeDanger('La descripción no puede estar vacía.');
+                return false;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'editcontenidosminimos',
+                    'contenido_minimo': descripcion,
+                    'id': contenidoId,
+                    'idp': asignaturaId,
+                    'csrfmiddlewaretoken': '{{ csrf_token }}'
+                },
+                success: function (response) {
+                    if (response.result === false) {
+                        location.reload();
+                    } else {
+                        $.unblockUI();
+                        mensajeDanger(response.mensaje);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    $.unblockUI();
+                    mensajeDanger("Ocurrió un error al intentar guardar el contenido.");
+                },
+                dataType: "json"
+            });
+
+            return false;
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/mallas?action=edit&id={{ asignaturamalla.malla.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Asignatura: {{ asignaturamalla }}</h6>
+            </div>
+        </div>
+    </div>
+
+    {% if asignaturamalla.malla.cerrado %}
+        <div class='alert alert-danger'>
+            <h5>¡IMPORTANTE!</h5>
+            Malla se encuentra cerrada
+        </div>
+    {% endif %}
+    {#    {% if puede_modificar_mallas and not asignaturamalla.malla.cerrado %}#}
+    <h3 class="fw-bolder" style="font-size: 14px;"><i class="fa fa-list" aria-hidden="true"></i>&nbsp;&nbsp;ADICIONAR CONTENIDO MÍNIMO:</h3>
+    <div class="row-fluid">
+        <div class="col-sm-5">
+            <form id="formAddContenido" class="d-flex align-items-center">
+                <textarea id="descripcion" class="form-control" placeholder="Ingrese el contenido mínimo" required
+                          oninput="validateCharacterLimit(this)" onkeydown="preventEnter(event)"
+                          style="overflow:hidden; resize:none; height: 38px;"></textarea>
+                <a href="javascript:void(0);" class="btn btn-success ms-2 d-flex align-items-center justify-content-center"
+                   title="Adicionar contenido" onclick="addContenido()"
+                   style="width: 40px; height: 40px; border-radius: 5px;">
+                    <i class="fa fa-plus" vertical-align: middle;></i>
+                </a>
+            </form>
+            <small id="charCountMessage" class="text-muted"></small>
+        </div>
+    </div>
+    {#    {% endif %}#}
+
+    <div class="card mb-4">
+        <div class="card-body rounded-3 border-dark-info">
+            <table class="my_table_responsive2 table table_primary table_striped">
+                <thead>
+                    <tr>
+                        <th class="text-center"><i class="fa fa-sort-numeric-desc"></i></th>
+                        <th>Contenido</th>
+                        <th style="text-align: center; vertical-align: middle"><i class="fa fa-cogs"></i></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for contenido in contenidos %}
+                    <tr>
+                        <td class="text-center w-5">{{ forloop.counter }}</td>
+                        <td id="contenido_{{ contenido.id }}">{{ contenido.descripcioncontenido }}</td>
+                        <td style="text-align: center">
+                            <div class="dropdown dropstart">
+                                <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                   data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v"></i>
+                                </a>
+                                <ul class="dropdown-menu" x-placement="right-start">
+                                    <li>
+                                        <a href="javascript:void(0);" class="dropdown-item"
+                                           onclick="enableEdit('{{ contenido.id }}', '{{ contenido.descripcioncontenido|escapejs }}', '{{ contenido.asignaturamalla.id }}' )">
+                                            <span class="fa fa-edit dropdown-item-icon"></span> Editar
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:;" title="Eliminar" class="dropdown-item"
+                                           onclick="eliminarajax('{{ contenido.id|encrypt }}', '{{ contenido.descripcioncontenido|safe }}', 'delcontenido')">
+                                            <span class="fa fa-trash dropdown-item-icon"></span> Eliminar
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center">NO EXISTEN CONTENIDOS MINIMOS PLANIFICADOS</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

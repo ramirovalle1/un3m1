@@ -1,0 +1,248 @@
+{% extends "helpdesk_hdplanificacion/basehdplanificacion.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(document).ready(function () {
+            var table = $('#example').dataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging": false,
+                "ordering": false,
+                "info": false,
+                "searching": false,
+                "ordering": false,
+                "order": [[0, 'asc']],
+                "columnDefs": [{"visible": false, "targets": 0}],
+                "drawCallback": function (settings) {
+                    var api = this.api();
+                    var rows = api.rows({page: 'current'}).nodes();
+                    var last = null;
+                    api.column(0, {page: 'current'}).data().each(function (group, i) {
+                        if (last !== group) {
+                            $(rows).eq(i).before(
+                                '<tr class="group" ><td colspan="3" height="30" class="" bgcolor="#f1f1f1"><strong>' + group + '</strong></td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+            $('select').select2({width: '100%'});
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var g = $("#grupo_list").val();
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "/helpdesk_hdplanificacion?action={{ action }}&s=" + term+"&tipo="+g;
+                } else {
+                    bloqueointerface();
+                    location.href = "/helpdesk_hdplanificacion?action={{ action }}&tipo="+g;
+                }
+                return false;
+            };
+
+            $("#grupo_list").change(function () {
+                busqueda();
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+        });
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+{% endblock %}
+{% block atras %}/helpdesk_hdplanificacion{% endblock %}
+{% block content %}
+    <div class="card mb-2 mt-1">
+        <div class="card-header">
+            <h4 class="mb-0"><b><i class="fa fa-area-chart"></i> {{ title }}</b></h4>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-6">
+            <a href="javascript:void(0);" onclick="formModal('{{ tipo.pk|encrypt }}','Adicionar daño','adddanios',true)" class="btn btn-info">
+                <i class="fa fa-plus"></i>
+                <t class="hidden-phone hidden-table vissible-desktop"></t>
+                Adicionar
+            </a>
+        </div>
+        <div class="col-sm-6">
+            <form method="GET">
+                <input type="hidden" name="action" value="{{ action }}"/>
+                <div class="row">
+                    <div class="col-lg-3 col-md-4 col-12">
+                        <div class="input-group mb-2" style="margin-left: 5px">
+                            <select id="grupo_list" name="tipo" class="form-control" style="width: 100%;">
+                                <option value="0">TODOS</option>
+                                {% for grupo in tipobien %}
+                                    <option {% if gruposelect == grupo.id %}selected{% endif %} value="{{ grupo.id|encrypt }}">{{ grupo }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-lg-9 col-md-4 col-12">
+                        <div class="input-group mb-2">
+                            <input class='form-control' type='text' id='searchinput' name="s" value='{{ search }}' autocomplete="off" placeholder="Descripción"/>
+                            <div class="input-group-append">
+                                <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()" id="button-addon2"><i
+                                        class="fa fa-search"></i></a>
+                                {% if search or gruposelect %}
+                                    <a title="Ver todo" href="{{ request.path }}?action={{ action }}" class="btn btn-default tr">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+            <table class="table table-bordered table-striped" id="example">
+                <thead>
+                <tr>
+                    <th style="width: 80px; text-align: center">Tipo</th>
+                    <th>Descripción</th>
+                    <th style="text-align: center; width: 80px">Tarea activa</th>
+                    <th style="width: 50px; text-align: center">Acción</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for tareas in tareasmantenimiento %}
+                    <tr>
+                        <td>{{ tareas.grupocategoria }}</td>
+                        <td>{{ tareas.descripcion }}</td>
+                        <td style="text-align: center">
+                            <a style="width: 30px;" href="javascript:void(0);" onclick="eliminarajax('{{ tareas.id|encrypt }}','{{ tareas }}','actdesdanios','{{ request.path }}','Deseas {% if tareas.activo %}desativar{% else %}activar{% endif %} la siguiente daño: ')">
+                                {% if tareas.activo %}
+                                    <span><i style="color: green" class="fa fa-check tu" title="Desactivar tarea"></i></span>
+                                {% else %}
+                                    <span><i style="color: brown" class="fa fa-close tu" title="Activar tarea"></i></span>
+                                {% endif %}
+                            </a>
+                        </td>
+                        <td style="text-align: center">
+                            {% if not tareas.en_uso %}
+                                <a class="btn btn-danger btn-mini tu" title="Eliminar" href="javascript:void(0);" onclick="eliminarajax('{{ tareas.id|encrypt }}','{{ tareas }}','deletedanios')"><i class="fa fa-trash"></i></a>
+                                <a class="btn btn-info btn-mini tu" title="Editar" href="javascript:void(0);" onclick="formModal('{{ tareas.id|encrypt }}','Editar daño','editdanios',true)"><i class="fa fa-edit"></i></a>
+                            {% else %}
+                                <span class="label label-warning">Tarea en uso</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="11" STYLE="text-align: center">
+                            NO EXISTEN MANTENIMIENTOS REGISTRADOS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            <div class="col-lg-12">
+                <nav style="margin-bottom: 7px">
+                    {% if paging.num_pages > 5 %}
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if paging.primera_pagina %}
+                                <li class="page-item">
+                                    <a class="page-link bloqueo_pantalla" href="?action={{ action }}&page=1{{ url_vars }}">1</a>
+                                </li>
+                                <li class="page-item">
+                                    <a href="?action={{ action }}&page={{ paging.ellipsis_izquierda }}{{ url_vars }}"
+                                       class="active page-link bloqueo_pantalla">...</a></li>
+                            {% endif %}
+                            {% for pagenumber in paging.paginas %}
+                                <li {% if pagenumber == page.number %}class='active page-item '
+                                    {% else %}class='page-item'{% endif %}>
+                                    <a href="?action={{ action }}&page={{ pagenumber }}{{ url_vars }}"
+                                       class="page-link bloqueo_pantalla">{{ pagenumber }}</a>
+                                </li>
+                            {% endfor %}
+                            {% if paging.ultima_pagina %}
+                                <li class="page-item">
+                                    <a href="?action={{ action }}&page={{ paging.ellipsis_derecha }}{{ url_vars }}"
+                                       class="active page-link bloqueo_pantalla">...</a></li>
+                                <li class="page-item">
+                                    <a href="?action={{ action }}&page={{ paging.num_pages }}{{ url_vars }}"
+                                       class="page-link bloqueo_pantalla">{{ paging.num_pages }}</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    {% else %}
+                        <ul class="pagination justify-content-center mb-0">
+                            {% for pagenumber in paging.page_range %}
+                                <li {% if pagenumber == page.number %}class='active page-item'
+                                    {% else %}class="page-item"{% endif %}>
+                                    <a class="page-link bloqueo_pantalla"
+                                       href="?action={{ action }}&page={{ pagenumber }}{{ url_vars }}">{{ pagenumber }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </nav>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="{{ request.path }}" autocomplete="off" method="post" enctype="multipart/form-data" class="form-horizontal form-modal">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button class="btn btn-default" type="button" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

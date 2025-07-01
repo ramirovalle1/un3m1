@@ -1,0 +1,741 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <script type="text/javascript">
+        var materiasseleccionadas = [];
+        var materiasseleccionadasPracticas = [];
+        var asignatura = 0;
+        var materiaseleccion = 0;
+        var materiasmaximas = 0;
+        var position = 0;
+        var porciento_perdida_parcial_gratuidad = {{ porciento_perdida_parcial_gratuidad }};
+        var total_materias_nivel = {{ total_materias_nivel }};
+
+        {% if inscripcion %}
+            var inscripcion = {{ inscripcion.id }};
+        {% else %}
+            var inscripcion = 0;
+        {% endif %}
+        $(function() {
+            materiasmaximas = $('#id_materiasmaximas').attr('val');
+
+            actualizarfuncion = function(){
+                $('.selectmat').click(function () {
+                    var elemento;
+                    var asg = $(this).attr('ida');
+                    var mat = $(this).attr('idd');
+                    materiasseleccionadas.push(mat);
+                    {#$("#materias, #matricular").modal('hide');#}
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/matriculas",
+                        data: {'action': 'conflictohorario', 'mismaterias': JSON.stringify(materiasseleccionadas), 'id': inscripcion, 'mispracticas': JSON.stringify(materiasseleccionadasPracticas), 'idm': mat},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                if (data.datos.matprac){
+                                    eliminar(mat);
+
+                                    $("#panelcontentpractica").html("<h4>"+data.datos.asignatura+"</h4><br><table class='table table-bordered table-striped' cellpadding='0' cellspacing='0'><tr><th>Horario</th><th style='width:30px;'>Disp.</th><th style='width:80px;'></th></tr><tbody id='tbody'></tbody></table>");
+                                    if (data.datos.disponibles > 0) {
+                                        var presencupo = true;
+                                        if (data.datos.tipomateria==2){
+                                            if (data.datos.notvalihorcup){
+                                                presencupo = false;
+                                            }
+                                        }
+                                        for (var ini in data.datos.horarios) {
+                                            var horario = data.datos.horarios[ini];
+                                            var cupo= horario[2];
+                                            if (!presencupo){
+                                                cupo= "";
+                                            }
+                                            $("#panelcontentpractica #tbody").append("<tr><td>" + horario[0] + "</td><td style='text-align: center'>" + cupo + "</td><td style='text-align: center'><a href='javascript:;' idp='" + horario[1] + "' idc='" + asg +"_"+ mat +"_"+ data.nivel +"_"+ horario[3] + "' class='btn btn-mini btn-info btn-mio selectmatpract'>Seleccionar</a></td></tr>");
+                                        }
+                                        $('.selectmatpract').unbind('click.actualizarpractica');
+                                        $('.selectmatpract').bind('click.actualizarpractica', actualizarpractica);
+                                    }
+                                    else{
+                                        if(data.datos.abiertas > 0){
+                                            $("#panelcontentpractica #tbody").append("<tr><td colspan='3' style='text-align: center; color:#FF0000;'>NO EXISTEN CUPOS DISPONIBLES</td></tr>");
+                                        } else {
+                                            $("#panelcontentpractica #tbody").append("<tr><td colspan='3' style='text-align: center'>NO EXISTEN PRACTICAS PROGRAMADAS</td></tr>");
+                                        }
+                                    }
+                                    $(".materiasseleccionpracticamodal").modal({backdrop: 'static',width: '600px'}).modal('show');
+                                }
+                                else{
+                                    adicionar(asg, mat, data.nivel, '0', '0');
+                                    cerrarmodals()
+                                }
+                            } else {
+                                eliminar(mat);
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#materias, #matricular").modal('hide');
+                            eliminar(mat);
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        dataType: "json"
+                    });
+                });
+            };
+
+            actualizarpractica = function () {
+                var elemento;
+                var pm = $(this).attr('idp');
+                var cade = $(this).attr('idc');
+                var res  = cade.split("_");
+                materiasseleccionadasPracticas.push([pm, res[3]]);
+                materiasseleccionadas.push(res[1]);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/matriculas",
+                    data: {'action': 'conflictohorario', 'mismaterias': JSON.stringify(materiasseleccionadas), 'id': inscripcion, 'mispracticas':JSON.stringify(materiasseleccionadasPracticas)},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            adicionar(res[0], res[1], res[2], pm, res[3]);
+                            $(".materiasseleccionpracticamodal").modal('hide');
+                            cerrarmodals()
+                        } else {
+                            eliminarpractica(pm, res[3]);
+                            eliminar(res[1]);
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        $(".materiasseleccionpracticamodal").modal('hide');
+                        eliminarpractica(pm, res[3]);
+                        eliminar(res[1]);
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            conectar_controles = function () {
+                $(".selectmatpract").unbind();
+                $(".selectmatpract").click(function () {
+                    actualizarpractica()
+                });
+            };
+
+            adicionar = function (asg, mat, nivel, pm, pa) {
+                elemento =  $("[idd="+asg+"]");
+                elemento.html('REMOVER');
+                elemento.removeClass('btn-info');
+                elemento.addClass('btn-danger');
+                elemento.attr('ids',mat);
+                elemento.attr('idp',pm);
+                elemento.attr('idpa',pa);
+                materiaseleccion = materiasseleccionadas.length;
+                $("#id_seleccionadas").html(materiaseleccion);
+                $("#id_nivel").html(nivel);
+            };
+
+            contarmaterias = function (nivel) {
+                var contar = 0;
+                var contar_materia_seleccionada = 0;
+                {#                                {% if tiene_reprobada %}#}
+                {#                                    $(".nivelm").each(function( index,e ) {#}
+                {#                                        if (($(e).attr("nivel")) == data.nivel){#}
+                {#                                            contar = contar + 1#}
+                {#                                        }#}
+                {#                                    });#}
+                {#                                {% else %}#}
+                $(".materia").each(function( index,e ) {
+                    if (($(e).attr("nivel")) == nivel){
+                        contar = contar + 1
+                    }
+                });
+                $(".predecesores").each(function( index,e ) {
+                    if (($(e).attr("nivel")) == nivel){
+                        contar = contar + 1
+                    }
+                });
+                {#                                {% endif %}#}
+                $(".materia").each(function( index,e ) {
+                    if (($(e).attr("nivel")) == nivel){
+                        if ($(e).html()=='REMOVER'){
+                            contar_materia_seleccionada = contar_materia_seleccionada + 1
+                        }
+                    }
+                });
+                $("#id_materias_nivel_aperturadas").html(contar);
+                $("#id_materias_seleccionadas_nivel_aperturadas").html(contar_materia_seleccionada);
+            };
+
+            eliminar = function (mat) {
+                for(var i = materiasseleccionadas.length - 1; i >= 0; i--) {
+                    if(materiasseleccionadas[i] === mat) {
+                        materiasseleccionadas.splice(i, 1);
+                    }
+                }
+            };
+
+            eliminarpractica = function (pm, pa) {
+                for(var i = materiasseleccionadasPracticas.length - 1; i >= 0; i--) {
+                    if(materiasseleccionadasPracticas[i][0] === pm && materiasseleccionadasPracticas[i][1] == pa) {
+                        materiasseleccionadasPracticas.splice(i, 1);
+                    }
+                }
+            };
+
+            $('.materia').click(function () {
+                var mat;
+                var pa;
+                var pm;
+                var tipoeje;
+                position = $(this).attr("id");
+                tipoeje = $(this).attr('tipomateria');
+                if (materiaseleccion < materiasmaximas){
+                    if ($(this).attr('ids')){
+                        $(this).removeClass('btn-danger');
+                        $(this).addClass('btn-info');
+                        mat = $(this).attr('ids');
+                        $(this).removeAttr('ids');
+                        pm = $(this).attr('idp');
+                        $(this).removeAttr('idp');
+                        pa = $(this).attr('idpa');
+                        $(this).removeAttr('idpa');
+                        $(this).html('SELECCIONAR');
+                        eliminar(mat);
+                        eliminarpractica(pm, pa);
+                        materiaseleccion = materiasseleccionadas.length;
+                        $("#id_seleccionadas").html(materiaseleccion);
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/matriculas",
+                            data: {'action': 'conflictohorario_aux', 'mismaterias': JSON.stringify(materiasseleccionadas)},
+                            success: function(data) {
+                                $.unblockUI();
+                                if (data.result == 'ok') {
+                                    $("#id_nivel").html(data.nivel);
+                                    contarmaterias(data.nivel)
+                                }
+                            },
+                            error: function() {
+                                $.unblockUI();
+                                smoke.alert("Error al enviar los datos.");
+                            },
+                            dataType: "json"
+                        });
+
+                    } else {
+                        asignatura = $(this).attr('idd');
+                        asignaturamalla = $(this).attr('idam');
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/matriculas",
+                            data: {'action': 'materiasabiertas', 'ida': asignatura, 'idam': asignaturamalla, 'nivel': '{{ nivel.id }}', 'id': inscripcion},
+                            success: function(data) {
+                                if (data.result == 'ok') {
+                                    $.unblockUI();
+                                    $("#materias #panelcontent").html("<h4>"+data.asignatura+"</h4><br><table class='table table-bordered table-striped' cellpadding='0' cellspacing='0'><tr><th style='width:200px;'>Coordinacion/Carrera</th><th>Horario</th><th style='width:100px;'>Sede/Session</th><th style='width:80px;'>Inicio/Fin</th>" +
+                                        "<th style='width:30px;'>Disp.</th><th style='width:30px;'>Ocup.</th><th style='width:80px;'></th></tr><tbody id='tbody'></tbody></table>");
+                                    if (data.disponibles > 0){
+                                        for (var i in data.materias){
+                                            materia = data.materias[i];
+                                            var span = "";
+                                            var cupo = materia.cupo;
+                                            if (materia.tipomateria == 1){
+                                                span = " <span class='label'>PRESENCIAL</span>"
+                                            } else {
+                                                span = " <span class='label label-inverse'>VIRTUAL</span>";
+                                                if (materia.novalhorcup){
+                                                    cupo = ""
+                                                }
+                                            }
+                                            if (materia.teopract == 2) {
+                                                span += " <span class='label label-warning tu' title='Teórica/Práctica'>TP</span>"
+                                            }
+                                            $("#materias #tbody").append("<tr><td>"+materia.coordcarrera+" - "+materia.carrera+"</td>" +
+                                                "<td>"+materia.profesor+"<br>["+materia.identificacion+"]<br>"+materia.horario+"</td><td>"+materia.session+"<br>"+materia.sede+"<br>"+materia.paralelo+"     "+ span +"</td><td style='text-align: center'>"+materia.inicio+"<br>"+materia.fin+"</td><td style='text-align: center'>"+materia.cupo+"<br/><span class='label label-warning tu' title='Adicional'>"+ materia.cupoadicional +"</span></td><td style='text-align: center'>"+materia.matriculados+"</td><td style='text-align: center'><a href='javascript:;' eje='"+tipoeje+"' ida='"+data.idd+"' idd='"+materia.id+"' class='btn btn-mini btn-info btn-mio selectmat'>Seleccionar</a></td></tr>");
+                                        }
+                                        actualizarfuncion();
+                                    } else {
+                                        if(data.abiertas > 0){
+                                            if (data.notienehorario){
+                                                $("#materias #tbody").append("<tr><td colspan='7' style='text-align: center; color:#FF0000;'>NO EXISTEN CUPOS DISPONIBLES..</td></tr>");
+                                            }
+                                            else {
+                                                $("#materias #tbody").append("<tr><td colspan='7' style='text-align: center; color:#FF0000;'>NO EXISTEN CUPOS DISPONIBLES</td></tr>");
+                                            }
+                                        } else {
+                                            if (data.notienehorario){
+                                                $("#materias #tbody").append("<tr><td colspan='7' style='text-align: center; color:#FF0000;'>NO TIENE HORARIO</td></tr>");
+                                            }
+                                            else {
+                                                $("#materias #tbody").append("<tr><td colspan='7' style='text-align: center'>NO EXISTEN MATERIAS PROGRAMADAS</td></tr>");
+                                            }
+                                        }
+                                    }
+                                    $("#materias").modal('show');
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            },
+                            error: function() {
+                                $.unblockUI();
+                                smoke.alert("Error al enviar los datos.");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                } else {
+                    $("#alertas #confmattxt").html('').append("<p>No puede seleccionar mas de la cantidad maxima de materias.</p>");
+                    $("#alertas").modal('show');
+
+                }
+            });
+
+            $('#btnmatricular').click(function () {
+                position = $(this).attr("id");
+                if (materiasseleccionadas.length > 0){
+                    $("#matricular #confmattxt").html("<p>Confirma, que desea matricular al estudiante en <b>"+materiasseleccionadas.length+"</b> materia(s).</p>");
+                } else {
+                    $("#matricular #confmattxt").html("<p>Confirma, que desea matricular al estudiante sin materias.</p>");
+                }
+                var cobro = 0;
+                {% if utiliza_gratuidades  %}
+                    var nivel = $("#id_nivel").html();
+                    var materias_nivel = $("#id_materias_nivel_aperturadas").html();
+                    var materias_nivel_seleccionadas = $("#id_materias_seleccionadas_nivel_aperturadas").html();
+                    var porcentaje_seleccionadas = Math.round(((materias_nivel * porciento_perdida_parcial_gratuidad)/100),0);
+                    cobro = 0;
+                    {% if not inscripcion.persona.tiene_otro_titulo %}
+                        {% if inscripcion.estado_gratuidad == 1 or inscripcion.estado_gratuidad == 2 %}
+                            if (materias_nivel_seleccionadas < porcentaje_seleccionadas){
+                                cobro = 1;
+                            }
+                            else {
+                                {% if inscripcion.estado_gratuidad == 2 %}
+                                    cobro = 2;
+                                {% else %}
+                                    cobro = 2;
+                                {% endif %}
+                            }
+                        {% else %}
+                            cobro = 3;
+                        {% endif %}
+                    {% else %}
+                        cobro = 3;
+                    {% endif %}
+
+                    $("#cobro").val(cobro);
+                    if (materias_nivel_seleccionadas < porcentaje_seleccionadas){
+                        $("#tipo_matricula").val("2");
+                    }
+                    else{
+                        $("#tipo_matricula").val("1");
+                    }
+                {% endif %}
+
+                $("#matricular").modal('show');
+            });
+
+
+            $('.btn-cerrar').click(function () {
+                cerrarmodals()
+            });
+
+            cerrarmodals = function () {
+                $("#materias").modal('hide');
+                $("#matricular").modal('hide');
+                $("#alertas").modal('hide');
+                $("#matricularmensajespanel").modal('hide');
+            };
+
+            $('.btn-cerrar2').click(function () {
+                location.href = '/adm_solicitudmatricula/especial?action=solicitudes&id={{ eSolicitudMatriculaEspecial.id }}';
+            });
+
+            $('.btn-matricular').click(function(){
+                $("#matricular").modal('hide');
+                $("#matricularmensajespanel").modal('show').find("#confmattxt").html('').append("<p>Espere por favor.</p>");
+                $("#btnfinal1").attr('hidden','hidden');
+                $("#btnfinal2").attr('hidden','hidden');
+                inscripcion = $("#inscripcion").attr('valor');
+                solicitud = parseInt('{{ eSolicitudMatriculaEspecial.id }}');
+                cobro = $("#cobro").val();
+                tipo_matricula = $("#tipo_matricula").val();
+                    $.post("/adm_solicitudmatricula/especial", {'action': 'matricular', 'ids': solicitud, 'id': inscripcion ,'tipo_matricula': tipo_matricula , 'cobro': cobro, 'nivel': '{{ nivel.id }}', 'materias': JSON.stringify(materiasseleccionadas),'practicas':JSON.stringify(materiasseleccionadasPracticas)}, function(data) {
+                    if (data.result=='ok') {
+                        if (data.valorpagar==0) {
+                            $("#matricularmensajespanel").find("#confmattxt").html('').append("<p>Se ha matriculado correctamente.</p>");
+                        }
+                        else{
+                            $("#matricularmensajespanel").find("#confmattxt").html('').append("<p>Se ha matriculado correctamente, valor a pagar "+data.valorpagar+".</p>");
+                        }
+                        $("#btnfinal2").removeAttr('hidden').show();
+                    } else {
+                        $("#matricularmensajespanel").find("#confmattxt").html('').append("<p>"+data.mensaje+"</p>");
+                        $("#btnfinal1").removeAttr('hidden').show();
+                    }
+                }, "json");
+            });
+
+            $('.predecesores').popover({
+                placement : 'left',
+                html : true,
+                trigger : 'hover', //<--- you need a trigger other than manual
+                delay: {
+                    show: "500",
+                    hide: "100"
+                }
+            });
+
+            $('.predecesores').on('shown.bs.popover', function() {
+                setTimeout(function() {
+                    $('.predecesores').popover('hide');
+                }, 1000);
+            });
+
+            $(".cerrarpanelpractica").click(function () {
+                $(".materiasseleccionpracticamodal").modal('hide');
+            });
+
+            $('.notificacion').click(function () {
+                $("#notificacion").modal({backdrop:'static', width: 500}).modal('show');
+            });
+
+            $("#notificacion_cerrar").click(function() {
+                $("#notificacion").modal("hide");
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_solicitudmatricula/especial?action=solicitudes&id={{ eSolicitudMatriculaEspecial.id }}{% endblock %}
+{% block canvas %}
+    {% if utiliza_gratuidades %}
+        {% if inscripcion.perdida_total_gratuidad or inscripcion.tiene_asignaturas_reprobadas%}
+            <div class="row-fluid">
+                <div class="span12">
+                    {% if inscripcion.perdida_total_gratuidad  %}
+                        <p class="alert alert-danger">Ud. ha reprobado más del {{ porciento_perdida_total_gratuidad|floatformat:0 }}% de las horas correspondientes a las asignaturas con relación a su plan de estudios, por consecuencia ha perdido de manera definitiva su derecho a gratuidad. En el transcurso del período académico se le hará conocer los rubros a cancelar por concepto de arancel y matrícula por cada asignatura seleccionada.</p>
+                    {% endif %}
+                    {% if inscripcion.tiene_asignaturas_reprobadas %}
+                        <p class="alert alert-info">Recuerde: Si Ud. ha reprobado una o más asignaturas correspondientes a su plan de estudios, ha perdido de manera parcial su derecho a gratuidad. En el transcurso del período académico se le hará conocer los rubros a cancelar por concepto de arancel y matrícula por cada asignatura seleccionada que este reprobada.</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+    <div class='row-fluid'>
+        <div class="span12">
+            <h4>{{ title }}</h4>
+            <h5>Coordinacion: {{ nivel.coordinacion }}</h5>
+            <h5>Sesion: {{ nivel.sesion }}</h5>
+            <h5>Modalidad: {{ nivel.modalidad }}</h5>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span7'>
+            <table class='table table-bordered table-striped' >
+                <tr>
+                    <th colspan="2" style="text-align: center;">Datos del estudiante</th>
+                </tr>
+                <tr>
+                    <th style="width: 25%;">Nombre</th>
+                    <td id="inscripcion" valor="{{ inscripcion.id }}">{% if inscripcion %}{{ inscripcion }}{% else %}{% if nombreerroneo %}{{ nombreerroneo }}{% endif %}{% endif %}</td>
+                </tr>
+                <tr>
+                    <th>Carrera</th>
+                    <td>{{ inscripcion.carrera }}</td>
+                </tr>
+                <tr>
+                    <th>Estado</th>
+                    <td>
+                        {% if inscripcion.id %}
+                            {% if inscripcion.ultima_coordinacion_matriculado %}
+                                <span class="label label-success">ULTIMA MATRICULA EN: {{ inscripcion.ultima_coordinacion_matriculado.nombre }}</span>
+                            {% else %}
+                                <span class="label label-success">NO SE HA MATRICULADO HASTA LA FECHA</span>
+                            {% endif %}
+                        {% endif %}
+                        {% if err == 1 %}
+                            <span class="label label-important">ESTE ESTUDIANTE NO ES DE LAS CARRERAS DE SU COORDINACION O FACULTAD</span>
+                        {% endif %}
+                        {% if err == 2 %}
+                            <span class="label label-important">ESTE ESTUDIANTE PERTENECE A OTRA MODALIDAD</span>
+                        {% endif %}
+                        {% if err == 3 %}
+                            <span class="label label-important">ESTE ESTUDIANTE PERTENECE A OTRA SESION</span>
+                        {% endif %}
+                        {% if err == 4 %}
+                            <span class="label label-warning">BECA PENDIENTE APROBACION</span>
+                        {% endif %}
+                        {% if err == 5 %}
+                            <span class="label label-important">DEUDA VIGENTE</span>
+                        {% endif %}
+                        {% if err == 6 %}
+                            <span class="label label-warning">MATRICULADO</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div class='span5'>
+            {#            <table class='table table-bordered table-striped'>#}
+            {#                <thead>#}
+            {#                <input type='hidden' name='cobro' id="cobro" value=''/>#}
+            {#                <input type='hidden' name='tipo_matricula' id="tipo_matricula" value=''/>#}
+            {#                <tr>#}
+            {#                    <th>Nivel</th>#}
+            {#                    <th>Materias Nivel Aperturadas</th>#}
+            {#                    <th>Materias Seleccionadas Nivel Aperturadas</th>#}
+            {#                    <th></th>#}
+            {#                    <th style="text-align: center; width: 25%">Seleccion</th>#}
+            {#                    <th style="text-align: center; width: 25%">Totales</th>#}
+            {#                </tr>#}
+            {#                </thead>#}
+            {#                <tbody>#}
+            {#                <tr>#}
+            {#                    <td style="text-align: center;" id="id_nivel">0</td>#}
+            {#                    <td style="text-align: center;" id="id_materias_nivel_aperturadas">0</td>#}
+            {#                    <td style="text-align: center;" id="id_materias_seleccionadas_nivel_aperturadas">0</td>#}
+            {#                    <td>Materias</td>#}
+            {#                    <td style="text-align: center;" id="id_seleccionadas">0</td>#}
+            {#                    <td style="text-align: center;" id="id_materiasmaximas" val="{{ materiasmaximas }}">{{ materiasmaximas }}</td>#}
+            {#                </tr>#}
+            {#                </tbody>#}
+            {#            </table>#}
+            <table class='table table-hover personal-task'>
+                <tbody style="font-weight: bold">
+                <input type='hidden' name='cobro' id="cobro" value=''/>
+                <input type='hidden' name='tipo_matricula' id="tipo_matricula" value=''/>
+                <tr>
+                    <td><i class="fa fa-line-chart"></i> Nivel</td>
+                    <td style="text-align: center;" id="id_nivel">0</td>
+                </tr>
+                <tr>
+                    <td><i class="fa fa-book"></i> Asignaturas Nivel Aperturadas</td>
+                    <td style="text-align: center;" id="id_materias_nivel_aperturadas">0</td>
+                </tr>
+                <tr>
+                    <td> <i class="fa fa-list-ul"></i> Asignaturas Seleccionadas Nivel Aperturadas</td>
+                    <td style="text-align: center;" id="id_materias_seleccionadas_nivel_aperturadas">0</td>
+                </tr>
+                <tr>
+                    <td> <i class="fa fa-hand-o-up"></i> Asignaturas Seleccionadas</td>
+                    <td style="text-align: center;" id="id_seleccionadas">0</td>
+                </tr>
+                <tr>
+                    <td> <i class="fa fa-list-ol"></i> Totales</td>
+                    <td style="text-align: center;" id="id_materiasmaximas" val="{{ materiasmaximas }}">{{ materiasmaximas }}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row-fluid'>
+            {#        {% if not perms.sga.puede_modificar_ingles %}-------TEMPORALLLLLLLLLLLLL#}
+            <div class='span12'>
+                <h4>ASIGNATURAS DE MI MALLA</h4>
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        <th>Asignatura</th>
+                        <th style="width: 150px;">Nivel</th>
+                        <th style="width: 150px;">Eje Formativo</th>
+                        <th style="width: 50px; text-align: center;">Cr&eacute;ditos</th>
+                        <th style="width: 50px; text-align: center;">Horas</th>
+                        <th style="width: 120px; text-align: center;">Disponible</th>
+                        <th style="width: 120px; text-align: center;">Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% if materiasmalla  %}
+                            {% for materia in materiasmalla %}
+                                {% with  matriculas=materia|args:inscripcion|call:"cantidad_matriculas_asignatura" programada=materia.asignatura|args:nivel.periodo|call:"disponible_periodo" puedetomar=inscripcion|args:materia.asignatura|call:"puede_tomar_materia" estado=inscripcion|args:materia.asignatura|call:"estado_asignatura"  totalmatriculaasignatura=inscripcion|args:materia.asignatura|call:"total_matricula_asignatura" %}
+                                    <tr>
+                                        <td data-title='Asignatura:'>
+                                            {{ materia.asignatura }}
+                                            {% if matriculas %}
+                                                {% if estado != 1 %}
+                                                    <label class="label label-warning">{{ matriculas }} MAT.</label>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td data-title='Nivel:' nivel="{{ materia.nivelmalla.id }}" class="nivelm">{{ materia.nivelmalla }}</td>
+                                        <td data-title='Eje Formativo:'>{{ materia.ejeformativo }}</td>
+                                        <td data-title='Créditos:' style="text-align: center;">{{ materia.creditos }}</td>
+                                        <td data-title='Horas:' style="text-align: center;">{{ materia.horas }}</td>
+
+                                        <td data-title='Disponible:' style="text-align: center;" {% if puedetomar %}{% if estado != 1 %}{% else %}height="30"{% endif %}{% else %}{% if estado != 1 %}{% if not materia.cantidad_predecesoras  %}height="30"{% endif %}{% else %}height="30"{% endif %}{% endif %}>
+                                            {% if programada %}
+                                                {% if puedetomar %}
+                                                    {% if estado != 1 %}
+                                                        {% if totalmatriculaasignatura > 1 and not PUEDE_MATRICULARSE_OTRA_VEZ %}
+                                                            <a  href="javascript:;" class="btn btn-info btn-mini notificacion">SELECCIONAR</a>
+                                                        {% else %}
+                                                            <a id="{{ materia.asignatura.id }}" idam="{{ materia.id }}" idd="{{ materia.asignatura.id }}" nivel="{{ materia.nivelmalla.id }}"  estado="{{ estado }}" tipomateria="{{ materia.ejeformativo.id }}" class="btn btn-info btn-mini materia">SELECCIONAR</a>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% if estado != 1 %}
+                                                        {% if materia.cantidad_predecesoras  %}
+                                                            <a href="javascript:;" class="smaller predecesores" data-placement="left" rel="popover" nivel="{{ materia.nivelmalla.id }}" data-content="{% for precedencia in materia.lista_predecesoras %}{{ precedencia.predecesora.asignatura.nombre }}{% if not forloop.last %},{% endif %}{% endfor %}" data-original-title="Precedencias"> {{ materia.cantidad_predecesoras }} precedencia{% if materia.cantidad_predecesoras > 1 %}s{% endif %} </a>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="label label-important">NO PROGRAMADA</span>
+                                            {% endif %}
+                                        </td>
+                                        {% if estado == 1  %}
+                                            <td data-title='Estado:' class='estado' id='1' style="text-align: center;"><span class="label label-success">APROBADA</span></td>
+                                        {% elif estado == 2%}
+                                            <td data-title='Estado:' class='estado' id='0' style="text-align: center;"><span class="label label-important">REPROBADO</span></td>
+                                        {% else %}
+                                            <td data-title='Estado:' class='estado' id='0' style="text-align: center;"><span class="label label-warning">PENDIENTE</span></td>
+                                        {% endif %}
+                                    </tr>
+                                {% endwith %}
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="7">NO TIENE MALLA ASIGNADA</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {#        {% endif %}#}
+        </div>
+        <div class="row-fluid">
+{#            {% if perms.sga.puede_modificar_ingles %}-------temporal#}
+                <div class='span12'>
+                    <h4>MATERIAS DE M&Oacute;DULO</h4>
+                    <table class='table table-bordered table-striped' >
+                        <thead>
+                            <tr>
+                                <th>Asignatura</th>
+                                <th style="width: 120px; text-align: center;">Disponible</th>
+                                <th style="width: 120px; text-align: center;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for modulo in materiasmodulos %}
+                            <tr>
+                                <td data-title='Asignatura:'>{{ modulo.asignatura }}</td>
+                                {% with programada=modulo.asignatura|args:nivel.periodo|call:"disponible_periodo" puedetomar=inscripcion|args:modulo.asignatura|call:"puede_tomar_materia_modulo" estado=inscripcion|args:modulo.asignatura|call:"estado_asignatura" %}
+                                    <td data-title='Disponible:' style="text-align: center;" {% if puedetomar %}{% if estado != 1 %}{% else %}height="30"{% endif %}{% else %}height="30"{% endif %}>
+                                        {% if puedetomar %}
+                                            {% if estado != 1 %}
+                                                <a  href="javascript:;" id="{{ modulo.asignatura.id }}" idam="0" idd="{{ modulo.asignatura.id }}" class="btn btn-info btn-mini materia">SELECCIONAR</a>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    {% if estado == 1  %}
+                                        <td data-title='Estado:' class='estado' id='1' style="text-align: center;"><span class="label label-success">APROBADA</span></td>
+                                    {% elif estado == 2%}
+                                        <td data-title='Estado:' class='estado' id='0' style="text-align: center;"><span class="label label-important">REPROBADO</span></td>
+                                    {% else %}
+                                        <td data-title='Estado:' class='estado' id='0' style="text-align: center;"><span class="label label-warning">PENDIENTE</span></td>
+                                    {% endif %}
+                                {% endwith %}
+                            </tr>
+                        {% endfor %}
+                        {% if not materiasmodulos %}
+                            <tr><td colspan="6">NO TIENE MATERIAS DE M&Oacute;DULOS</td></tr>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+{#            {% endif %}#}
+            <a  href="javascript:;" class="btn btn-info btn-large" id="btnmatricular">MATRICULAR</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="matricular" style="display: none;">
+        <div class="modal-header">
+            <h4>Confirmar matricula</h4>
+        </div>
+        <div class="modal-body" style="min-height: 60px;">
+            <div id='confmattxt'>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" hidden="hidden" class="btn btn-matricular">Confirmar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static materiasseleccionmodal" id="materias" style="display: none;">
+        <div class="modal-header">
+            <h4>Materias abiertas</h4>
+        </div>
+        <div class="modal-body" style="overflow: scroll;">
+            <div id="panelcontent">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-cerrar cerrarpanel">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="alertas" style="display: none;">
+        <div class="modal-header">
+            <h4>Alertas</h4>
+        </div>
+        <div class="modal-body" style="height: 60px;">
+            <div id='confmattxt'>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" data-keyboard="true" data-backdrop="static" id="matricularmensajespanel" >
+        <div class="modal-header">
+            <h4>Matriculando</h4>
+        </div>
+        <div class="modal-body" style="height: 60px;">
+            <div id='confmattxt'>
+            </div>
+        </div>
+        <div class="modal-footer" id='btnfinal1' hidden="hidden">
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+        <div class="modal-footer" id='btnfinal2' hidden="hidden">
+            <a href="javascript:;" class="btn btn-cerrar2">Aceptar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static materiasseleccionpracticamodal" style="display: none;">
+        <div class="modal-header">
+            <h4>Seleccione horario practica</h4>
+        </div>
+        <div class="modal-body" style="overflow: scroll;">
+            <div id="panelcontentpractica">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn cerrarpanelpractica">Cerrar</a>
+        </div>
+    </div>
+     <div class="modal fade static" id="notificacion" >
+        <div class="modal-header">
+            <h4>Notificación</h4>
+        </div>
+        <div class="modal-body" style="overflow: auto;">
+            <div id='mensaje_notificacion' style="text-align: justify"><span style="text-align: justify; font-size: 14px">{{ NOTIFICACION_NO_MATRICULARSE_OTRA_VEZ }}</span></div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="notificacion_cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

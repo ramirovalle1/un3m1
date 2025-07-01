@@ -1,0 +1,274 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+
+    <script type="text/javascript">
+        var busqueda = function(page/*=undefined*/){
+            var term = $("#searchinput").val().trim().toUpperCase();
+            page = typeof page == 'undefined' ? 1 : page;
+            if(term.length>0){
+                bloqueointerface();
+                location.href = `/pro_cronograma?action=calificacioncurso&s=${term}&id={{ materia.id|encrypt }}`;
+            }
+            else{
+                bloqueointerface();
+            }
+            return false;
+        };
+        $(function() {
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+{#            {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones %}#}
+            {% if habilitado_ingreso_calificaciones %}
+                $(".nota").blur(function(){
+                    numerico($(this), 0, parseInt({{ materia.calfmaxima }}), 2);
+                });
+                $(".nota").change(function() {
+                    var valor;
+                    var mid = $(this).attr("mid");
+                    var va = $(this).attr("va");
+                    var elemento = $(this);
+                    {#numerico(elemento, 0, parseInt({{ materia.calfmaxima }}), 2);#}
+                    valor = $(this).val();
+                    bloqueointerface();
+                    $.post("/pro_cronograma", {'action': 'notacurso',  'id': mid, 'valor': valor }, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            elemento.css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                            $("#not_"+mid).val(data.valor).attr({'va': data.valor});
+                            if (data.curso){
+                                $("#estado_"+mid).html("<label class='label label-info'>"+data.estado+"</label>");
+                            } else {
+                                if (data.aprobada){
+                                    $("#estado_"+mid).html("<label class='label label-success'>"+data.estado+"</label>");
+                                } else {
+                                    $("#estado_"+mid).html("<label class='label label-important'>"+data.estado+"</label>");
+                                }
+                            }
+                        } else {
+                            elemento.css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                            $("#not_"+mid).val(va);
+                        }
+                    });
+                });
+
+                $(".asistencia").change(function() {
+                    var valor;
+                    var mid = $(this).attr("mid");
+                    var va = $(this).attr("va");
+                    var elemento = $(this);
+                    numerico(elemento, 0, 100, 0);
+                    valor = $(this).val();
+                    bloqueointerface();
+                    $.post("/pro_cronograma", {'action': 'asistcurso',  'id': mid, 'valor': valor }, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            elemento.css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                            $("#asis_"+mid).val(data.valor).attr({'va': data.valor});
+                            if (data.curso){
+                                $("#estado_"+mid).html("<label class='label label-info'>"+data.estado+"</label>");
+                            } else {
+                                if (data.aprobada){
+                                    $("#estado_"+mid).html("<label class='label label-success'>"+data.estado+"</label>");
+                                } else {
+                                    $("#estado_"+mid).html("<label class='label label-important'>"+data.estado+"</label>");
+                                }
+                            }
+                        } else {
+                            elemento.css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                            $("#asis_"+mid).val(va);
+                        }
+                    });
+                });
+            {% else %}
+                $('#envioclave').click(function(){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_cronograma",
+                        data: {'action': 'envioclave'},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                smoke.alert("Se ha generado y enviado correctamente la clave para ingreso de notas.");
+                            } else {
+                                smoke.alert("Error al generar la clave.");
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al generar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+                $('#ingresoclave').click(function(){
+                    bloqueointerface();
+                    clave = $('#clave').val();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_cronograma",
+                        data: {'action': 'verificacionclave', 'clave': clave},
+                        success: function(data) {
+                            if (data.result=='ok') {
+                                location.href = 'pro_cronograma?action=calificacioncurso&id={{ materia.id|encrypt }}&sel={{ sel }}';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al verificar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_cronograma{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Materia: {{ materia.asignatura }} </h5>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            <table id="tablaBusqueda" class="table table-hover tablaBusquedaSearch">
+                <tbody>
+                    <tr>
+                        <td>
+                            <form class="form-search" onsubmit="return busqueda()">
+                                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off" placeholder="BUSCAR ESTUDIANTE"/>
+                                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i></a>
+                                {% if search or ids %}
+                                    <a href="/pro_cronograma?action=calificacioncurso&id={{ materia.id|encrypt }}" id='allresults' class='btn btn-info'><span class="fa fa-refresh " ></span> Todos</a>
+{#                                    <a href="javascript:;" class='btn btn-mini btn-inverse tu action_clean' title="Limpiar"><span class="fa fa-remove"></span></a>#}
+                                {% endif %}
+                            </form>
+                        </td>
+                    </tr>
+
+                </tbody>
+            </table>
+        </div>
+{#                <form method="GET" action="{{ request.path }}">#}
+
+    </div>
+
+    {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones and not materia.cerrada%}
+        <div class='row-fluid'>
+            <div class='span12'>
+                <div class="alert alert-danger">
+                    <div class="form-horizontal">
+                        <b>Clave:</b> <input class="input-control input-small" id="clave" type="text" value="">
+                        <a  href="javascript:;" class="btn btn-info tu" id="ingresoclave" title="Ingreso de clave"><i class="fa fa-key"></i></a>
+                        <span style="margin-left: 20px">Debe generar una clave para poder ingresar calificaciones cada vez que ingrese al sistema, la misma sera enviada a su correo electronico registrado en su hoja de vida.
+                            <a href="javascript:;" class="btn btn-success btn-mini tu" id="envioclave" title="Envio de clave al correo"><i class="fa fa-envelope"></i> Generar</a>
+                            </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        {% if not materia.cerrada %}
+            <div class='row-fluid'>
+                <div class='span12'>
+                    <a href="/pro_cronograma?action=cerrarmateriacurso&id={{ materia.id|encrypt }}" class="btn btn-danger btn-form" id="cerrarproyecto">Cerrar Materia</a>
+                </div>
+            </div>
+        {% endif %}
+        <div class="row-fluid">
+            <div class="span12">
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        <th>Estudiante</th>
+                        <th>Carrera</th>
+                        <th>Datos de contacto</th>
+                        <th style="width: 90px;text-align: center;">Calificaci&oacute;n</th>
+                        <th style="width: 90px;text-align: center;">Asistencia</th>
+                        <th style="width: 90px;text-align: center;">Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if registrados %}
+                        {% for registrado in registrados %}
+                            <tr>
+                                <td>
+                                    {{ registrado.inscripcion.inscripcion.persona}}<br>
+                                    <i class="fa fa-address-card"></i> {{ registrado.inscripcion.inscripcion.persona.cedula }}
+                                </td>
+                                <td>
+                                    {{ registrado.inscripcion.inscripcion.carrera }}
+                                </td>
+                                <td>
+                                    <div class="media flex-nowrap align-items-center"
+                                         style="white-space: nowrap;">
+
+                                        <div class="media-body" style="width: 180px">
+                                            <div class="d-flex align-items-center">
+                                                <div class="flex d-flex flex-column">
+
+                                                    <i class="fa fa-phone"></i> {{ registrado.inscripcion.inscripcion.persona.telefono }}
+                                                    {% if registrado.inscripcion.inscripcion.persona.telefono %}
+                                                        <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ registrado.inscripcion.inscripcion.persona.telefono }}&text=Hola {{ registrado.inscripcion.inscripcion.persona }}'
+                                                           target="_blank" class="btn btn-mini btn-success tu"
+                                                           title="Enviar mensaje por whatsapp">
+                                                            <i class="fa fa-whatsapp"></i>
+                                                        </a>
+                                                    {% endif %}<br>
+                                                    <a href="mailto:{{ registrado.inscripcion.inscripcion.persona.emailinst }}" Subject="">
+                                                        <i class="fa fa-envelope"></i> {{ registrado.inscripcion.inscripcion.persona.emailinst }}</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if not materia.cerrada %}
+                                        <input class="nota" style="width: 60%; text-align: center;" type="text" mid = "{{ registrado.id  }}" id="not_{{ registrado.id }}" va="{{ registrado.calificacion }}" value="{{ registrado.calificacion }}">
+                                    {% else %}
+                                        {{ registrado.calificacion }}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if not materia.cerrada %}
+                                        <input class="asistencia" style="width: 60%; text-align: center;" type="text" mid = "{{ registrado.id  }}" id="asis_{{ registrado.id }}" va="{{ registrado.asistencia }}" value="{{ registrado.asistencia }}">
+                                    {% else %}
+                                        {{ registrado.asistencia|floatformat:0 }}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;" id="estado_{{ registrado.id }}">
+                                    <label class="label {% if registrado.estado.aprobada %}label-success{% elif registrado.estado.reprobado %}label-important{% else %}label-info{% endif %}">{{ registrado.estado }}</label>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {%  else %}
+                        <tr>
+                            <td colspan="15">NO TIENE ESTUDIANTES REGISTRADOS</td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+                {% if materia.calificar %}
+                    <p style="color: red">La calificacion del curso es de (0-{{ materia.calfmaxima|floatformat:2 }}) con un valor minimo de {{ materia.calfminima|floatformat:2 }} y un % de asistencia minima de {{ materia.asistminima|floatformat:0 }}%</p>
+                {% else %}
+                    <p style="color: red">Este curso no se califica, solo se valida el % de asistencia para considerar aprobado el mismo, minima: {{ materia.asistminima|floatformat:0 }}%</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

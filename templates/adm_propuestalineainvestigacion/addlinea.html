@@ -1,0 +1,518 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function () {
+            var secuenciapregrado = 0;
+            var secuenciaposgrado = 0;
+
+            $("#id_nombre, #id_fecharesolucion, #id_numeroresolucion, #id_contexto, #id_descripcion, #id_alcance").addClass("validate[required]");
+            $("#id_areaunesco").addClass("validate[required]");
+            $("#id_archivo").addClass("validate[required]");
+            $("#id_fecharesolucion").datepicker({format: "dd-mm-yyyy"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            });
+
+            $(".agregapregrado").click(function() {
+                $('#facultadpregrado').val(0).trigger("change");
+                $("#itemspanelpregrado").modal({backdrop:'static', width: '700px'}).modal('show');
+            });
+
+            $("#itemspanelpregrado .agregar").click(function () {
+                if(datosCompletosPregrado()){
+                    var i = 0;
+                    var codigo_facultad = $("#facultadpregrado").val();
+                    var nombre_facultad = $("#facultadpregrado").find(":selected").text();
+                    var codigos_carreras =  $("#carrerapregrado").val();
+                    var nombres_carreras = $('#carrerapregrado option:selected').toArray().map(item => item.text);
+
+                    for(i=0; i < codigos_carreras.length; i++){
+                        codcarr = codigos_carreras[i];
+                        if($("#filapre_"+codigo_facultad+"_"+codcarr).length > 0){
+                            smoke.alert("La carrera "+nombres_carreras[i]+" ya ha sido agregada al detalle");
+                            return false;
+                        }
+                    }
+
+                    borrar_fila_default_pregrado();
+
+                    for(i=0; i < codigos_carreras.length; i++) {
+                        codcarr = codigos_carreras[i];
+                        nombre_carrera = nombres_carreras[i];
+                        secuenciapregrado ++;
+
+                        nueva_fila = '<tr class="detallepregrado" id="filapre_'+codigo_facultad+'_'+codcarr+'" idfac="'+codigo_facultad+'" idcarr="'+codcarr+'">' +
+                                     '<td style="text-align: right">'+secuenciapregrado.toString()+'</td>'+
+                                     '<td style="text-align: justify">'+nombre_facultad+'</td>'+
+                                     '<td style="text-align: justify">'+nombre_carrera+'</td>'+
+                                     '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritempregrado tu" idfac="'+codigo_facultad+'" idcarr="'+codcarr+'" title="Eliminar"><i class="fa fa-remove"></i></a></td>'
+                                     '</tr>';
+
+                        $("#detalle_pregrado").append(nueva_fila);
+                        $(".eliminaritempregrado").unbind("click.eliminaritempregrado");
+                        $(".eliminaritempregrado").bind("click.eliminaritempregrado", eliminarItemPregrado);
+                    }
+                    actualizar_lista_pregrado();
+                    $('#itemspanelpregrado').modal('hide');
+                }
+            });
+
+            datosCompletosPregrado = function (){
+                var c1e = true, c2e = true;
+
+                if($("#facultadpregrado").val() == ''){
+                    smoke.alert("Seleccione la facultad");
+                    c1e = false;
+                    return false;
+                }
+
+                if($('select[name=carrerapregrado] option:selected').size() == 0) {
+                    smoke.alert("Seleccione la(s) carrera(s) de la facultad");
+                    c2e = false;
+                    return false;
+                }
+
+                return c1e && c2e;
+            };
+
+            eliminarItemPregrado = function() {
+                var idf = $(this).attr("idfac");
+                var idc = $(this).attr("idcarr");
+                $("#filapre_"+idf+"_"+idc).remove();
+
+                secuenciapregrado = 0;
+                $("#tbdetallepregrado tbody tr").each(function (index) {
+                    secuenciapregrado ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciapregrado.toString());
+                    });
+                });
+
+                if(secuenciapregrado == 0)
+                    agregar_fila_default_pregrado();
+
+                actualizar_lista_pregrado();
+            };
+
+            actualizar_lista_pregrado = function () {
+                lista_items1 = [];
+                var idf = "";
+                var idc = "";
+                $(".detallepregrado").each(function(){
+                    idf = parseInt($(this).attr('idfac'));
+                    idc = parseInt($(this).attr('idcarr'));
+                    var item = {
+                        facultad: idf,
+                        carrera: idc
+                    };
+                    lista_items1.push(item);
+                });
+            }
+
+            agregar_fila_default_pregrado = function (){
+                filadefault = '<tr id="fila_default_pregrado">'+
+                              '<td colspan="4" style="text-align: center">NO EXISTEN CARRERAS DE PREGRADO EN EL DETALLE</td>'+
+                              '</tr>';
+                $("#detalle_pregrado").append(filadefault);
+            };
+
+            borrar_fila_default_pregrado = function (){
+                $("#fila_default_pregrado").remove();
+            };
+
+            $("#itemspanelpregrado .cerrar").click(function () {
+                $('#itemspanelpregrado').modal('hide');
+            });
+
+            $("#itemspanelpregrado .cerrar2").click(function () {
+                $('#itemspanelpregrado').modal('hide');
+            });
+
+            $('#facultadpregrado').change(function(){
+                $('#carrerapregrado').empty().val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#facultadpregrado").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_prolineainvestigacion",
+                        data: {'action': 'carrerascoordinacion', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#carrerapregrado').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $(".agregaposgrado").click(function() {
+                $('#facultadposgrado').val(0).trigger("change");
+                $("#itemspanelposgrado").modal({backdrop:'static', width: '900px'}).modal('show');
+            });
+
+            $("#itemspanelposgrado .agregar").click(function () {
+                if(datosCompletosPosgrado()) {
+                    var i = 0;
+                    var codigo_facultad = $("#facultadposgrado").val();
+                    var nombre_facultad = $("#facultadposgrado").find(":selected").text();
+                    var codigos_carreras =  $("#carreraposgrado").val();
+                    var nombres_carreras = $('#carreraposgrado option:selected').toArray().map(item => item.text);
+
+                    for(i=0; i < codigos_carreras.length; i++){
+                        codcarr = codigos_carreras[i];
+                        if($("#filapos_"+codigo_facultad+"_"+codcarr).length > 0){
+                            smoke.alert("El programa "+nombres_carreras[i]+" ya ha sido agregado al detalle");
+                            return false;
+                        }
+                    }
+
+                    borrar_fila_default_posgrado();
+
+                    for(i=0; i < codigos_carreras.length; i++) {
+                        codcarr = codigos_carreras[i];
+                        nombre_carrera = nombres_carreras[i];
+                        secuenciaposgrado ++;
+
+                        nueva_fila = '<tr class="detalleposgrado" id="filapos_'+codigo_facultad+'_'+codcarr+'" idfac="'+codigo_facultad+'" idcarr="'+codcarr+'">' +
+                                     '<td style="text-align: right">'+secuenciaposgrado.toString()+'</td>'+
+                                     '<td style="text-align: justify">'+nombre_facultad+'</td>'+
+                                     '<td style="text-align: justify">'+nombre_carrera+'</td>'+
+                                     '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritemposgrado tu" idfac="'+codigo_facultad+'" idcarr="'+codcarr+'" title="Eliminar"><i class="fa fa-remove"></i></a></td>'
+                                     '</tr>';
+
+                        $("#detalle_posgrado").append(nueva_fila);
+                        $(".eliminaritemposgrado").unbind("click.eliminaritemposgrado");
+                        $(".eliminaritemposgrado").bind("click.eliminaritemposgrado", eliminarItemPosgrado);
+                    }
+                    actualizar_lista_posgrado();
+                    $('#itemspanelposgrado').modal('hide');
+                }
+            });
+
+            datosCompletosPosgrado = function (){
+                var c1e = true, c2e = true;
+
+                if($("#facultadposgrado").val() == ''){
+                    smoke.alert("Seleccione la facultad");
+                    c1e = false;
+                    return false;
+                }
+
+                if($('select[name=carreraposgrado] option:selected').size() == 0) {
+                    smoke.alert("Seleccione el(los) programas(s) de posgrado");
+                    c2e = false;
+                    return false;
+                }
+
+                return c1e && c2e;
+            };
+
+            eliminarItemPosgrado = function() {
+                var idf = $(this).attr("idfac");
+                var idc = $(this).attr("idcarr");
+                $("#filapos_"+idf+"_"+idc).remove();
+
+                secuenciaposgrado = 0;
+                $("#tbdetalleposgrado tbody tr").each(function (index) {
+                    secuenciaposgrado ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaposgrado.toString());
+                    });
+                });
+
+                if(secuenciaposgrado == 0)
+                    agregar_fila_default_posgrado();
+
+                actualizar_lista_posgrado();
+            };
+
+            actualizar_lista_posgrado = function () {
+                lista_items2 = [];
+                var idf = "";
+                var idc = "";
+                $(".detalleposgrado").each(function(){
+                    idf = parseInt($(this).attr('idfac'));
+                    idc = parseInt($(this).attr('idcarr'));
+                    var item = {
+                        facultad: idf,
+                        carrera: idc
+                    };
+                    lista_items2.push(item);
+                });
+            }
+
+            agregar_fila_default_posgrado = function (){
+                filadefault = '<tr id="fila_default_posgrado">'+
+                              '<td colspan="4" style="text-align: center">NO EXISTEN PROGRAMAS DE POSGRADO EN EL DETALLE</td>'+
+                              '</tr>';
+                $("#detalle_posgrado").append(filadefault);
+            };
+
+            borrar_fila_default_posgrado = function (){
+                $("#fila_default_posgrado").remove();
+            };
+
+            $("#itemspanelposgrado .cerrar").click(function () {
+                $('#itemspanelposgrado').modal('hide');
+            });
+
+            $("#itemspanelposgrado .cerrar2").click(function () {
+                $('#itemspanelposgrado').modal('hide');
+            });
+
+            $('#facultadposgrado').change(function(){
+                $('#carreraposgrado').empty().val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#facultadposgrado").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_prolineainvestigacion",
+                        data: {'action': 'carrerascoordinacion', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#carreraposgrado').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+        });
+
+        $(function () {
+            $("#id_campoaccion_select2").addClass("validate[required]");
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '---------';
+                }
+            };
+            $("#id_campoaccion_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/adm_prolineainvestigacion?action=busquedacampoaccion&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_campoaccion").attr({"value": (evt.params.data.id)});
+            });
+        });
+
+        $(function () {
+            $('#id_facultad').on('change', function () {
+                var option = $('#id_facultad option:selected');
+                $('#id_carreras').find('option:selected').remove().end();
+                $('#id_carreras').select2({
+                    placeholder: 'Seleccione Carrera',
+                    ajax: {
+                        // el formato es "/listmodel/<nombre_modelo>"
+                        url: '/adm_prolineainvestigacion?action=consultacarreras&id=' + option.val(),
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                search: params.term
+                            };
+                        },
+                        processResults: function (response) {
+                            return {
+                                results: response.result
+                            };
+                        }
+                    }
+                });
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_prolineainvestigacion{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/adm_prolineainvestigacion{% endblock %}
+{% block formaction %}/adm_prolineainvestigacion{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addlinea'/>
+{% endblock %}
+{% block formback %}/adm_prolineainvestigacion{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div id="separator2_pregrado" style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_pregrado" style="padding:0 10px; background: #f5f5f5;">Carreras de Pregrado</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetallepregrado">
+            <thead>
+            <tr>
+                <th style="width: 3%; text-align: center;">#</th>
+                <th style="width: 40%; text-align: center;">Facultad</th>
+                <th style="width: 54%; text-align: center;">Carrera</th>
+                <th style="width: 3%"><a href="javascript:;" id="btnagregarpregrado" class="btn btn-success btn-mini agregapregrado" data-toggle="tooltip" data-placement="bottom" data-original-title="Agregar Carrera de Pregrado"><i class="fa fa-plus"></i> </a></th>
+            </tr>
+            </thead>
+            <tbody id="detalle_pregrado">
+                <tr id="fila_default_pregrado">
+                    <td colspan="4" style="text-align: center">NO EXISTEN CARRERAS DE PREGRADO EN EL DETALLE</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="separator2_posgrado" style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_posgrado" style="padding:0 10px; background: #f5f5f5;">Programas de Posgrado</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetalleposgrado">
+            <thead>
+            <tr>
+                <th style="width: 3%; text-align: center;">#</th>
+                <th style="width: 40%; text-align: center;">Facultad</th>
+                <th style="width: 54%; text-align: center;">Programa</th>
+                <th style="width: 3%"><a href="javascript:;" id="btnagregarposgrado" class="btn btn-success btn-mini agregaposgrado" data-toggle="tooltip" data-placement="bottom" data-original-title="Agregar Programa de Posgrado"><i class="fa fa-plus"></i> </a></th>
+            </tr>
+            </thead>
+            <tbody id="detalle_posgrado">
+                <tr id="fila_default_posgrado">
+                    <td colspan="4" style="text-align: center">NO EXISTEN PROGRAMAS DE POSGRADO EN EL DETALLE</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelpregrado" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitlepregrado">Agregar Carreras de Pregrado</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodypregrado">
+            <table class="table table-bordered" >
+                <tbody>
+                    <tr>
+                        <td style="width: 15%">Facultad:</td>
+                        <td>
+                            <select id="facultadpregrado" name="facultadpregrado" style="width: 95%">
+                                <option value="" selected>---------</option>
+                                {% for facultad in facultadespregrado %}
+                                    <option value="{{ facultad.id }}">{{ facultad.nombre }} ({{ facultad.alias }})</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 15%">Carrera(s):</td>
+                        <td>
+                            <select id="carrerapregrado" multiple name="carrerapregrado" style="width: 95%">
+                            </select>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success agregar"> Agregar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelposgrado" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleposgrado">Agregar Programas de Posgrado</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyposgrado">
+            <table class="table table-bordered" >
+                <tbody>
+                    <tr>
+                        <td style="width: 15%">Facultad:</td>
+                        <td>
+                            <select id="facultadposgrado" name="facultadposgrado" style="width: 95%">
+                                <option value="" selected>---------</option>
+                                {% for facultad in facultadesposgrado %}
+                                    <option value="{{ facultad.id }}">{{ facultad.nombre }} ({{ facultad.alias }})</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 15%">Programa(s):</td>
+                        <td>
+                            <select id="carreraposgrado" multiple name="carreraposgrado" style="width: 95%">
+                            </select>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success agregar"> Agregar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+
+{% endblock %}

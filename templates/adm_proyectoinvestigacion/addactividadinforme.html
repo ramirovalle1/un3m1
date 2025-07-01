@@ -1,0 +1,229 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+        <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+        <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+        <script>
+            $(function(){
+                $(document).ready(function () {
+                    $('[data-toggle="tooltip"]').tooltip();
+                });
+
+                var pminimo = "";
+                var pmaximo = "";
+                var efecha = false;
+                var finicio = "";
+                var ffin = "";
+
+                $("#filafecha").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); calcularFechaFin(); });
+
+                $("#actividad").addClass("validate[required]");
+                $("select").select2({minimumResultsForSearch: 5 });
+
+                $("#porcentajeactual").blur(function(){
+                    numerico($(this), 0, 0, 2);
+
+                    if(parseFloat($("#porcentajeactual").val()) == parseFloat($("#ponderacion").val()))
+                        $("#estado").val("FINALIZADA");
+                    else
+                        $("#estado").val("EN EJECUCIÓN");
+                });
+
+                $("#cantidadhora").blur(function(){
+                    numerico($(this), 1, 500, 0);
+                });
+
+                $('#actividad').change(function(){
+                    var id = $(this).val();
+
+                    limpiarCampos();
+
+                    if (id > 0) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "GET",
+                            url: "/adm_proyectoinvestigacion",
+                            data: {'action': 'datosactividad', 'id': id},
+                            success: function (data) {
+                                $.unblockUI();
+                                if (data.result == 'ok') {
+                                    pminimo = data.avanceanterior;
+                                    pmaximo = data.ponderacion;
+                                    finicio = data.fechainicio;
+                                    ffin = data.fechafin;
+                                    habilitarCampos();
+                                    $("#fechainicio").val(data.fechainicio);
+                                    $("#fechafin").val(data.fechafin);
+                                    $("#ponderacion").val(data.ponderacion);
+                                    $("#porcentajeanterior").val(data.avanceanterior);
+                                    $("#estado").val(data.estado);
+                                    $("#entregable").val(data.entregables);
+                                } else {
+                                    control.val(0).trigger("change");
+                                    mensajeErrorSwal("No se puede consultar", data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", "Error de conexión")
+                            },
+                            dataType: "json"
+                        });
+                    }
+                });
+
+                limpiarCampos = function (){
+                    $("#fechainicio").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                    $("#fechafin").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                    $("#cantidadhora").prop('disabled', true);
+                    $("#porcentajeactual").prop('disabled', true);
+                    $("#observacion").prop('disabled', true);
+                    $("#entregable").prop('disabled', true);
+                    $("#responsable").prop('disabled', true);
+                    $("#fechainicio, #fechafin, #porcentajeactual, #observacion, #estado, #entregable, #cantidadhora, #ponderacion, #porcentajeanterior").val("");
+                    $("#responsable").val("0").trigger('change');
+                    $("#btneditarfecha, #btncanceleditfecha, #btnseleccionartodo").hide();
+                };
+
+                habilitarCampos = function (){
+                    $("#porcentajeactual").prop('disabled', false);
+                    $("#observacion").prop('disabled', false);
+                    $("#entregable").prop('disabled', false);
+                    $("#responsable").prop('disabled', false);
+                    $("#cantidadhora").prop('disabled', false);
+
+                    if(parseFloat(pminimo) == 0)
+                        pminimo = "0.01";
+
+                    $("#porcentajeactual").addClass("validate[required, min["+pminimo+"], max["+pmaximo+"]");
+                    $("#responsable").addClass("validate[required]");
+                    $("#cantidadhora").addClass("validate[required], min[1], max[500]");
+                    $("#btneditarfecha, #btnseleccionartodo").show();
+                };
+
+                $(".editarfechas").click(function() {
+                    efecha = true;
+                    habilitarCamposFecha();
+                    $("#observacion").addClass("validate[required]");
+                    $("#fechaeditada").val("S");
+                });
+
+                $(".cancelaredicionfechas").click(function() {
+                    efecha = false;
+                    inhabilitarCamposFecha();
+                    $("#observacion").removeClass("validate[required]");
+                    $("#fechaeditada").val("N");
+                });
+
+                $(".seleccionartodos").click(function (){
+                    $('#responsable option').prop('selected', true);
+                    $('#responsable').trigger('change');
+                });
+
+                habilitarCamposFecha = function (){
+                    $("#fechainicio").prop('disabled', false).css('cursor', 'text').css('background-color', '#FFFFFF');
+                    $("#fechafin").prop('disabled', false).css('cursor', 'text').css('background-color', '#FFFFFF');
+                    $("#btneditarfecha").hide();
+                    $("#btncanceleditfecha").show();
+                };
+
+                inhabilitarCamposFecha = function (){
+                    $("#fechainicio").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                    $("#fechafin").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                    $("#fechainicio").val(finicio);
+                    $("#fechafin").val(ffin);
+                    $("#btneditarfecha").show();
+                    $("#btncanceleditfecha").hide();
+                };
+
+                $('#actividad').val('').trigger('change');
+
+            });
+        </script>
+{% endblock %}
+<form id="frmactividadinforme" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    <input type='hidden' name='fechaeditada' value='N'/>
+    <table class="table table-bordered">
+        <tr>
+            <td style="width: 20%;">Actividad:</td>
+            <td style="width: 80%;" colspan="3">
+                <select id="actividad" name="actividad" style="width: 600px;">
+                    <option value="" selected>---------</option>
+                    {% for actividad in actividades %}
+                        <option value="{{ actividad.id }}">{{ actividad.actividad }}</option>
+                    {% endfor %}
+                </select>
+                <div class="help-text"></div>
+            </td>
+        </tr>
+        <tr id="filafecha">
+            <td style="width: 20%;">
+                Fecha Inicio: <a href="javascript:;" id="btneditarfecha" class="btn btn-info btn-mini editarfechas" data-toggle="tooltip" data-placement="bottom" data-original-title="Editar fechas"><i class="fa fa-edit"></i> </a>
+                <a href="javascript:;" id="btncanceleditfecha" class="btn btn-danger btn-mini cancelaredicionfechas" data-toggle="tooltip" data-placement="bottom" data-original-title="Deshacer edición de fechas"><i class="fa fa-undo"></i> </a>
+            </td>
+            <td style="width: 30%;">
+                <input type="text" class="selectorfecha" id="fechainicio" name="fechainicio" value="" style="width: 50%;" readonly disabled/>
+            </td>
+            <td style="width: 20%;">Fecha Fin:</td>
+            <td style="width: 30%;">
+                <input type="text" class="selectorfecha" id="fechafin" name="fechafin" value="" style="width: 50%;" readonly disabled/>
+            </td>
+        </tr>
+        <tr>
+            <td style="width: 20%;">Cantidad Horas:</td>
+            <td style="width: 30%;">
+                <input type="text" maxlength="5" autocomplete="off" id="cantidadhora" name="cantidadhora" value="" style="width: 50%; text-align: right" disabled>
+                <div class="help-text"></div>
+            </td>
+            <td colspan="2">&nbsp;</td>
+        </tr>
+        <tr>
+            <td style="width: 20%;">Ponderación %:</td>
+            <td style="width: 30%;">
+                <input type="text" maxlength="5" autocomplete="off" id="ponderacion" name="ponderacion" value="" style="width: 50%; text-align: right" disabled>
+            </td>
+            <td style="width: 20%;">Avance Anterior %:</td>
+            <td style="width: 30%;">
+                <input type="text" maxlength="5" autocomplete="off" id="porcentajeanterior" name="porcentajeanterior" value="" style="width: 50%; text-align: right" disabled>
+            </td>
+        </tr>
+        <tr>
+            <td style="width: 20%;">Avance Actual %:</td>
+            <td style="width: 30%;">
+                <input type="text" maxlength="5" autocomplete="off" id="porcentajeactual" name="porcentajeactual" value="" style="width: 50%; text-align: right" disabled>
+                <div class="help-text"></div>
+            </td>
+            <td style="width: 20%;">Estado:</td>
+            <td style="width: 30%;">
+                <input type="text" maxlength="5" autocomplete="off" id="estado" name="estado" value="" style="width: 50%;" disabled>
+            </td>
+        </tr>
+        <tr>
+            <td>Entregables:</td>
+            <td colspan="3">
+                <input type="text" maxlength="250" autocomplete="off" id="entregable" name="entregable" value="" style="width: 95%; text-transform: none">
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Responsables:<a href="javascript:;" id="btnseleccionartodo" class="btn btn-info btn-mini seleccionartodos" data-toggle="tooltip" data-placement="bottom" data-original-title="Seleccionar todos"><i class="fa fa-check-square"></i> </a>
+            </td>
+            <td colspan="3">
+                <select id="responsable" multiple name="responsable" style="width: 95%">
+                    {% for integrante in integrantes %}
+                        <option value="{{ integrante.persona.id }}">{{ integrante.persona }}</option>
+                    {% endfor %}
+                </select>
+                <div class="help-text"></div>
+            </td>
+        </tr>
+        <tr>
+            <td>Observaciones:</td>
+            <td colspan="3">
+                <textarea style="width: 95%; text-transform: none;" cols="40" id="observacion" name="observacion" rows="4" disabled></textarea>
+                <div class="help-text"></div>
+            </td>
+        </tr>
+    </table>
+</form>

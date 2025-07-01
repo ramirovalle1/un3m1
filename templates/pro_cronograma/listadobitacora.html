@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <style>
+        #app {padding-left: 1.5rem !important;padding-right: 1.5rem !important}
+        .table_striped thead th:nth-child(2), .table_striped thead td:nth-child(2) {text-align: left !important;padding-left: 15px}
+        .table_primary thead th:first-child, .table_primary thead td:first-child {width: 20px;background-color: #1c3247}
+        .table_warning thead th:first-child, .table_warning thead td:first-child {width: 20px;background-color: #fe9900}
+        html {
+            scroll-behavior: smooth;
+        }
+
+        .btn-success {background-color: #15ca9a !important}
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $(".eliminaregistro").click(function () {
+                var idnombre = $(this).attr('idnombre');
+                var pk = $(this).attr('indice');
+                var accion = $(this).attr('opc');
+                Swal.fire({
+                    html: '<b>Estás por eliminar registro: </b>' + idnombre,
+                    text: "Esta acción es irreversible",
+                    type: 'info',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: 'POST',
+                            url: '{{ reques.path }}',
+                            async: false,
+                            data: {
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                action: accion,
+                                id: pk,
+                            },
+                            dataType: "json",
+                            beforeSend: function () {
+                                bloqueointerface();
+                            }
+                        }).done(function (data) {
+                            {#setTimeout($.unblockUI, 1);#}
+                            if (data.result == 'ok') {
+                                location.reload();
+                            }
+                        }).fail(function (jqXHR, textStatus, errorThrown) {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                        }).always(function () {
+                        });
+                    } else {
+                    }
+                })
+            });
+            $(".mostrardetalle_view").click(function() {
+                var id = $(this).attr('ide');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_cronograma",
+                    data: {'action': 'ver_detalleevidencia', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody_rubrica").html(data.data);
+                            $("#itemspanel_rubrica").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".btn-cerrar-rubrica").click(function(){
+                $('#itemspanel_rubrica').modal('hide');
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_cronograma{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle ps-0">
+                <h3 class="py-1">Actividad:
+                    {% if not subactividad %}
+                        {{ detalledistributivo.criteriodocenciaperiodo.criterio|lower|capfirst }}{{ detalledistributivo.criterioinvestigacionperiodo.criterio|lower|capfirst }}{{ detalledistributivo.criteriogestionperiodo.criterio|lower|capfirst }}
+                    {% else %}
+                        {{ subactividad.subactividaddocenteperiodo.criterio.nombre|lower|capfirst }}
+                    {% endif %}
+                </h3>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class='col-lg-12 px-4'>
+            <div class="alert alert-primary d-flex align-items-center alert-dismissible fade show" role="alert">
+                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+                <div>
+                    Estimad{% if persona.es_mujer %}a{% else %}o{% endif %} {{ persona.un_nombre_dos_apellidos|lower|title }},
+                    {% if subactividad and not subactividad.subactividaddocenteperiodo.validacion %}
+                        en caso de registrar bitacoras, <b>NO</b> podra realizar registros del mes posterior a la fecha máxima de registro.
+                    {% else %}
+                        <b>NO</b> podrá realizar registros en la bitácora del mes posterior a la <a href="#fechamaxima" style="text-decoration: underline;" class="text-dark">fecha máxima</a> de registro.
+                    {% endif %}
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        {#        <a href="/pro_cronograma?action=addbitacora&id={{ detalledistributivo.id|encrypt }}&p=0" class='btn btn-success bloqueo_pantalla'><span class="fa fa-plus" ></span> Adicionar</a>#}
+        <div class="mb-4">
+            <br>
+            <div class="row">
+                <div class="col-12">
+                    <h3 class="fw-bold" style="font-size: 19px;"><i class="fa fa-warning text-danger fs-3"></i>&nbsp;&nbsp;
+                        {% if subactividad and not subactividad.subactividaddocenteperiodo.validacion %}Registro de bitácoras{% else %}Bitácoras pendientes{% endif %}
+                    </h3>
+                </div>
+            </div>
+            <div class="table-responsive">
+            <table class='table table_warning table_striped' id="example">
+                <thead class="table-light">
+                <tr>
+                    <th style="border:0!important;"></th>
+                    <th>BITÁCORAS</th>
+                    <th style="width: 150px;text-align: center;" >DESDE</th>
+                    <th style="width: 150px;text-align: center;">HASTA</th>
+                    <th style="width: 150px;text-align: center;">FECHA MÁXIMA</th>
+                    <th style="width: 200px;text-align: center;">ACCIONES</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% if evidenciaactividaddetalledistributivo %}
+                    {% for listabitacora in evidenciaactividaddetalledistributivo %}
+                        <tr>
+                            <td></td>
+                            <td class="text-dark"><b>{{ listabitacora.nombre|lower|capfirst }}</b></td>
+                            <td style="text-align: center;">{{ listabitacora.fechaini|date:"d/m/Y" }} </td>
+                            <td style="text-align: center;">{{ listabitacora.fechafin|date:"d/m/Y" }}</td>
+                            <td style="text-align: center;">
+                                <span class="text-danger tu fw-bold fechamaxima" style="text-decoration: underline" data-bs-original-title="No podrá realizar registro en la bitácora del mes posterior a esta fecha">{{ listabitacora.fechamaxima|date:"d/m/Y" }}</span>
+                            </td>
+                            <td style="text-align: center">
+                                {% if fechaactual|date:"Y-m-d" <= listabitacora.fechamaxima|date:"Y-m-d" %}
+                                    <a href="?action=detallebitacora&idbitacora={{ listabitacora.id|encrypt }}" class='btn btn-success bloqueo_pantalla'><span class="fa fa-plus" ></span> Registrar acciones</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+                {% for listam in listadomeses %}
+                    <tr>
+                        <td></td>
+                        <td class="text-dark"><b>Registro de bitácora mes de: {{ listam.0|nombremes }} {{ listam.1|upper }}</b></td>
+                        <td style="text-align: center;">{{ listam.2 }}/{{ listam.3 }}/{{ listam.1 }}</td>
+                        <td style="text-align: center;">{{ listam.4 }}/{{ listam.3 }}/{{ listam.1 }}</td>
+                        <td style="text-align: center;">
+                            <span class="text-danger tu fw-bold" style="text-decoration: underline" data-bs-original-title="No podrá realizar registro en la bitácora del mes posterior a esta fecha">{{ listam.5|date:"d/m/Y" }}</span>
+                        </td>
+                        <td style="text-align: center">
+                            {% if fechaactual|date:"Y-m-d" <= listam.5|date:"Y-m-d" %}
+                                <a href="?action=detallebitacora&id={{ detalledistributivo.id|encrypt }}&y={{ listam.1 }}&m={{ listam.3 }}{% if subactividad %}&ids={{ subactividad.pk }}{% endif %}" class='btn btn-success bloqueo_pantalla'><span class="fa fa-plus" ></span> Registrar acciones</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <br>
+            <div class="row">
+                <div class="col-12">
+                    <h3 class="fw-bold" style="font-size: 19px;"><i class="fa fa-check-circle text-success fs-3"></i>&nbsp;&nbsp; Bitácoras entregadas</h3>
+                </div>
+            </div>
+            <div class="mb-4">
+                <div class="table-responsive">
+                <table class='table table_primary table_striped' id="example">
+                    <thead class="table-light">
+                    <tr>
+                        <th style="border:0!important;"></th>
+                        <th>BITACORAS</th>
+                        <th style="width: 150px;">DESDE</th>
+                        <th style="width: 150px;">HASTA</th>
+                        <th style="width: 150px;">FECHA CREACIÓN</th>
+                        <th style="width: 150px;">ESTADO</th>
+                        <th style="width: 200px;">ACCIONES</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+{#                    {% for evidencia in evidenciasdistributivo %}#}
+{#                        <tr>#}
+{#                            <td class="fw-bold text-dark" style="text-align: center"> {{ forloop.counter }}</td>#}
+{#                            <td class="fw-bold text-dark"> Informe de evidencia correspondiente a: {{ evidencia.hasta|nombremes }} {{ evidencia.hasta|date:"Y" }}</td>#}
+{#                            <td style="text-align: center;" >{{ evidencia.desde|date:"d/m/Y" }}</td>#}
+{#                            <td style="text-align: center;" data-title='Hasta'>{{ evidencia.hasta|date:"d/m/Y" }}</td>#}
+{#                            <td style="text-align: center;" >#}
+{#                                {% if evidencia.archivofirmado %}#}
+{#                                    <a target="_blank" class="btn btn-default tu " title="Archivo firmado" href="{{ evidencia.download_linkfirmado }}"><img src="/static/images/pdf.png" width="18" height="18" align="absmiddle"></a>#}
+{#                                {% else %}#}
+{#                                    {% if evidencia.archivo %}#}
+{#                                        <a target="_blank" href="{{ evidencia.download_link }}" class="btn btn-success btn-mini"><i class="fa fa-arrow-down"></i>Descargar&nbsp;</a>#}
+{#                                    {% endif %}#}
+{#                                {% endif %}#}
+{#                            </td>#}
+{#                            <td style="text-align: center;font-weight: bold">#}
+{#                                {% if evidencia.estadoaprobacion == 1 %}#}
+{#                                    <span class="text-warning">PENDIENTE</span>#}
+{#                                {% endif %}#}
+{#                                {% if evidencia.estadoaprobacion == 2 %}#}
+{#                                    <span class="text-success">APROBADO</span>#}
+{#                                {% endif %}#}
+{#                                {% if evidencia.estadoaprobacion == 3 %}#}
+{#                                    <span class="text-danger">RECHAZADO</span>#}
+{#                                {% endif %}#}
+{#                                {% if evidencia.estadoaprobacion == 4 %}#}
+{#                                    <span class="text-info">FIRMADA</span>#}
+{#                                {% endif %}#}
+{#                            </td>#}
+{#                            <td style="text-align: center">#}
+{#                                <div class="dropdown dropstart">#}
+{#                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">#}
+{#                                        <i class="fa fa-ellipsis-v"></i>#}
+{#                                    </a>#}
+{#                                    <div class="dropdown-menu">#}
+{#                                        <a href="javascript:;" class="dropdown-item mostrardetalle_view" ide="{{ evidencia.id }}"><i class='fa fa-eye'></i> Detalle</a>#}
+{#                                    </div>#}
+{#                                </div>#}
+{#                            </td>#}
+{#                        </tr>#}
+{#                    {% endfor %}#}
+                        {% for bitacora in bitacoras %}
+                            <tr>
+                                <td></td>
+                                <td style="vertical-align: middle;"><b>{{ bitacora.nombre|lower|capfirst }}</b></td>
+                                <td style="text-align: center;vertical-align: middle;">{{ bitacora.fechaini|date:"d/m/Y" }}</td>
+                                <td style="text-align: center;vertical-align: middle;">{{ bitacora.fechafin|date:"d/m/Y" }}</td>
+                                <td style="text-align: center;vertical-align: middle;">{{ bitacora.fecha_creacion|date:"d/m/Y" }}</td>
+                                <td style="text-align: center;vertical-align: middle;">
+                                    <span class="text-{% if bitacora.estadorevision == 1 %}danger{% elif bitacora.estadorevision == 2 %}warning{% elif bitacora.estadorevision == 3 %}success{% endif %}">{{ bitacora.get_estadorevision_display }}</span>
+                                </td>
+                                <td style="text-align: center;vertical-align: middle;"><a href="?action=detallebitacora&idbitacora={{ bitacora.id|encrypt }}" class="btn btn-success bloqueo_pantalla"><span class="fa fa-eye" ></span> Detalle de registros</a></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7">No existe detalle de registros</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel_rubrica" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Detalle de evidencia</h3>
+                </div>
+                <div class="modal-body panelbody_rubrica">
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td><a href="javascript:;" class="btn btn-cerrar-rubrica btn-info">Cerrar</a></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+      <symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+      </symbol>
+      <symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+      </symbol>
+      <symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+      </symbol>
+    </svg>
+{% endblock %}

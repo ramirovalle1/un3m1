@@ -1,0 +1,228 @@
+{% extends "basebs.html" %}
+{% block atras %}/af_activofijo{% endblock %}
+{% block heading %}
+    <script>
+
+        $(function() {
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/af_activofijo?action=histconstatacion&s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+
+            //Detalles
+            $("#detalle .btn-aceptar").click(function(){
+                $("#detalle").modal("hide");
+                return false;
+            });
+
+            $(".detalle").click(function() {
+                var id = $(this).attr("cid");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'detalle_constatacion', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalleconsmodal_body").html(data.html);
+                            $("#detalle").modal({"backdrop":"static", "width": "1200"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $(".generar").click(function () {
+                var id = $(this).attr('ida');
+                showWaiting('Importando Bienes', 'Espere por favor; este proceso puede tardar. No lo interrumpa');
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'procesarimp', 'id': id},
+                    success: function(data) {
+                        if (data.result=='ok'){
+                            if (data.obs){
+                                hideWaiting();
+                                smoke.alert("Existen observaciones en el fichero.");
+                                $("#incidencia_"+id).html('<a target="_blank" href="'+data.archivo+'" class="btn btn-success btn-mini tu"><i class="fa fa-arrow-down"></i> Descargar</a>')
+                            }else{
+                                location.reload();
+                            }
+                        } else {
+                            hideWaiting();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        hideWaiting();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+
+
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            {% if perms.sagest.puede_modificar_importacion %}
+                <a class="btn btn-success" href="/af_activofijo?action=importar"><i class="fa fa-plus "></i>  Nueva</a>
+            {% endif %}
+        <div class="btn-group ">
+            <a class="btn dropdown-toggle btn-default" data-toggle="dropdown" href="#"> Formato de matrices <span class="caret"></span></a>
+            <ul class="dropdown-menu">
+                <li><a href="/media/matrizactivos/matriz_binmuebles.xlsx"><i class="fa fa-file-excel-o"></i> B.INMUEBLES</a></li>
+                <li><a href="/media/matrizactivos/matriz_libro.xlsx"><i class="fa fa-file-excel-o"></i> LIBROS</a></li>
+            </ul>
+        </div>
+        </div>
+
+        <div class='span6'>
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids %}
+                    <a href="/af_activofijo?action=importaciones" class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 100px; text-align: center">Fecha</th>
+                    <th style="width: 100px; text-align: center">Subido por</th>
+                    <th style="width: 150px;">Tipo Importaci&oacute;n</th>
+                    <th>Actas Generadas</th>
+                    <th style="width: 120px; text-align: center">Estado</th>
+                    <th style="width: 120px; text-align: center">Total Act. Importados</th>
+                    <th style="width: 120px; text-align: center">Incidencias</th>
+                    <th style="width: 80px"></th>
+                    <th style="width: 100px"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for i in importaciones %}
+                    <tr>
+                        <td style="text-align: center">{{ i.fecha|date:'d-m-Y' }}</td>
+                        <td>{{ i.usuario_creacion }}</td>
+                        <td>{{ i.tipobien }}</td>
+                        <td id="actas_{{ i.id }}">
+                            {% for acta in i.actas.all %}
+                                <a href='/af_activofijo?action=actasentrega&id={{ acta.id }}' class="btn-form">{{ acta.numero }}</a>{% if not forloop.last %},{% endif %}
+                            {% endfor %}
+                        </td>
+                        <td style="text-align: center">{{ i.estado_importacion }}</td>
+                        <td style="text-align: center">
+                            {{ i.numimportados }}
+                        </td>
+                        <td style="text-align: center" id="incidencia_{{ i.id }}">
+                            {% if i.archivoincidencias %}
+                                <a target="_blank" href='{{ i.archivoincidencias.url }}' class='btn btn-success btn-mini tu'><i class="fa fa-arrow-down"></i> Descargar</a>
+                            {% endif %}
+
+                            {% if i.archivo %}
+                                <a target="_blank" href='{{ i.archivo.url }}' class='btn btn-info btn-mini tu'><i class="fa fa-arrow-down"></i> Matriz subida</a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if i.estado == 1 and perms.sagest.puede_modificar_importacion %}
+                                <a href='/af_activofijo?action=subir&id={{ i.id }}' class='btn btn-info btn-mini tu' title="Subir"><i class="fa fa-arrow-up"></i></a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if i.estado == 1 and perms.sagest.puede_modificar_importacion %}
+                                {% if i.archivo and not i.tiene_actas %}
+                                    <a href="javascript:;" nhref="/af_activofijo?action=procesarimp&id={{ i.id }}" ida='{{ i.id }}' class="btn btn-danger btn-mini generar tu"><i class="fa fa-retweet"></i> Procesar</a>
+                                {% endif %}
+                            {% endif %}
+                            {% if perms.sagest.puede_modificar_importacion and i.numimportados == 0 and not i.actas.all %}
+                                <a class="btn btn-danger btn-mini eliminacionmodal" href="javascript:;" nhref='/af_activofijo?action=deleteimpo&id={{ i.id }}'><i class='fa fa-remove'></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="20">
+                            NO EXISTEN HISTORIAL DE IMPORTACIONES DE ACTIVOS
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/af_activofijo?action=importaciones&page=1">1</a></li>
+                        <li><a href="/af_activofijo?action=importaciones&page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=importaciones&page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/af_activofijo?action=importaciones&page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/af_activofijo?action=importaciones&page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=importaciones&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="detalle" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalles de constatacion: <span cid={{ constatacion }}></span> </h3>
+        </div>
+        <div class="modal-body" >
+            <div id="detalleconsmodal_body" style="max-height: 400px; overflow: auto">
+
+            </div>
+        </div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+

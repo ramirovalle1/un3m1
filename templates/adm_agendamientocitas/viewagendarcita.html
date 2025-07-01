@@ -1,0 +1,208 @@
+{% extends 'adm_agendamientocitas/basegestorcita.html' %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script>
+        $(function () {
+            MenuFijo()
+            CargarSwitchery()
+            $('.form-box, #box-calendario').hide()
+            let departamento = $("#id_area").select2({width: '100%', placeholder: 'Seleccione un area'})
+            let servicio = $("#id_servicio").select2({width: '100%', placeholder: 'Seleccione un servicio'})
+            let responsable = $("#id_responsable").select2({width: '100%', placeholder: 'Seleccione un responsable'})
+            let derivacion = document.querySelector("#id_derivacion")
+            CargarCalendario('cargarcalendario', '{{ servicio.id|encrypt }}')
+            cargarSelectSecundario('listservicios', departamento, servicio)
+            cargarSelectSecundario('listresponsable', servicio, responsable)
+            departamento.change(function (){
+                responsable.val('').trigger('change').empty()
+            })
+            servicio.change(function (){
+                bloquearCalendario()
+            })
+            derivacion.onchange = function () {
+                if ($(this).is(":checked")) {
+                    $("#id_filtros").removeClass('d-none')
+                    $('.form-box, #id_calendario').hide()
+                    $('.box-reserva, #box-calendario').show()
+                }else{
+                    $("#id_filtros").addClass('d-none')
+                    CargarCalendario('cargarcalendario', '{{ servicio.id|encrypt }}')
+                    $('#id_servicio, #id_resposable').val('').trigger('change').empty()
+                    $('#id_area').val('').trigger('change')
+                    desbloquearCalendario()
+                }
+            }
+            responsable.on("select2:select", function (evt) {
+                CargarCalendario('cargarcalendario',servicio.val(),'','','','',responsable.val())
+                desbloquearCalendario()
+            });
+        })
+        function desbloquearCalendario(){
+             $('#id_calendario').show()
+                $('#box-calendario').hide()
+        }
+        function bloquearCalendario(){
+             $('#id_calendario, .form-box').hide()
+            $('#box-calendario, .box-reserva').show()
+        }
+        function CargarDatos(lista, fecha, box) {
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            bloqueointerface()
+            let servicio = '{{ servicio.id|encrypt }}'
+            if ($('#id_derivacion').is(":checked")) {
+                servicio = $("#id_servicio").val()
+            }
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'addcita',
+                    'listaid[]': lista,
+                    'fecha': fecha,
+                    'idservicio': servicio,
+                    'idcita': '{{ cita.id|encrypt }}',
+                },
+                success: function (data) {
+                    $.unblockUI()
+                    if (data.result === true) {
+                        $('.box-content-reserva').html(data.data);
+                        $('.form-box').show()
+                        $('.box-reserva').hide()
+                    } else if (data.agendado === true) {
+                        RemplazarTexto('', '', '', box, data.mensaje)
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI()
+                    alertaDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function CargarCalendario(action, id, movimiento, mes, anio, diasreserva, responsable='') {
+            var control = $(this);
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{request.path}}",
+                data: {
+                    'action': action,
+                    'idservicio': id,
+                    'mover': movimiento,
+                    'mes': mes,
+                    'anio': anio,
+                    'diasreserva': diasreserva,
+                    'idresponsable':responsable
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('.calendario').html(data.data);
+                    } else {
+                        control.val(0).trigger("change");
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    control.val(0).trigger("change");
+                    alertaDanger("Error de conexion.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function RemplazarTexto(fecha_actual, fecha_selec, numdias, box, mensaje = false) {
+            let text = "Fecha no está disponible para reservar. Puede reservar máximo hasta " + numdias + " días posteriores de la fecha actual."
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            $(".box-content-reserva").empty()
+            $('.box-reserva').show().addClass('card').css('border', '0px')
+            if (mensaje == true) {
+                text = "Turnos agotados en fecha seleccionada"
+            } else if (mensaje != false) {
+                text = mensaje
+                $('.btn_extra').html(`<a class="btn btn-orange" href="{{ request.path }}?action=miscitas" target="_blank">Ver citas agendadas</a>`)
+            } else {
+                if (fecha_actual == fecha_selec) {
+                    text = "Los turnos de esta fecha ya se han inicializado o finalizado."
+                }
+            }
+            $('.mensaje').html(`<div class="swal2-icon swal2-info swal2-animate-info-icon mt-0 mb-1" style="display: flex;"></div><h2 class="text-secondary"><strong>Alerta!</strong></h2><p class="text-secondary lh-1 p-4 py-0">${text}</p>`)
+        }
+    </script>
+{% endblock %}
+{% block content %}
+    <div class="row" style="justify-content: space-between;margin-left: calc(var(--bs-gutter-x) * -.5)!important;">
+        <div class="box-cabecera mb-0">
+            <h5 style="color: #182F44; margin-bottom: 2px"><b>Detalles de cita</b></h5>
+            <p style="font-size: 14px; color: #8f8f8f; line-height: 14px">
+                El agendamiento de una subcita estará
+                vinculado a la cita principal, por lo que el usuario
+                no necesitará cargar otro archivo adicional, salvo que sea una derivación a otro servicio.
+            </p>
+            <h5 style="font-size: 14px; line-height: 14px" class="mt-2 mb-1">
+                Derivar persona: <input type="checkbox" id="id_derivacion" class="js-switch">
+            </h5>
+        </div>
+        <div class="col-12 mb-2 d-none" id="id_filtros">
+            <div class="row">
+                <div class="col-lg-4">
+                    <label for="id_area"><i class="fa fa-building"></i> Área de servicios:</label>
+                    <select name="area" id="id_area">
+                        <option value=""></option>
+                        {% for dp in departamentos %}
+                            <option value="{{ dp.id }}">{{ dp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-4 ">
+                    <label for="id_servicio"><i class="fa fa-handshake"></i> Servicio: </label>
+                    <select name="servicio" id="id_servicio">
+                        <option value=""></option>
+                    </select>
+                </div>
+                <div class="col-lg-4 ">
+                    <label for="id_responsable"><i class="fa fa-user-tie"></i> Responsable: </label>
+                    <select name="responsable" id="id_responsable">
+                        <option value=""></option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-12 col-md-7 col-lg-6">
+            <div class="calendario menu" id="id_calendario"></div>
+            <div id="box-calendario" class="text-center box-reserva" style="height: 370px;">
+                <div class="mensaje p-4 py-0">
+                    <h4 class="text-secondary">
+                        El calendario se habilitará al momento de seleccionar un responsable
+                    </h4>
+                </div>
+                <div class="btn_extra pt-2"></div>
+            </div>
+        </div>
+        <div class="col-sm-12 col-md-12 col-lg-6">
+            <div class="menu">
+                <form id="form2" class="form-box" autocomplete="off" method="POST" enctype="multipart/form-data"
+                      action="{{ request.path }}">
+                    {% csrf_token %}
+                    <div class="box-content-reserva">
+                    </div>
+                </form>
+                <div class="box-reserva text-center" style="height: 370px;">
+                    <div class="mensaje p-4 py-0">
+                        <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una fecha de
+                            reserva</h4>
+                    </div>
+                    <div class="btn_extra pt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

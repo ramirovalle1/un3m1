@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        table.table thead th, table.table thead td {
+            padding: 0 4px 0 4px;
+            border-bottom: 0;
+            background-color: #f0f0f0;
+            vertical-align: middle;
+            text-transform: uppercase;
+            text-align: center !important;
+            font-size: 12px;
+        }
+
+        table.table tbody th, table.table tbody td {
+            padding: 0 4px 0 4px;
+            border-bottom: 0;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        .mycollapse, .ver-inscritos {
+            cursor:pointer;
+        }
+
+        label.label, span.label{
+            font-size: 11px;
+        }
+
+    </style>
+    <script type="text/javascript">
+
+        $(function () {
+            $('.informeplanificacionposgrado').click(function () {
+                var id = $(this).attr('idn');
+                openwindow('POST', '/niveles', {
+                    action: 'reporte_planificacion_materias_posgrado',
+                    id: id,
+
+                }, '_blank');
+            });
+        });
+
+        const pk_asignatura = []
+
+        const asignar_planificacion_paralelo_masivo = (periodo_id, carrera_id) => {
+            (footer) && $('#itemspanel .footermodal').show();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'addplanificacionparalelomasivo',
+                    'ids_asignatura': pk_asignatura,
+                    'periodo_id': periodo_id,
+                    'carrera_id': carrera_id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html("PLANIFICACIÒN PARALELOS");
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const add_array_selected = (pk) => {
+            if (!pk_asignatura.includes(pk)) {
+                pk_asignatura.push(pk)
+            }
+        }
+
+        const del_array_selected = (pk) => {
+            var indice = pk_asignatura.indexOf(pk);
+            if (pk_asignatura.includes(pk)) {
+                if (indice !== -1) {
+                    pk_asignatura.splice(indice, 1);
+                }
+            }
+        }
+
+        $(document).ready(function () {
+            show_hide_btn()
+            $('.break').hide();
+
+
+            $('.mycollapse').click(function (e) {
+                let flag = $($(this).children()[0]);
+                if (flag.attr('class') === 'fa fa-caret-right'){
+                    let idchild = $(this).attr('idchild');
+                    $('.'+idchild).show('slow');
+                    flag.attr('class', 'fa fa-caret-down');
+                }else{
+                    let idchild = $(this).attr('idchild');
+                    $('.'+idchild).hide();
+                    flag.attr('class', 'fa fa-caret-right');
+                }
+
+            });
+
+            ItemsDisplay = function (item) {
+                if(item.text=='undefined')
+                {
+                    return '-----';
+                }
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '-----';
+                    }
+                }
+            };
+
+            $("#id_perfilrequeridopac_select2", $(".panelbodymatricula")).select2({
+                dropdownParent: $(".panelbodymatricula"),
+                placeholder: "Seleccionar Titulo",
+                width: '100%',
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/adm_postulacion?action=buscarperfilrequeridopc&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_perfilrequeridopac").attr({"value":(evt.params.data.id)});
+            });
+
+            busqueda = function () {
+                bloqueointerface();
+                var term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length > 0) {
+                    location.href = "/adm_postulacion?action=listadoconvocatorias&idm={{ malla.id|encrypt }}&idc={{ idcarrera|encrypt }}&s=" + term;
+                } else {
+                    location.href = "/adm_postulacion?action=listadoconvocatorias&idm={{ malla.id|encrypt }}&idc={{ idcarrera|encrypt }}"
+                }
+            };
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+
+            $(".generarconvocatoria").click(function () {
+                var idasig = $(this).attr('idasig');
+                var nomasig = $(this).attr('nomasig');
+                smoke.confirm("¿Está seguro de generar convocatoria de " + nomasig + "? ", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        var id = idasig;
+                        $.ajax({
+                            type: "POST",
+                            url: "/adm_postulacion",
+                            data: {'action': 'generarconvocatoria', 'id': id},
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al generar convocatoria.");
+                            },
+                            success: function (data) {
+                                if (data.result == "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI, GENERAR CONVOCATORIA",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+
+            $(".addconvocatoria").click(function () {
+                var idm = $(this).attr('idm');
+                var idc = $(this).attr('idc');
+                var ida = $(this).attr('ida');
+                var idp = $(this).attr('idp');
+                var nomasig = $(this).attr('nomasig');
+                var mensaje = '¿Para la asignatura:'
+                var titulo = '¿Está seguro de generar una nueva convocatoria?'
+                var consulteaqui = ''
+                var existe = false
+                var url= ''
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_postulacion",
+                    data: {'action': 'verificar_banco_elegibles_en_modulo', 'id': ida, 'idc':idc},
+                    error: function () {
+                        smoke.alert("Error.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok" || data.result == true) {
+                            if (data.existe) {
+                                url = data.url
+                                titulo = 'Existen elegibles, ¿Está seguro de generar una nueva convocatoria?'
+                                consulteaqui = `${mensaje} <b>${nomasig}</b>? <br> Consulte elegibles <a href="${url}"  Target="_blank"><b>aqui.</b></a>`
+                            }else{
+                                  consulteaqui = `${mensaje} <b>${nomasig}</b>?`
+                            }
+                            Swal.fire({
+                                html: consulteaqui,
+                                title: titulo,
+                                text: "Esta acción es irreversible",
+                                type: 'info',
+                                showCancelButton: true,
+                                allowOutsideClick: false,
+                                confirmButtonColor: '#3085d6',
+                                cancelButtonColor: '#d33',
+                                confirmButtonText: 'Si, deseo hacerlo',
+                                cancelButtonText: 'Cancelar'
+                            }).then((result) => {
+                                if (result.value) {
+                                    bloqueointerface();
+                                    location.href = "/adm_postulacion?action=addconvocatoria&idm=" + idm + "&idc=" + idc + "&id=" + ida + "&idp=" + idp;
+                                }
+                            });
+
+                        }
+                    }
+                });
+            });
+
+
+            $(".eliminaconvocatoria").click(function () {
+                var idcv = $(this).attr('idasig');
+                var nomasig = $(this).attr('nomasig');
+                smoke.confirm("¿Está seguro de eliminar la convocatoria #" + nomasig + ".? ", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/adm_postulacion",
+                            data: {'action': 'eliminaconvocatoria', 'id': idcv},
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al generar convocatoria.");
+                            },
+                            success: function (data) {
+                                if (data.result == "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI, EILIMINAR CONVOCATORIA",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+            $('#id_seleccionmasivo').click(function (e) {
+                if (this.checked) {
+                    $('.seleccionindividual').prop('checked', true);
+                    $('.seleccionindividual').each(function () {
+                        add_array_selected(this.attributes.id_asignatura.value)
+                    });
+                } else {
+                    $('.seleccionindividual').prop('checked', false);
+                    $('.seleccionindividual').each(function () {
+                        del_array_selected(this.attributes.id_asignatura.value)
+                    });
+                }
+                show_hide_btn()
+
+            });
+
+             $('.seleccionindividual').change(function () {
+                let pk = this.attributes.id_asignatura.value
+                if(this.checked){
+                    add_array_selected(pk)
+                }else{
+                    del_array_selected(pk)
+                }
+                show_hide_btn()
+            });
+
+        });
+
+        show_hide_btn = () => {
+            if ($('.seleccionindividual').prop('checked')){
+                $('#btn_duplicar').show('slow');
+            }else{
+                $('#btn_duplicar').hide('slow');
+            }
+
+        }
+
+        function formModal(id, text, action, footer=false) {
+            (footer) && $('#itemspanel .footermodal').show();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModal2(id,idp,idc, text, action, footer=false) {
+            (footer) && $('#itemspanel .footermodal').show();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': idp,
+                    'idc': idc,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}/adm_postulacion?action=listadocohortes&idm={{ malla.id|encrypt }}&idc={{ idcarrera|encrypt }}{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12 p-2'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>{{ periodo }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <form method="GET">
+            <div class="row mt-3">
+                <div class="col-md-12 col-sm-12">
+
+                    <div class="input-group mb-2">
+                    <a href="javascript:void(0);"  idn="{{ malla.id }}" class="btn btn-primary informeplanificacionposgrado"><i class="fa fa-file-pdf-o"></i> Reporte planificación</a>
+                        <input type="hidden" value="{{ action }}" name="action">
+                        <input type="hidden" value="{{ malla.id|encrypt }}" name="idm">
+                        <input type="hidden" value="{{ malla.carrera_id|encrypt }}" name="idc">
+                        <input type="hidden" value="{{ idp }}" name="idp">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre del programa..." aria-label="Buscar" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                        <div class="input-group-append">
+                            <button class="btn btn-primary" type="submit" id="button-addon2"><i class="fa fa-search"></i></button>
+                            {% if s %}
+                                <a title="Ver todo" href="?action=listadoconvocatorias&idm={{ malla.id|encrypt }}&idc={{ malla.carrera_id|encrypt }}&idp={{ idp }}" class="btn btn-default tr cleartext"><i class="fas fa-sync-alt"></i></a>
+                            {% endif %}
+                            <a class="btn btn-secondary" id="btn_duplicar" href="Javascript:void(0);"onclick="asignar_planificacion_paralelo_masivo({{ periodo.pk }},{{ idcarrera }})">Asignación paralelo masivo</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class='row'>
+        <div class='col-12'>
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <table class="table table-sm thead-light table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px" class="border-0 text-center"><input type="checkbox" id="id_seleccionmasivo"></th>
+                                <th style="width: 50px;">N.</th>
+                                <th style="width: 800px;">Convocatoria</th>
+                                <th style="width: 100px;">ESTADO</th>
+                                <th style="width: 100px;">Fecha inicio</th>
+                                <th style="width: 100px;">Fecha fin</th>
+                                <th style="width: 50px;">Inscritos</th>
+                                <th style="width: 50px;">Paralelos aperturados</th>
+                                <th style="width: 50px;">Paralelos contratados</th>
+                                <th style="width: 50px;">Paralelos por contratar</th>
+                                <th style="width: 50px;">Paralelos planificados</th>
+                                <th style="width: 50px;">Fecha máxima planificación</th>
+                                <th style="width: 50px;">&nbsp;</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for lista in listadoconvocatorias %}
+                            {% with cv_list=lista|args:periodo.id|call:"listadoconvocatoriasasignaturas" %}
+                                <tr>
+                                    <td class="text-center"><input type="checkbox" id_asignatura="{{ lista.asignatura.pk}}" class="seleccionindividual"></td>
+                                    <td class="mycollapse" idchild="{{ lista.id|encrypt }}" colspan="5" style="text-align: left"><i class="fa fa-caret-right"></i> <strong>{{ lista.asignatura.nombre }}<span title="ID_ASIGNATURA"> [{{ lista.asignatura.id }}]</span> ({{ cv_list|length }})</strong></td>
+                                    <td style="text-align: center;">
+                                        {% with inscritos=lista|args:periodo.id|call:"totalinscritosconvocatoriasasignaturas" %}
+                                            {{ inscritos|default:"" }}
+                                        {% endwith %}
+                                    </td>
+
+                                    {% with planificacion=lista|args:periodo.id|args:idcarrera|call:"get_planificacion_paralelos_posgrado" %}
+                                        <td style="text-align: center;">
+                                            {{ planificacion.paralelos }}
+                                        </td>
+                                        <td style="text-align: center;">
+                                            {{ planificacion.get_creadas }}
+                                        </td>
+                                        <td style="text-align: center;">
+                                            {{ planificacion.get_por_planificar }}
+                                        </td>
+
+                                         <td style="text-align: center;">
+                                            {{ planificacion.get_paralelos_planificados }}
+                                        </td>
+
+
+                                        <td style="text-align: center;">
+                                            {{ planificacion.fechalimiteplanificacion |date:"Y-m-d"}}
+                                        </td>
+                                    {% endwith %}
+
+                                    <td style="text-align: center;padding: 5px;">
+                                        <div class="dropbottom">
+                                            <a href="javascript:void(0);"
+                                               class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle"
+                                               data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                <i class="fa fa-ellipsis-v fs-6"></i>
+                                            </a>
+                                            <ul class="dropdown-menu" x-placement="right-start">
+                                                <span class="dropdown-header">ACCIONES</span>
+                                                <li class="dropdown-item"><a href="Javascript:void(0);"
+                                                                             class="addconvocatoria" idp="{{ idp }}"
+                                                                             idm="{{ malla.id|encrypt }}"
+                                                                             idc="{{ idcarrera|encrypt }}"
+                                                                             ida="{{ lista.id|encrypt }}"
+                                                                             nomasig="{{ lista.asignatura.nombre }}"><i
+                                                        class="fa fa-check-square dropdown-item-icon"></i>convocar</a>
+                                                <li class="dropdown-item"><a class="" idm="{{ malla.id|encrypt }}" idc="{{ idcarrera|encrypt }}"
+                                                                             ida="{{ lista.id|encrypt }}"
+                                                                             onclick="formModal2({{ lista.asignatura.pk }},{{ periodo.pk }},{{ idcarrera }}, 'PLANIFICAR CANTIDAD DE PARALELOS', 'addplanificacionparalelo')"
+                                                                             href="javascript:;"><i
+                                                        class="fa fa-tag fs-6 dropdown-item-icon"></i>Planificar</a></li>
+
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                {% for convocatoria in cv_list %}
+                                    <tr class="{{ lista.id|encrypt }} break">
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: center">{{ forloop.counter }}</td>
+                                        <td class="ver-inscritos" onclick="location.href='/adm_postulacion?action=listadoinscritosconvocatoria&idm={{ malla.id|encrypt }}&idcv={{ convocatoria.id|encrypt }}&idc={{ idcarrera|encrypt }}&idp={{ idp }}'"  style="text-align: left">
+                                            &nbsp;{{ convocatoria.nombre|upper }}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="label label-{{ convocatoria.get_estado.color }}">{{ convocatoria.get_estado.estado }}</span>
+                                        </td>
+                                        <td style="text-align: center">{{ convocatoria.fechainicio|date:"d/m/Y" }}</td>
+                                        <td style="text-align: center">{{ convocatoria.fechafin|date:"d/m/Y" }}</td>
+                                        <td style="text-align: center">
+                                            {% if convocatoria.periodo_id|encrypt == idp %}
+{#                                                <span class="label label-{% if convocatoria.totalinscritos %}success{% else %}default{% endif %}"></span>#}
+                                                {{ convocatoria.totalinscritos|default:"0" }}
+                                            {% endif %}
+                                        </td>
+                                        <td style="text-align: center;" colspan="5"></td>
+                                        <td style="text-align: center;" >
+
+                                            <div class="dropdown dropstart">
+                                                <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                                    <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                                </a>
+                                                <ul class="dropdown-menu fs-6">
+                                                    <span class="dropdown-header">ACCIONES</span>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href="?action=horarioconvocatoria&&idcv={{ convocatoria.id }}"><i class="fa fa-calendar"></i> &nbsp;Registrar horario</a></li>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href="?action=editconvocatoria&idm={{ malla.id|encrypt }}&idcv={{ convocatoria.id|encrypt }}&idc={{ idcarrera|encrypt }}&idp={{ idp }}"><i class="fa fa-edit"></i> &nbsp;Editar</a></li>
+                                                    {% if not convocatoria.totalinscritos %}
+                                                    <li class="dropdown-item"><a href="javascript:void(0);" onclick="eliminarajax('{{ convocatoria.id|encrypt }}', '{{ lista.asignatura.nombre }}','delconvocatoria')"><span class="fa fa-minus"></span> &nbsp;Eliminar</a></li>
+                                                    {% endif %}
+                                                    <li class="dropdown-divider"></li>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href="?action=listadoinscritosconvocatoria&idm={{ malla.id|encrypt }}&idcv={{ convocatoria.id|encrypt }}&idc={{ idcarrera|encrypt }}&idp={{ idp }}"><i class="fa fa-users"></i> &nbsp;Postulantes</a></li>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href='?action=listarequisitosconvocatoria&id={{ convocatoria.id|encrypt }}&idmalla={{ malla.id|encrypt }}'><span class="fa fa-list-ul "></span> &nbsp;Requisitos</a></li>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href='?action=listadoactas&id={{ convocatoria.id }}&idm={{ malla.id|encrypt }}'><i class="bi bi-person-fill-check"></i>&nbsp;Selección/Evaluación Perfil Docente</a></li>
+                                                    <li class="dropdown-item"><a class="bloqueo_pantalla" href='javascript:void(0);' onclick="formModal({{ convocatoria.id }}, 'HISTORIAL CONVOCATORIA', 'mostrar_historial_convocatoria')" ><i class="bi bi-list"></i>&nbsp;Historial</a></li>
+                                                </ul>
+                                            </div>
+{#                                                    <li><a class="bloqueo_pantalla dropdown-item" href='/adm_postulacion?action=listarequisitosconvocatoria&id={{ convocatoria.id|encrypt }}&idmalla={{ malla.id|encrypt }}'><span class="fa fa-list-ul "></span> &nbsp;Planificar número de requisitos</a></li>#}
+{#                                                    <li><a class="bloqueo_pantalla dropdown-item" href='/adm_postulacion?action=listainscritosconvocatoria&id={{ convocatoria.id|encrypt }}&idmalla={{ malla.id|encrypt }}'><span class="fa fa-group "></span> 2.- Inscritos(Revisión de requisitos)</a></li>#}
+{#                                                    <li><a href='/adm_admision?action=listadoadmitidosconproceso&id={{ convocatoria.id|encrypt }}' class="bloqueo_pantalla"><span class="fa fa-group "></span> 3.- Admitidos a la convocatoria</a></li>#}
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr class="{{ lista.id|encrypt }} break">
+                                        <td colspan="6">
+                                            <span class="label label-default">NO HAY CONVOCATORIAS ABIERTAS </span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% endwith %}
+                        {% empty %}
+                            <tr>
+                                <td colspan="11">
+                                    NO HAY PROGRAMAS ABIERTOS
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer border-top-0">
+                    {% include 'paginacionb4.html' %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="padding: 12px 13px">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody"></div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal" style="display: none">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,1065 @@
+{% extends "ajaxformbs.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function(){
+            $("#fechainforme").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            nf_evidencia = secuenciaevidencia = 0;
+            nf_actividad = secuenciaactividad = 0;
+
+            pminimoe = pmaximoe = "";
+            efechae = false;
+            finicioe = "";
+            ffine = "";
+            idfilaedit = "";
+
+            lista_item1 = [];
+            lista_item2 = [];
+
+            lista_items3 = []; //Actividades eliminadas
+            lista_items4 = []; //Evidencias eliminadas
+
+            fechaactual = '{{ fecha|date:"Y-m-d" }}';
+
+            $("#filafechaedit").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            $("#fieldset_numero").hide();
+            $("#fieldset_fecha").hide();
+
+            $("#id_tipoinforme").addClass("validate[required]");
+            $("#id_actividades_aux").addClass("validate[required]");
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                campo = '<input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="'+nombreCampo+'_aux" value="">';
+                $("#fieldset_"+nombreCampo2).append(campo);
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('id_conclusion', 'conclusion', true);
+            configurarChkEditor('id_recomendacion', 'recomendacion', true);
+
+            CKEDITOR.instances['id_conclusion'].on('change', function() {
+                if(CKEDITOR.instances['id_conclusion'].getData().length > 0)
+                    $("#id_conclusion_aux").val("OK");
+                else
+                    $("#id_conclusion_aux").val("");
+            });
+
+            CKEDITOR.instances['id_recomendacion'].on('change', function() {
+                if(CKEDITOR.instances['id_recomendacion'].getData().length > 0)
+                    $("#id_recomendacion_aux").val("OK");
+                else
+                    $("#id_recomendacion_aux").val("");
+            });
+
+            $("#porcentajeactualedit").blur(function(){
+                numerico($(this), 0, 0, 2);
+
+                if(parseFloat($("#porcentajeactualedit").val()) == parseFloat($("#ponderacionedit").val()))
+                    $("#estadoedit").val("FINALIZADA");
+                else
+                    $("#estadoedit").val("EN EJECUCIÓN");
+            });
+
+            $("#cantidadhoraedit").blur(function(){
+                numerico($(this), 1, 500, 0);
+            });
+
+            $(".agregaactividad").click(function() {
+                var idp = $(this).attr('idp');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_proyectoinvestigacion",
+                    data: {'action': 'agregaractividadinforme', 'idp': idp},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+
+                            $(".panelbodyactividad").html(data.data);
+                            $(".paneltitleactividad").html(data.title);
+                            $("#itemspanelactividad").modal({backdrop:'static', width: '800'}).modal('show');
+
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".agregaractividaddetalle").click(function() {
+                $("#frmactividadinforme").validationEngine('attach',{ scroll: false });
+                var valido = $("#frmactividadinforme").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    idactividad = $("#actividad").val();
+                    actividad = $("#actividad").find('option:selected').text();
+                    if(!actividadRepetida(idactividad)) {
+                        nf_actividad += 1;
+                        secuenciaactividad += 1;
+
+                        $("#id_actividades_aux").val("SI");
+
+                        borrar_fila_default_actividad();
+
+                        ponderacion = $("#ponderacion").val();
+                        fechainicio = $("#fechainicio").val();
+                        fechafin = $("#fechafin").val();
+                        cantidadhora = $("#cantidadhora").val();
+                        ponderacion = $("#ponderacion").val();
+                        avanceanterior = $("#porcentajeanterior").val();
+                        avance = $("#porcentajeactual").val();
+                        estado = $("#estado").val();
+                        entregable = $("#entregable").val().trim();
+
+                        codigos_personas = $("#responsable").val();
+                        nombres_personas = $('#responsable option:selected').toArray().map(item => item.text);
+
+                        responsable = "";
+                        for(i=0; i<nombres_personas.length; i++){
+                            responsable = responsable + '<span class="label label-info">'+nombres_personas[i]+'</span>';
+                        }
+
+                        idsresponsables =  codigos_personas.join(",");
+
+                        observacion = $("#observacion").val().trim();
+                        fechaeditada = $("#fechaeditada").val();
+
+                        nueva = '<tr class="detalleactividades" id="filaactividad_' + nf_actividad.toString() + '" idreg="0" ida="' + idactividad + '" actividad="'+actividad+'" ponderacion="'+ponderacion+'" fechainicio="'+fechainicio+'" fechafin="'+fechafin+'" cantidadhora="'+cantidadhora+'" avance="'+avance+'" estado="'+estado+'" responsables="'+idsresponsables+'" entregable="'+entregable+'" observacion="'+observacion+'" avanceanterior="'+avanceanterior+'" fechaeditada="'+fechaeditada+'">' +
+                            '<td style="text-align: right">' + secuenciaactividad.toString() + '</td>' +
+                            '<td style="text-align: justify">' + actividad + '<br>' + responsable + '</td>' +
+                            '<td style="text-align: right">' + ponderacion + '</td>' +
+                            '<td style="text-align: center">' + fechainicio + '</td>' +
+                            '<td style="text-align: center">' + fechafin + '</td>' +
+                            '<td style="text-align: center">' + cantidadhora + '</td>' +
+                            '<td style="text-align: right">' + avance + '</td>' +
+                            '<td style="text-align: center">' + estado + '</td>' +
+                            '<td style="text-align: justify">' + entregable + '</td>' +
+                            '<td style="text-align: justify">' + observacion + '</td>' +
+                            '<td><a href="javascript:;" class="btn btn-tini btn-info editaractividad tu" idreg="0" idf="' + nf_actividad.toString() + '" title="Editar"><i class="fa fa-edit"></i></a>'+
+                            '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_actividad tu" idreg="0" idf="' + nf_actividad.toString() + '" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                        $("#detalle_actividades").append(nueva);
+
+                        $(".editaractividad").unbind("click.editaractividad");
+                        $(".editaractividad").bind("click.editaractividad", editarActividad);
+
+                        $(".eliminaritem_actividad").unbind("click.eliminaritem_actividad");
+                        $(".eliminaritem_actividad").bind("click.eliminaritem_actividad", eliminarItem_actividad);
+                        $('#itemspanelactividad').modal('hide');
+
+                        actualizar_lista_actividad_edit();
+                    }
+                    else{
+                        mensajeWarningSwal("Atención!!!", "La actividad [" + actividad + "] ya ha sido agregada al detalle");
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            });
+
+            agregar_fila_default_actividad = function (){
+                filadefault = '<tr id="fila_default_actividad">'+
+                              '<td colspan="12" style="text-align: center">NO EXISTEN DETALLES DE ACTIVIDADES</td>'
+                              '</tr>';
+                $("#detalle_actividades").append(filadefault);
+                $("#id_actividades_aux").val("");
+            };
+
+            borrar_fila_default_actividad = function (){
+                $("#fila_default_actividad").remove();
+            };
+
+            actividadRepetida = function (idactividad){
+                repetido = false;
+                $(".detalleactividades").each(function() {
+                    if(idactividad == $(this).attr('ida')){
+                        repetido = true;
+                        return false;
+                    }
+                });
+
+                return repetido;
+            };
+
+            editarActividad = function() {
+                ida = $(this).attr('idreg');
+                idfilaedit = $(this).attr('idf');
+
+                $(".paneltitleeditactividad").html("Editar Actividad del informe");
+
+                //Obtengo la fila actual de la tabla
+                var filaTabla=$("#filaactividad_"+idfilaedit);
+                //Obtengo texto de los atributos de esa fila
+                //tituloactividad = filaTabla.find("td:eq(1)").text();
+                tituloactividad = filaTabla.attr("actividad");
+                ponderacion = filaTabla.attr("ponderacion");
+                fechainicio = filaTabla.attr("fechainicio");
+                fechafin = filaTabla.attr("fechafin");
+                cantidadhora = filaTabla.attr("cantidadhora");
+                avance = filaTabla.attr("avance");
+                estado = filaTabla.attr("estado");
+                responsables = filaTabla.attr("responsables");
+                entregable = filaTabla.attr("entregable");
+                observacion = filaTabla.attr("observacion");
+                avanceanterior = filaTabla.attr("avanceanterior");
+                finicioe = fechainicio;
+                ffine = fechafin;
+                pminimoe = avanceanterior;
+                pmaximoe = ponderacion;
+
+                $("#tituloactividad").html(tituloactividad);
+                $("#fechainicioedit").val(fechainicio);
+                $("#fechafinedit").val(fechafin);
+                $("#cantidadhoraedit").val(cantidadhora);
+                $("#ponderacionedit").val(ponderacion);
+                $("#porcentajeactualedit").val(avance);
+                $("#entregableedit").val(entregable);
+                $("#estadoedit").val(estado);
+                $("#observacionedit").val(observacion);
+                $("#porcentajeanterioredit").val(avanceanterior);
+
+                $('#responsableedit option').prop('selected', false);
+                $('#responsableedit').trigger('change');
+
+                $.each(responsables.split(","), function(i,e){
+                    $("#responsableedit option[value='" + e + "']").prop("selected", true);
+                });
+
+                $("#responsableedit").trigger('change');
+
+                habilitarCamposEditActividad();
+
+                $("#itemspaneleditactividad").modal({backdrop:'static', width: '800px'}).modal('show');
+            };
+
+            habilitarCamposEditActividad = function (){
+                $("#porcentajeactualedit").prop('disabled', false);
+                $("#cantidadhoraedit").prop('disabled', false);
+                $("#observacionedit").prop('disabled', false);
+                $("#entregableedit").prop('disabled', false);
+                $("#responsableedit").prop('disabled', false);
+
+                if(parseFloat(pminimoe) == 0)
+                    pminimoe = "0.01";
+
+                $("#porcentajeactualedit").addClass("validate[required, min["+pminimoe+"], max["+pmaximoe+"]");
+                $("#cantidadhoraedit").addClass("validate[required], min[1], max[500]");
+                $("#responsableedit").addClass("validate[required]");
+                $("#btneditarfechae").show();
+                $("#btncanceleditfechae").hide();
+            };
+
+            $(".editarfechase").click(function() {
+                efechae = true;
+                habilitarCamposFechaEdit();
+                $("#observacionedit").addClass("validate[required]");
+                $("#fechaeditadaedit").val("S");
+            });
+
+            $(".cancelaredicionfechase").click(function() {
+                efechae = false;
+                inhabilitarCamposFechaEdit();
+                $("#observacionedit").removeClass("validate[required]");
+                $("#fechaeditadaedit").val("N");
+            });
+
+            $(".seleccionartodosedit").click(function (){
+                $('#responsableedit option').prop('selected', true);
+                $('#responsableedit').trigger('change');
+            });
+
+            habilitarCamposFechaEdit = function (){
+                $("#fechainicioedit").prop('disabled', false).css('cursor', 'text').css('background-color', '#FFFFFF');
+                $("#fechafinedit").prop('disabled', false).css('cursor', 'text').css('background-color', '#FFFFFF');
+                $("#btneditarfechae").hide();
+                $("#btncanceleditfechae").show();
+            };
+
+            inhabilitarCamposFechaEdit = function (){
+                $("#fechainicioedit").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                $("#fechafinedit").prop('disabled', true).css('cursor', 'not-allowed').css('background-color', '#ECF0F1');
+                $("#fechainicioedit").val(finicioe);
+                $("#fechafinedit").val(ffine);
+                $("#btneditarfechae").show();
+                $("#btncanceleditfechae").hide();
+            };
+
+            $(".actualizaractividaddetalle").click(function() {
+                $("#frmeditactividadinforme").validationEngine('attach',{ scroll: false });
+                var valido = $("#frmeditactividadinforme").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    fechainicio = $("#fechainicioedit").val();
+                    fechafin = $("#fechafinedit").val();
+                    cantidadhora = $("#cantidadhoraedit").val();
+                    avance = $("#porcentajeactualedit").val();
+                    estado = $("#estadoedit").val();
+                    entregable = $("#entregableedit").val().trim();
+                    observacion = $("#observacionedit").val().trim();
+                    fechaeditada = $("#fechaeditadaedit").val();
+                    codigos_personas = $("#responsableedit").val();
+                    nombres_personas = $('#responsableedit option:selected').toArray().map(item => item.text);
+                    idsresponsables =  codigos_personas.join(",");
+                    responsable = "";
+                    for(i=0; i<nombres_personas.length; i++){
+                        responsable = responsable + '<span class="label label-info">'+nombres_personas[i]+'</span>';
+                    }
+
+                    //Obtengo la fila actual de la tabla
+                    var filaTabla=$("#filaactividad_"+idfilaedit);
+                    //Edito los atributos de la fila
+                    filaTabla.attr('fechainicio', fechainicio);
+                    filaTabla.attr('fechafin', fechafin);
+                    filaTabla.attr('cantidadhora', cantidadhora);
+                    filaTabla.attr('avance', avance);
+                    filaTabla.attr('estado', estado);
+                    filaTabla.attr('entregable', entregable);
+                    filaTabla.attr('responsables', idsresponsables);
+                    filaTabla.attr('observacion', observacion);
+                    filaTabla.attr('fechaeditada', fechaeditada);
+
+                    //Edito el texto o contenido html de las celdas
+                    filaTabla.find("td:eq(1)").html("");
+                    filaTabla.find("td:eq(1)").html(filaTabla.attr('actividad')+"<br>"+responsable);
+                    filaTabla.find("td:eq(3)").text(fechainicio);
+                    filaTabla.find("td:eq(4)").text(fechafin);
+                    filaTabla.find("td:eq(5)").text(cantidadhora);
+                    filaTabla.find("td:eq(6)").text(avance);
+                    filaTabla.find("td:eq(7)").text(estado);
+                    filaTabla.find("td:eq(8)").text(entregable);
+                    filaTabla.find("td:eq(9)").text(observacion);
+
+                    actualizar_lista_actividad_edit();
+
+                    $("#porcentajeactualedit").removeClass("validate[required, min["+pminimoe+"], max["+pmaximoe+"]");
+                    $("#observacionedit").removeClass("validate[required]");
+
+                    $('#itemspaneleditactividad').modal('hide');
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            });
+
+            $("#itemspaneleditactividad .cerrar").click(function () {
+                $("#porcentajeactualedit").removeClass("validate[required, min["+pminimoe+"], max["+pmaximoe+"]");
+                $("#observacionedit").removeClass("validate[required]");
+                $('#itemspaneleditactividad').modal('hide');
+            });
+
+            $("#itemspaneleditactividad .cerrar2").click(function () {
+                $("#porcentajeactualedit").removeClass("validate[required, min["+pminimoe+"], max["+pmaximoe+"]");
+                $("#observacionedit").removeClass("validate[required]");
+                $('#itemspaneleditactividad').modal('hide');
+            });
+
+            eliminarItem_actividad = function() {
+                var id = $(this).attr("idf");
+                var idreg = $(this).attr("idreg");
+
+                $("#filaactividad_"+id).remove();
+
+                if(idreg != '0'){
+                    var item = {
+                        idreg: idreg
+                    };
+                    lista_items3.push(item);
+                }
+
+                secuenciaactividad = 0;
+                $("#tbdetallectividades tbody tr").each(function (index) {
+                    secuenciaactividad ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaactividad.toString());
+                    });
+                });
+
+                if(secuenciaactividad == 0)
+                    agregar_fila_default_actividad();
+
+                actualizar_lista_actividad_edit();
+            };
+
+            actualizar_lista_actividad_edit = function (){
+                lista_items1 = [];
+
+                $(".detalleactividades").each(function(){
+                    idreg = $(this).attr('idreg');
+                    ida = $(this).attr('ida');
+                    fechainicio = $(this).attr('fechainicio');
+                    fechafin = $(this).attr('fechafin');
+                    cantidadhora = $(this).attr('cantidadhora');
+                    avance = $(this).attr('avance');
+                    estado = $(this).attr('estado');
+                    entregable = $(this).attr('entregable');
+                    responsables = $(this).attr('responsables');
+                    observacion = $(this).attr('observacion');
+                    fechaeditada = $(this).attr('fechaeditada');
+
+                    var item = {
+                        idreg: idreg,
+                        ida: ida,
+                        fechainicio: fechainicio,
+                        fechafin: fechafin,
+                        cantidadhora: cantidadhora,
+                        avance: avance,
+                        estado: estado,
+                        entregable: entregable,
+                        responsables: responsables,
+                        observacion: observacion,
+                        fechaeditada: fechaeditada
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            $("#itemspanelactividad .cerrar").click(function () {
+                $('#itemspanelactividad').modal('hide');
+            });
+
+            $("#itemspanelactividad .cerrar2").click(function () {
+                $('#itemspanelactividad').modal('hide');
+            });
+
+            $(".agregaevidencia").click(function() {
+                if(datos_evidencia_completo()){
+                    nf_evidencia += 1;
+                    secuenciaevidencia += 1;
+
+                    borrar_fila_default_evidencia();
+
+                    nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="idregistro[]" name="idregistro[]" value="0"> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="" > <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td>&nbsp;</td>'+
+                        '<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td style="text-align: center"><input type="text" class="selectorfecha" id="fecha_genera[]" name="fecha_genera[]" value="'+fechaactual+'" readonly style="cursor:text; background-color: #FFFFFF"/></td>'+
+                        '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="150" id="numero_pagina'+nf_evidencia.toString()+'" name="numero_pagina[]" type="text" value="" > <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia tu" idreg="0" idf="' + nf_evidencia.toString() + '" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                    $("#detalle_evidencias").append(nueva);
+                    $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#numero_pagina"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_evidencia.toString()).addClass("validate[required]");
+                    $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                    $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+                    $("#detalle_evidencias").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+                    conectar_change_fileinput_evidencia();
+                }
+            });
+
+            eliminarItem_evidencia = function() {
+                var id = $(this).attr("idf");
+                var idreg = $(this).attr("idreg");
+
+                $("#filaevidencia_"+id).remove();
+
+                if(idreg != '0'){
+                    var item = {
+                        idreg: idreg
+                    };
+                    lista_items4.push(item);
+                }
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                if(secuenciaevidencia == 0)
+                    agregar_fila_default_evidencia();
+
+                actualizar_lista_evidenciaarchivo();
+            };
+
+            actualizar_lista_evidenciaarchivo = function (){
+                lista_items2 = [];
+                cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        var item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items2.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectar_change_fileinput_evidencia=function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    var id = $(this).get(0).files.length;
+                    //alert(id);
+                    var idf = $(this).attr('idf');
+                    //$("#bgaevidencia_"+idf).html("1");
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizar_lista_evidenciaarchivo();
+                });
+            };
+
+            agregar_fila_default_evidencia = function (){
+                filadefault = '<tr id="fila_default_evidencia">'+
+                              '<td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS</td>'+
+                              '</tr>';
+                $("#detalle_evidencias").append(filadefault);
+            };
+
+            borrar_fila_default_evidencia = function (){
+                $("#fila_default_evidencia").remove();
+            };
+
+            datos_evidencia_completo = function (){
+                var c1e = true, c2e = true, c3e = true;
+
+                $('input[name="descripcion_evidencia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="numero_pagina[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e);
+            };
+
+            $(".mostrardistributivo").click(function() {
+                var id = $(this).attr('idp');
+                var idper = $(this).attr('idper');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_proyectoinvestigacion",
+                    data: {'action': 'mostrardistributivo', 'id': id, 'idper': idper},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodydistributivo").html(data.data);
+                            $("#itemspaneldistributivo").modal({backdrop:'static', width: '850px', height: '500px'}).modal('show');
+                        } else {
+                            $.unblockUI();
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspaneldistributivo .btn-cerrar").click(function() {
+                $("#itemspaneldistributivo").modal("hide");
+            });
+
+
+            borrar_fila_default_actividad();
+
+            {% for detalle in actividades %}
+                nf_actividad ++;
+                secuenciaactividad ++;
+
+                nueva = '<tr class="detalleactividades" id="filaactividad_' + nf_actividad.toString() + '" idreg="{{ detalle.id }}" ida="{{ detalle.actividad.id }}" actividad="{{ detalle.actividad.actividad }}" ponderacion="{{ detalle.actividad.ponderacion }}" fechainicio="{{ detalle.fechainicio|date:"Y-m-d" }}" fechafin="{{ detalle.fechafin|date:"Y-m-d" }}" avance="{{ detalle.porcentajeejecucion }}" cantidadhora="{{ detalle.cantidadhora }}" estado="{{ detalle.get_estado_display }}" responsables="{% for responsable in detalle.responsable.all %}{% if forloop.counter > 1 %},{% endif %}{{ responsable.id }}{% endfor %}" entregable="{{ detalle.entregable }}" observacion="{{ detalle.observacion }}" avanceanterior="{{ detalle.actividad.ultimo_porcentaje_ejecucion_asignado }}" fechaeditada="N">' +
+                            '<td style="text-align: right">' + secuenciaactividad.toString() + '</td>' +
+                            '<td style="text-align: justify">{{ detalle.actividad.actividad }}<br>{% for responsable in detalle.responsable.all %}<span class="label label-info">{{ responsable }}</span>{% endfor %}</td>' +
+                            '<td style="text-align: right">{{ detalle.actividad.ponderacion }}</td>' +
+                            '<td style="text-align: center">{{ detalle.fechainicio|date:"Y-m-d" }}</td>' +
+                            '<td style="text-align: center">{{ detalle.fechafin|date:"Y-m-d" }}</td>' +
+                            '<td style="text-align: center">{{ detalle.cantidadhora }}</td>' +
+                            '<td style="text-align: right">{{ detalle.porcentajeejecucion }}</td>' +
+                            '<td style="text-align: center">{{ detalle.get_estado_display }}</td>' +
+                            '<td style="text-align: justify">{{ detalle.entregable }}</td>' +
+                            '<td style="text-align: justify">{{ detalle.observacion }}</td>' +
+                            '<td><a href="javascript:;" class="btn btn-tini btn-info editaractividad tu" idreg="{{ detalle.id }}" idf="' + nf_actividad.toString() + '" title="Editar"><i class="fa fa-edit"></i></a>'+
+                            '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_actividad tu" idreg="{{ detalle.id }}" idf="' + nf_actividad.toString() + '" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                $("#detalle_actividades").append(nueva);
+
+                $(".editaractividad").unbind("click.editaractividad");
+                $(".editaractividad").bind("click.editaractividad", editarActividad);
+
+                $(".eliminaritem_actividad").unbind("click.eliminaritem_actividad");
+                $(".eliminaritem_actividad").bind("click.eliminaritem_actividad", eliminarItem_actividad);
+            {% endfor %}
+
+            borrar_fila_default_evidencia();
+
+            {% for evidencia in evidencias %}
+                nf_evidencia ++;
+                secuenciaevidencia ++;
+
+                nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="idregistro[]" name="idregistro[]" value="{{ evidencia.id }}"> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="{{ evidencia.descripcion }}" > <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td style="text-align: center;"><a target="_blank" href="{{ evidencia.archivo.url }}" class="btn btn-mini btn-info tu" title="Descargar Archivo"><i class="fa fa-download"></i> </a> </td>' +
+                        '<td style="text-align: center;"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td style="text-align: center"><input type="text" class="selectorfecha" id="fecha_genera[]" name="fecha_genera[]" value="{{ evidencia.fecha|date:"Y-m-d" }}" readonly style="cursor:text; background-color: #FFFFFF"/></td>'+
+                        '<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="150" id="numero_pagina'+nf_evidencia.toString()+'" name="numero_pagina[]" type="text" value="{{ evidencia.numeropagina }}" > <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div> </td>' +
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia tu" idreg="{{ evidencia.id }}" idf="' + nf_evidencia.toString() + '" title="Eliminar fila"><i class="fa fa-remove"></i></a></td>';
+
+                $("#detalle_evidencias").append(nueva);
+                $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                $("#numero_pagina"+nf_evidencia.toString()).addClass("validate[required]");
+                $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+                $("#detalle_evidencias").find(".selectorfecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+                conectar_change_fileinput_evidencia();
+                {% empty %}
+                agregar_fila_default_evidencia();
+            {% endfor %}
+
+
+            $("#id_actividades_aux").val("OK");
+            $("#id_conclusion_aux").val("OK");
+            $("#id_recomendacion_aux").val("OK");
+            actualizar_lista_actividad_edit();
+            actualizar_lista_evidenciaarchivo();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_proyectoinvestigacion?action=informesproyecto&id={{ informe.proyecto.id|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_proyectoinvestigacion?action=informesproyecto&id={{ informe.proyecto.id|encrypt }}{% endblock %}
+{% block formwidth %}form-xl{%  endblock %}
+{% block formdestination %}/adm_proyectoinvestigacion?action=informesproyecto&id={{ informe.proyecto.id|encrypt }}{% endblock %}
+{% block formdestinationswal %}/adm_proyectoinvestigacion?action=informesproyecto&id={{ informe.proyecto.id|encrypt }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editinforme'/>
+    <input type='hidden' name='id' value='{{ informe.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/adm_proyectoinvestigacion?action=informesproyecto&id={{ informe.proyecto.id|encrypt }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="alert alert-info">
+        <b>Periodo Académico Vigente con Horas de Investigación para {{ proyecto.profesor }}:  {% if periodovigente %}<span class="label label-warning">{{ periodovigente.nombre }}</span>  <a href="javascript:;" class='btn btn-success tu mostrardistributivo' idp="{{ proyecto.id|encrypt }}" idper="{% if periodovigente %}{{ periodovigente.id|encrypt }}{% endif %}" title="Mostrar Distributivo Investigación Integrantes"><span class="fa fa-list" ></span> Mostrar Distributivo Integrantes</a>{% else %}<span class="label label-important">NINGUNO</span>{% endif %}</b>
+    </div>
+    <div id="separator2_encabezado" style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_encabezado" style="padding:0 10px; background: #f5f5f5;">Encabezado del Informe</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths">
+            <tbody>
+                <tr>
+                    <td style="width: 10%;"><strong>Tipo de informe:</strong></td>
+                    <td>
+                        <select id="id_tipoinforme" name="tipoinforme" style="width: 90%;">
+                            <option value="">---------</option>
+                            <option value="1" {% if informe.tipo == 1 %}selected{% endif %}>AVANCE</option>
+                            <option value="2" {% if informe.tipo == 2 %}selected{% endif %}>FINAL</option>
+                        </select>
+                        <div class="help-text"></div>
+                    </td>
+                    <td colspan="6">&nbsp;</td>
+                </tr>
+                <tr>
+                    <td style="width: 10%;"><strong>Número:</strong></td>
+                    <td>{{ numero }}</td>
+                    <td style="width: 10%;"><strong>Fecha Emisión:</strong></td>
+                    <td>
+                        <input type="text" class="selectorfecha" id="fechainforme" name="fechainforme" value="{{ fechainforme|date:'Y-m-d' }}" readonly style="cursor:text; background-color: #FFFFFF; width: 50%"/>
+                    </td>
+                    <td style="width: 10%;"><strong>Para:</strong></td>
+                    <td>{{ proyecto.apruebainforme }}</td>
+                    <td style="width: 10%;"><strong>De:</strong></td>
+                    <td>{{ proyecto.profesor }}</td>
+                </tr>
+                <tr>
+                    <td style="width: 10%;"><strong>Objeto:</strong></td>
+                    <td colspan="7" style="text-align: justify">Reportar los avances del proyecto {{ proyecto.titulo }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <br>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">1. Datos Generales (Perfil del proyecto)</span></h6>
+    </div>
+    <table class="table table-bordered table-striped table-condensed table-hover table-even-widths">
+        <tbody>
+            <tr>
+                <td style="width: 15%;"><strong>Título:</strong></td>
+                <td colspan="3" style="text-align: justify">{{ proyecto.titulo }}</td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><strong>Código:</strong></td>
+                <td style="text-align: justify">{{ proyecto.codigo }}</td>
+                <td style="width: 15%;"><strong>Presupuesto:</strong></td>
+                <td style="text-align: justify">$ {{ proyecto.presupuesto|floatformat:2|intcomma }}</td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><strong>Línea de Investigación:</strong></td>
+                <td style="text-align: justify">{{ proyecto.lineainvestigacion.nombre }}</td>
+                <td style="width: 15%;"><strong>Sub-líneas de Investigación:</strong></td>
+                <td>
+                    {% for sublinea in proyecto.sublineainvestigacion.all %}
+                       {{ forloop.counter }}. {{ sublinea.nombre }}<br>
+                    {% endfor %}
+                </td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><strong>Objetivo General:</strong></td>
+                <td colspan="3" style="text-align: justify">{{ proyecto.objetivogeneral }}</td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><strong>Fecha de inicio:</strong></td>
+                <td style="text-align: justify">{{ fechainicio }}</td>
+                <td style="width: 15%;"><strong>Fecha estimada de cierre:</strong></td>
+                <td style="text-align: justify">{{ fechafinestimada }}</td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><strong>Integrantes:</strong></td>
+                <td colspan="3">
+                    {% for integrante in integrantes %}
+                        {{ integrante.persona.nombre_completo_inverso }}, {{ integrante.get_funcion_display }}<br>
+                    {% endfor %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <br>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">2. Antecedentes</span></h6>
+    </div>
+    <table class="table table-bordered table-striped table-condensed table-hover table-even-widths">
+        <tbody>
+            <tr>
+                <td><strong>2.1</strong></td>
+                <td style="text-align: justify">
+                    Mediante RESOLUCIÓN {{ resolucionaprueba.numero }} de fecha 20 de noviembre de 2020 se dispone lo siguiente:
+                    {{ resolucionaprueba.resuelve|safe }}
+                </td>
+            </tr>
+            <tr>
+                <td><strong>2.2</strong></td>
+                <td style="text-align: justify">
+                    Con fecha 11 de enero de 2021, la Dirección de Investigación y Posgrado notifica a
+                    {{ proyecto.profesor }}, que el proyecto {{ proyecto.titulo }}
+                    ha sido aprobado para su ejecución, tomando como fecha de inicio el mes de {{ mesinicio }},
+                    por lo que debe suscribir el contrato correspondiente.
+                </td>
+            </tr>
+            <tr>
+                <td><strong>2.3</strong></td>
+                <td style="text-align: justify">
+                    El equipo investigador estará conformado por:
+                    <br>
+                    <b>Director: </b>{{ proyecto.profesor }}
+                    {% if codirector %}
+                        <br>
+                        <b>Co-director:</b>
+                        {% for codirector in codirector %}
+                            {{ codirector.persona.nombre_completo_inverso }},
+                        {% endfor %}
+                    {% endif %}
+                    {% if investigadores %}
+                        <br>
+                        <b>Investigadores asociados:</b>
+                        {% for investigador in investigadores %}
+                            {{ investigador.persona.nombre_completo_inverso }},
+                        {% endfor %}
+                    {% endif %}
+                    {% if asistentes %}
+                        <br>
+                        <b>Asistentes de investigación:</b>
+                        {% for asistente in asistentes %}
+                            {{ asistente.persona.nombre_completo_inverso }},
+                        {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <br>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">3. Motivación Técnica (Administrativa, financiera o académica)</span></h6>
+    </div>
+    <div id="separator2_cronograma" style="width: 100%; height: max-content; display: inline-block">
+{#        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_cronograma" style="padding:0 10px; background: #f5f5f5;">3.1 Cronograma de Actividades (En Ejecución y Finalizadas)</span></h6>#}
+        <h6 style="width:100%; text-align:left;"><span id="separator2title_cronograma" style="padding:0 10px;">3.1 Actividades Realizadas</span></h6>
+    </div>
+
+    <div class="row-fluid" id="detallecronograma">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetallectividades">
+            <thead>
+            <tr>
+                <th style="width: 3%; text-align: center;">#</th>
+                <th style="width: 31%; text-align: center">Actividad/Responsable</th>
+                <th style="width: 7%; text-align: center">Ponderación (%)</th>
+                <th style="width: 7%; text-align: center">Fecha Inicio</th>
+                <th style="width: 7%; text-align: center">Fecha Fin</th>
+                <th style="width: 7%; text-align: center">Horas</th>
+                <th style="width: 7%; text-align: center">Avance (%)</th>
+                <th style="width: 8%; text-align: center">Estado</th>
+                <th style="width: 12%; text-align: center">Entregable Esperado</th>
+                <th style="width: 14%; text-align: center">Observaciones</th>
+                <th style="width: 3%;">&nbsp;</th>
+                <th style="width: 3%"><a href="javascript:;" id="btnagregaractividad" idp="{{ proyecto.id|encrypt }}" class="btn btn-success btn-mini agregaactividad" data-toggle="tooltip" data-placement="bottom" data-original-title="Agregar Actividad"><i class="fa fa-plus"></i> </a></th>
+            </tr>
+            </thead>
+            <tbody id="detalle_actividades">
+                <tr id="fila_default_actividad">
+                    <td colspan="12" style="text-align: center">NO EXISTEN DETALLES DE ACTIVIDADES</td>
+                </tr>
+            </tbody>
+        </table>
+        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_actividades_aux" value="">
+        <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div>
+    </div>
+
+    <br>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">4. Conclusiones</span></h6>
+    </div>
+    <div class="row-fluid">
+        <fieldset id="fieldset_conclusion" class="control-group nomargins" style="min-height:45px; float: left; width: 100%" >
+            <div class="control-label label-text"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                    <label for="id_conclusion" style="padding-right: 20px">Conclusiones</label>
+                </div>
+            </div>
+            <div class="control" style="float: left; width: 0">
+                <div class="django-ckeditor-widget" data-field-id="id_conclusion" style="display: inline-block;">
+                    <textarea cols="40" id="id_conclusion" name="conclusion" rows="10" required data-processed="0" data-config="{&quot;skin&quot;: &quot;moono&quot;, &quot;toolbar_Basic&quot;: [[&quot;Source&quot;, &quot;-&quot;, &quot;Bold&quot;, &quot;Italic&quot;]], &quot;toolbar_Full&quot;: [[&quot;Styles&quot;, &quot;Format&quot;, &quot;Bold&quot;, &quot;Italic&quot;, &quot;Underline&quot;, &quot;Strike&quot;, &quot;SpellChecker&quot;, &quot;Undo&quot;, &quot;Redo&quot;], [&quot;Link&quot;, &quot;Unlink&quot;, &quot;Anchor&quot;], [&quot;Image&quot;, &quot;Flash&quot;, &quot;Table&quot;, &quot;HorizontalRule&quot;], [&quot;TextColor&quot;, &quot;BGColor&quot;], [&quot;Smiley&quot;, &quot;SpecialChar&quot;], [&quot;Source&quot;]], &quot;toolbar&quot;: &quot;YourCustomToolbarConfig&quot;, &quot;height&quot;: 300, &quot;width&quot;: &quot;100%&quot;, &quot;filebrowserWindowWidth&quot;: 940, &quot;filebrowserWindowHeight&quot;: 725, &quot;toolbar_YourCustomToolbarConfig&quot;: [{&quot;name&quot;: &quot;document&quot;, &quot;items&quot;: [&quot;Source&quot;, &quot;-&quot;, &quot;NewPage&quot;, &quot;Templates&quot;]}, {&quot;name&quot;: &quot;clipboard&quot;, &quot;items&quot;: [&quot;Cut&quot;, &quot;Copy&quot;, &quot;Paste&quot;, &quot;PasteText&quot;, &quot;PasteFromWord&quot;, &quot;-&quot;, &quot;Undo&quot;, &quot;Redo&quot;]}, {&quot;name&quot;: &quot;editing&quot;, &quot;items&quot;: [&quot;Find&quot;, &quot;SelectAll&quot;]}, {&quot;name&quot;: &quot;insert&quot;, &quot;items&quot;: [&quot;Image&quot;, &quot;Table&quot;, &quot;HorizontalRule&quot;, &quot;Smiley&quot;, &quot;SpecialChar&quot;, &quot;Youtube&quot;, &quot;Video&quot;]}, &quot;/&quot;, {&quot;name&quot;: &quot;basicstyles&quot;, &quot;items&quot;: [&quot;Bold&quot;, &quot;Italic&quot;, &quot;Underline&quot;, &quot;Strike&quot;, &quot;Subscript&quot;, &quot;Superscript&quot;, &quot;-&quot;, &quot;RemoveFormat&quot;]}, {&quot;name&quot;: &quot;paragraph&quot;, &quot;items&quot;: [&quot;NumberedList&quot;, &quot;BulletedList&quot;, &quot;-&quot;, &quot;Outdent&quot;, &quot;Indent&quot;, &quot;-&quot;, &quot;Blockquote&quot;, &quot;-&quot;, &quot;JustifyLeft&quot;, &quot;JustifyCenter&quot;, &quot;JustifyRight&quot;, &quot;JustifyBlock&quot;]}, {&quot;name&quot;: &quot;links&quot;, &quot;items&quot;: [&quot;Link&quot;, &quot;Unlink&quot;]}, &quot;/&quot;, {&quot;name&quot;: &quot;styles&quot;, &quot;items&quot;: [&quot;Styles&quot;, &quot;Format&quot;, &quot;Font&quot;, &quot;FontSize&quot;]}, {&quot;name&quot;: &quot;colors&quot;, &quot;items&quot;: [&quot;TextColor&quot;, &quot;BGColor&quot;]}, {&quot;name&quot;: &quot;tools&quot;, &quot;items&quot;: [&quot;ShowBlocks&quot;]}, {&quot;name&quot;: &quot;yourcustomtools&quot;, &quot;items&quot;: [&quot;Maximize&quot;]}], &quot;language&quot;: &quot;en-EC&quot;, &quot;mathJaxLib&quot;: &quot;//cdn.mathjax.org/mathjax/2.2-latest/MathJax.js?config=TeX-AMS_HTML&quot;, &quot;tabSpaces&quot;: 4, &quot;extraPlugins&quot;: &quot;uploadimage,div,autolink,autoembed,embedsemantic,autogrow,widget,lineutils,clipboard,dialog,dialogui,youtube,video,elementspath&quot;, &quot;filebrowserUploadUrl&quot;: &quot;/ckeditor/upload/&quot;, &quot;filebrowserBrowseUrl&quot;: &quot;/ckeditor/browse/&quot;}" data-external-plugin-resources="[]" data-id="id_conclusion" data-type="ckeditortype">{{ informe.conclusion }}</textarea>
+                </div>
+                <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div>
+            </div>
+        </fieldset>
+    </div>
+    <br>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">5. Recomendaciones</span></h6>
+    </div>
+    <div class="row-fluid">
+        <fieldset id="fieldset_recomendacion" class="control-group nomargins" style="min-height:45px; float: left; width: 100%" >
+            <div class="control-label label-text"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                    <label for="id_recomendacion" style="padding-right: 20px">Recomendaciones</label>
+                </div>
+            </div>
+            <div class="control" style="float: left; width: 0">
+                <div class="django-ckeditor-widget" data-field-id="id_recomendacion" style="display: inline-block;">
+                    <textarea cols="40" id="id_recomendacion" name="recomendacion" rows="10" required data-processed="0" data-config="{&quot;skin&quot;: &quot;moono&quot;, &quot;toolbar_Basic&quot;: [[&quot;Source&quot;, &quot;-&quot;, &quot;Bold&quot;, &quot;Italic&quot;]], &quot;toolbar_Full&quot;: [[&quot;Styles&quot;, &quot;Format&quot;, &quot;Bold&quot;, &quot;Italic&quot;, &quot;Underline&quot;, &quot;Strike&quot;, &quot;SpellChecker&quot;, &quot;Undo&quot;, &quot;Redo&quot;], [&quot;Link&quot;, &quot;Unlink&quot;, &quot;Anchor&quot;], [&quot;Image&quot;, &quot;Flash&quot;, &quot;Table&quot;, &quot;HorizontalRule&quot;], [&quot;TextColor&quot;, &quot;BGColor&quot;], [&quot;Smiley&quot;, &quot;SpecialChar&quot;], [&quot;Source&quot;]], &quot;toolbar&quot;: &quot;YourCustomToolbarConfig&quot;, &quot;height&quot;: 300, &quot;width&quot;: &quot;100%&quot;, &quot;filebrowserWindowWidth&quot;: 940, &quot;filebrowserWindowHeight&quot;: 725, &quot;toolbar_YourCustomToolbarConfig&quot;: [{&quot;name&quot;: &quot;document&quot;, &quot;items&quot;: [&quot;Source&quot;, &quot;-&quot;, &quot;NewPage&quot;, &quot;Templates&quot;]}, {&quot;name&quot;: &quot;clipboard&quot;, &quot;items&quot;: [&quot;Cut&quot;, &quot;Copy&quot;, &quot;Paste&quot;, &quot;PasteText&quot;, &quot;PasteFromWord&quot;, &quot;-&quot;, &quot;Undo&quot;, &quot;Redo&quot;]}, {&quot;name&quot;: &quot;editing&quot;, &quot;items&quot;: [&quot;Find&quot;, &quot;SelectAll&quot;]}, {&quot;name&quot;: &quot;insert&quot;, &quot;items&quot;: [&quot;Image&quot;, &quot;Table&quot;, &quot;HorizontalRule&quot;, &quot;Smiley&quot;, &quot;SpecialChar&quot;, &quot;Youtube&quot;, &quot;Video&quot;]}, &quot;/&quot;, {&quot;name&quot;: &quot;basicstyles&quot;, &quot;items&quot;: [&quot;Bold&quot;, &quot;Italic&quot;, &quot;Underline&quot;, &quot;Strike&quot;, &quot;Subscript&quot;, &quot;Superscript&quot;, &quot;-&quot;, &quot;RemoveFormat&quot;]}, {&quot;name&quot;: &quot;paragraph&quot;, &quot;items&quot;: [&quot;NumberedList&quot;, &quot;BulletedList&quot;, &quot;-&quot;, &quot;Outdent&quot;, &quot;Indent&quot;, &quot;-&quot;, &quot;Blockquote&quot;, &quot;-&quot;, &quot;JustifyLeft&quot;, &quot;JustifyCenter&quot;, &quot;JustifyRight&quot;, &quot;JustifyBlock&quot;]}, {&quot;name&quot;: &quot;links&quot;, &quot;items&quot;: [&quot;Link&quot;, &quot;Unlink&quot;]}, &quot;/&quot;, {&quot;name&quot;: &quot;styles&quot;, &quot;items&quot;: [&quot;Styles&quot;, &quot;Format&quot;, &quot;Font&quot;, &quot;FontSize&quot;]}, {&quot;name&quot;: &quot;colors&quot;, &quot;items&quot;: [&quot;TextColor&quot;, &quot;BGColor&quot;]}, {&quot;name&quot;: &quot;tools&quot;, &quot;items&quot;: [&quot;ShowBlocks&quot;]}, {&quot;name&quot;: &quot;yourcustomtools&quot;, &quot;items&quot;: [&quot;Maximize&quot;]}], &quot;language&quot;: &quot;en-EC&quot;, &quot;mathJaxLib&quot;: &quot;//cdn.mathjax.org/mathjax/2.2-latest/MathJax.js?config=TeX-AMS_HTML&quot;, &quot;tabSpaces&quot;: 4, &quot;extraPlugins&quot;: &quot;uploadimage,div,autolink,autoembed,embedsemantic,autogrow,widget,lineutils,clipboard,dialog,dialogui,youtube,video,elementspath&quot;, &quot;filebrowserUploadUrl&quot;: &quot;/ckeditor/upload/&quot;, &quot;filebrowserBrowseUrl&quot;: &quot;/ckeditor/browse/&quot;}" data-external-plugin-resources="[]" data-id="id_recomendacion" data-type="ckeditortype">{{ informe.recomendacion }}</textarea>
+                </div>
+                <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div>
+            </div>
+        </fieldset>
+    </div>
+{#    <br>#}
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: #f5f5f5;">6. Anexos</span></h6>
+    </div>
+
+    <div class="row-fluid" id="detalleanexos">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetalleevidencias">
+            <thead>
+                <tr>
+                    <th style="width: 3%; text-align: center;">#</th>
+                    <th style="width: 49%; text-align: center;">Descripción</th>
+                    <th style="width: 5%; text-align: center;">...</th>
+                    <th style="width: 15%; text-align: center;">Archivo</th>
+                    <th style="width: 15%; text-align: center;">Fecha Generación</th>
+                    <th style="width: 10%; text-align: center;"># Páginas</th>
+                    <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaevidencia" data-toggle="tooltip" data-placement="bottom" data-original-title="Agregar Evidencia"><i class="fa fa-plus"></i> </a></th>
+                </tr>
+            </thead>
+            <tbody id="detalle_evidencias">
+                <tr id="fila_default_evidencia">
+                    <td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelactividad" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleactividad">Título del Modal</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyactividad">
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success agregaractividaddetalle"> Agregar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static"  data-keyboard="false" id="itemspaneleditactividad" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleeditactividad">Título del Modal</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyeditactividad">
+            <form id="frmeditactividadinforme" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                <input type='hidden' name='fechaeditadaedit' value='N'/>
+                <div class="alert alert-info">
+                    <b>Periodo Académico Vigente con Horas de Investigación para {{ proyecto.profesor }}:  {% if periodovigente %}<span class="label label-warning">{{ periodovigente.nombre }}</span>{% else %}<span class="label label-important">NINGUNO</span>{% endif %}</b>
+                </div>
+                <table class="table table-bordered">
+                    <tr>
+                        <td style="width: 20%;">Actividad:</td>
+                        <td style="width: 80%;" colspan="3">
+                            <span id="tituloactividad"></span>
+{#                            <input type="text" id="testvalidar" name="testvalidar" value="">#}
+{#                            <div class="help-text"></div>#}
+                        </td>
+                    </tr>
+                    <tr id="filafechaedit">
+                        <td style="width: 20%;">
+                            Fecha Inicio: <a href="javascript:;" id="btneditarfechae" class="btn btn-info btn-mini editarfechase" data-toggle="tooltip" data-placement="bottom" data-original-title="Editar fechas"><i class="fa fa-edit"></i> </a>
+                            <a href="javascript:;" id="btncanceleditfechae" class="btn btn-danger btn-mini cancelaredicionfechase" data-toggle="tooltip" data-placement="bottom" data-original-title="Deshacer edición de fechas"><i class="fa fa-undo"></i> </a>
+                        </td>
+                        <td style="width: 30%;">
+                            <input type="text" class="selectorfecha" id="fechainicioedit" name="fechainicioedit" value="" style="width: 50%;" readonly disabled/>
+                        </td>
+                        <td style="width: 20%;">Fecha Fin:</td>
+                        <td style="width: 30%;">
+                            <input type="text" class="selectorfecha" id="fechafinedit" name="fechafinedit" value="" style="width: 50%;" readonly disabled/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 20%;">Cantidad Horas:</td>
+                        <td style="width: 30%;">
+                            <input type="text" maxlength="5" autocomplete="off" id="cantidadhoraedit" name="cantidadhoraedit" value="" style="width: 50%; text-align: right" disabled>
+                            <div class="help-text"></div>
+                        </td>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 20%;">Ponderación %:</td>
+                        <td style="width: 30%;">
+                            <input type="text" maxlength="5" autocomplete="off" id="ponderacionedit" name="ponderacionedit" value="" style="width: 50%; text-align: right" disabled>
+                        </td>
+                        <td style="width: 20%;">Avance Anterior %:</td>
+                        <td style="width: 30%;">
+                            <input type="text" maxlength="5" autocomplete="off" id="porcentajeanterioredit" name="porcentajeanterioredit" value="" style="width: 50%; text-align: right" disabled>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 20%;">Avance Actual %:</td>
+                        <td style="width: 30%;">
+                            <input type="text" maxlength="5" autocomplete="off" id="porcentajeactualedit" name="porcentajeactualedit" value="" style="width: 50%; text-align: right" disabled>
+                            <div class="help-text"></div>
+                        </td>
+                        <td style="width: 20%;">Estado:</td>
+                        <td style="width: 30%;">
+                            <input type="text" maxlength="5" autocomplete="off" id="estadoedit" name="estadoedit" value="" style="width: 50%;" disabled>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Entregables:</td>
+                        <td colspan="3">
+                            <input type="text" maxlength="250" autocomplete="off" id="entregableedit" name="entregableedit" value="" style="width: 95%; text-transform: none">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            Responsables:<a href="javascript:;" id="btnseleccionartodoedit" class="btn btn-info btn-mini seleccionartodosedit" data-toggle="tooltip" data-placement="bottom" data-original-title="Seleccionar todos"><i class="fa fa-check-square"></i> </a>
+                        </td>
+                        <td colspan="3">
+                            <select id="responsableedit" multiple name="responsableedit" style="width: 95%">
+                                {% for integrante in integrantes %}
+                                    <option value="{{ integrante.persona.id }}">{{ integrante.persona }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="help-text"></div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Observaciones:</td>
+                        <td colspan="3">
+                            <textarea style="width: 95%; text-transform: none;" cols="40" id="observacionedit" name="observacionedit" rows="4" disabled></textarea>
+                            <div class="help-text"></div>
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success actualizaractividaddetalle"> Aceptar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" data-keyboard="false" id="itemspaneldistributivo" style="display: none;">
+        <div class="modal-header">
+            <td><h4><i class="fa fa-list"></i> <span class="paneltitledistributivo">Distributivo Horas de Investigación</span></h4></td>
+        </div>
+        <div class="modal-body panelbodydistributivo">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,346 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        $(function () {
+            $("#search").click(function () {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/adm_requerimiento?action=viewcapacitacion&s=" + term;
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+            tipo_formulario($("#form2"));
+            $(".itemsadicionar").click(function () {
+                var id_historia = $(this).attr('idh');
+                $("#id_historia").val(id_historia);
+                $("#itemspanel").modal({backdrop: 'static', width: '400px'}).modal('show');
+                return false;
+            });
+
+            $(".btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+            });
+
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '---------';
+                }
+            };
+
+            $("#id_responsable_select2").addClass("validate[required]");
+            $("#id_responsable_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=DistributivoPersona&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_responsable").attr({"value": (evt.params.data.id)});
+            });
+
+            $("#guardar").click(function () {
+                var id_responsable = $("#id_responsable").val();
+                var id_historia = $("#id_historia").val();
+                if (id_responsable > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_requerimiento",
+                        data: {
+                            'action': 'addresponsable',
+                            'id_distributivo': id_responsable,
+                            'id_historia': id_historia
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                location.reload();
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                } else {
+                    smoke.alert("Ingrese responsable");
+                }
+
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span2'>
+            {#            {% if perms.sagest.puede_modificar_proveedor %}#}
+            <a href="/adm_requerimiento?action=addcab" class='btn btn-success'><span class="fa fa-plus "></span>
+                Adicionar</a>
+
+            {#            {% endif %}#}
+        </div>
+        <div class='span2'>
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle " data-toggle="dropdown" href="#"> Configuración <span
+                        class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    <li><a href="/adm_requerimiento?action=secuenciacapacitacion"> <i class="fa fa-list"></i> Secuencia
+                    </a></li>
+                    <li><a href="/adm_requerimiento?action=opcionsistema"> <i class="fa fa-list-ol"></i> Opcion Sistema
+                    </a></li>
+                    <li><a href="/adm_requerimiento?action=tipoaccion"> <i class="fa fa-arrows-alt"></i> Tipo Acción
+                    </a></li>
+
+                </ul>
+            </div>
+        </div>
+        <div class="span6">
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span> Buscar</a>
+                {% if search or ids %}
+                    <a href="/adm_requerimiento?action=viewcapacitacion" id='allresults' class='btn btn-info'><span
+                            class="fa fa-refresh "></span> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 150px; text-align: center">Secuencia</th>
+                    <th style="width: 200px; text-align: center">Antecedente</th>
+                    <th style="width: 250px; text-align: center">Departamento</th>
+                    <th style="width: 200px; text-align: center">Tipo</th>
+                    <th style="width: 150px; text-align: center">Fecha / Hora Capacitación</th>
+                    <th style="width: 500px; text-align: center">Responsables</th>
+                    <th style="width: 150px; text-align: center">Formato</th>
+                    <th style="width: 150px; text-align: center">Archivo Capacitación</th>
+                    <th style="width: 80px; text-align: center"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for capacitacion in capacitacion %}
+                    <tr>
+                        <td style="text-align: center">
+                            {% if capacitacion.confsecuencia.anio < 2022 %}
+                                {{ capacitacion.confsecuencia.descripcion }}-{{ capacitacion.secuencia }}-{{ capacitacion.confsecuencia.anio }}
+                            {% else %}
+                                {{ capacitacion.confsecuencia.descripcion }}-{{ capacitacion.secuencia|stringformat:"04d" }}-{{ capacitacion.confsecuencia.anio }}
+                            {% endif %}
+                        </td>
+                        <td>  {{ capacitacion.antecedente }}</td>
+                        <td>  {{ capacitacion.departamento }} - {{ capacitacion.seccion }}</td>
+                        <td style="text-align: center">  {{ capacitacion.tipo }}</td>
+                        <td style="text-align: center"> <span class="label label-info">{{ capacitacion.fecha|date:"Y-m-d" }}</span><br>
+                            {{ capacitacion.horainicio  |time:'H:i'  }} - {{ capacitacion.horafin |time:'H:i' }}</td>
+                        <td style="text-align: justify">
+                            <b>Elaborado: </b>{{ capacitacion.elaborado.nombre_completo_inverso }}<br><br>
+                            <b>Verificado: </b>{{ capacitacion.verificado.nombre_completo_inverso }}<br><br>
+                            {% if capacitacion.aprobado %}
+                             <b>Aprobado: </b>{{ capacitacion.aprobado.nombre_completo_inverso }}<br><br>
+                            {% endif %}
+{#                            {% if capacitacion.responsableadm.all %}#}
+{#                                <b>Responsables: </b>#}
+{#                                {% for x in capacitacion.responsableadm.all %}#}
+{#                                {{ x }}<br>#}
+{#                                {% endfor %}#}
+{#                            {% endif %}#}
+
+
+
+
+                        </td>
+                        <td style="text-align: center"><a
+                                href='/adm_requerimiento?action=reportepdf&id={{ capacitacion.id }}' target="_blank"
+                                class="btn btn-info"><span class="fa fa-file-pdf-o "></span>
+                            <t class="hidden-phone hidden-tablet visible-desktop"></t>
+                        </a></td>
+                        <td style="text-align: center">
+                             {% if capacitacion.archivo %}
+                                    <a data-original-title="Archivo Capacitacion" href="{{ capacitacion.archivo.url }}" target="_blank" class="btn btn-info"><span class="fa fa-file-pdf-o "></span>
+                            <t class="hidden-phone hidden-tablet visible-desktop"></t> </a>
+                                {% endif %}
+                        </td>
+
+                        {#                        <td>#}
+                        {#                            {{ historia.solicita.nombre_completo_inverso }}#}
+                        {#                            <br>#}
+                        {#                            <b>Puesto:</b>{{ historia.denominacionpuesto }}<br>#}
+                        {#                            <b>Departamento:</b>{{ historia.departamento }}#}
+                        {#                        </td>#}
+
+
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span
+                                        class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                    <li><a href='/adm_requerimiento?action=editcab&id={{ capacitacion.id }}'><i
+                                            class="fa fa-edit"></i> Editar </a></li>
+{#                                    <li><a href='/adm_requerimiento?action=editelaborado&id={{ capacitacion.id }}'><i#}
+{#                                            class="fa fa-edit"></i> Editar Elaborado </a></li>#}
+{#                                    <li><a href='/adm_requerimiento?action=editverificado&id={{ capacitacion.id }}'><i#}
+{#                                            class="fa fa-edit"></i> Editar Verificado </a></li>#}
+                                    <li><a href='/adm_requerimiento?action=viewresponsable&id={{ capacitacion.id }}'><i
+                                            class="fa fa-plus"></i> Agregar Responsables </a></li>
+                                    <li><a href='/adm_requerimiento?action=viewparticipante&id={{ capacitacion.id }}'><i
+                                            class="fa fa-plus"></i> Agregar Participante </a></li>
+                                    <li><a href='/adm_requerimiento?action=viewopciones&id={{ capacitacion.id }}'><i
+                                            class="fa fa-plus"></i> Agregar Opc. A Capacitar </a></li>
+                                    <li><a href='/adm_requerimiento?action=viewobservacion&id={{ capacitacion.id }}'><i
+                                            class="fa fa-plus"></i> Agregar Observaciones </a></li>
+
+
+
+                                    <li><a href='/adm_requerimiento?action=subirarchivo&id={{ capacitacion.id }}'><i
+                                            class="fa fa-plus"></i> Subir Archivo Capacitación</a></li>
+
+
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr style="text-align:center ">
+                        <td colspan="10">
+                            NO EXISTEN DATOS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/adm_requerimiento?action=viewcapacitacion&page=1">1</a></li>
+                        <li><a href="/adm_requerimiento?action=viewcapacitacion&page={{ paging.ellipsis_izquierda }}"
+                               class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                href="/adm_requerimiento?action=viewcapacitacion&page={{ pagenumber }}">{{ pagenumber }}</a>
+                        </li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/adm_requerimiento?action=viewcapacitacion&page={{ paging.ellipsis_derecha }}"
+                               class="active">...</a></li>
+                        <li>
+                            <a href="/adm_requerimiento?action=viewcapacitacion&page={{ paging.num_pages }}">{{ paging.num_pages }}</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                href="/adm_requerimiento?action=viewcapacitacion&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Asignar Responsable </h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger incompletovalores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-l' action="" method="POST">
+                    {% for field in form2 %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins"
+                                  style="min-height:35px; float: left; width:
+                                          {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}0{% endif %}">
+                            <div class="control-label label-text"
+                                 {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %}
+                                 style="display: table;height: 30px;">
+                                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                    <label for="id_{{ field.name }}"
+                                           style="padding-right: 20px">{{ field.label }}</label>
+                                </div>
+                            </div>
+                            <div class="control" style="float: left; width:
+                                    {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}0{% endif %}">
+                                {% if field.field.widget.attrs.select2search %}
+                                    <select id="id_{{ field.name }}_select2"
+                                            {% if field.field.widget.attrs.disabled %}disabled=""{% endif %}
+                                            style="width: 350px">
+                                        <option value="0" selected="selected">---------</option>
+                                    </select>
+                                    <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}"
+                                           hidden="hidden"
+                                           {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %}
+                                           class="select2hidden">
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+                                <p class="help-text"
+                                   style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                    <input type="hidden" id="id_historia" name='id_historia' value='0'/>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="guardar"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

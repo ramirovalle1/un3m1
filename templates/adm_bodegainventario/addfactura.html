@@ -1,0 +1,284 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+<style type="text/css">
+.my-custom-class {
+  font-size: 14px;
+  width: 400px;
+  height: 200px;
+}
+
+.titulos{
+    background-color: #f5f4f8;
+}
+</style>
+<script type="text/javascript">
+
+        var productos = {}
+
+        function calcularTotal() {
+                var subtotal_total = 0.00;
+                $('#detallefactura tr').each(function () {
+                    var subtotal = parseFloat($(this).find('.subtotal').text().substring(1));
+                    if (!isNaN(subtotal)) {
+                        subtotal_total += subtotal;
+                        console.log(subtotal)
+                    }
+                });
+                $('#id_total').val(subtotal_total);
+            }
+
+        function cargarItemsEnSelect2(diccionario, selectId) {
+            var $select = $('#' + selectId);
+
+            $.each(diccionario, function (id, nombre) {
+                $select.append($('<option>', {
+                    value: id,
+                    text: nombre
+                }));
+            });
+            $select.trigger('change.select2');
+            productos = {}
+        }
+
+
+
+        $(function () {
+
+            $("#id_producto").change(function (){
+                $("#id_unidadmedida").empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let id = $(this).val()
+                if (id >0) {
+                    $.ajax({
+                        type: "POST",
+                        url: "/helpdesk_adm_bodegainventario",
+                        data: {'action': 'cargar_unidadesmedida', 'id': id},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_unidadmedida').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#id_codigo').addClass("validate[required]");
+            $('#id_proveedor').addClass("validate[required]");
+            $('#id_fecha').addClass("validate[required]");
+
+            $('#id_producto').select2({width: '100%',dropdownParent: $("#itemspanel")});
+            $('#id_unidadmedida').select2({width: '100%',dropdownParent: $("#itemspanel")});
+
+            calcularTotal();
+
+            // detectar cambios en la tabla
+            $('#detallefactura').on('DOMNodeInserted DOMNodeRemoved', function () {
+                calcularTotal();
+
+                // Eliminar productos del select que ya estan en la tabla
+                var tdProductos = $("#detallefactura .producto");
+                var productosSeleccionados = [];
+                    tdProductos.each(function (){
+                        var producto = $(this).find("div").text().trim();
+                        productosSeleccionados.push(producto);
+                    });
+                    $("#id_producto option").filter(function () {
+                        return productosSeleccionados.indexOf($(this).text().trim()) > -1; // Excluir las opciones que ya están en la tabla
+                    }).remove();
+
+            });
+
+
+
+            $("#itemsadicionar").click(function () {
+
+                cargarItemsEnSelect2(productos, "id_producto" )
+
+                $("#id_producto").val(null).trigger("change");
+                $("#id_unidadmedida").val(null).trigger("change");
+                $('#select2-id_producto-container').text("---------")
+                $('#select2-id_unidadmedida-container').text("---------");
+                $("#id_cantidad").val("");
+                $("#id_costo").val("");
+
+                $("#itemspanel").modal({backdrop: "static", width: "700px"}).modal("show");
+            });
+
+            $("#itemspanel_adicionarcerrar ").click(function () {
+                var subtotal = 0;
+                var id_producto = $("#id_producto").val();
+                var producto = $('#select2-id_producto-container').text();
+                var id_unidadmedida = $('#id_unidadmedida').val();
+                var unidadmedida = $('#select2-id_unidadmedida-container').text();
+                var cantidad = $("#id_cantidad").val();
+                var costo = $("#id_costo").val();
+                costo = costo.replace(",", ".");
+
+                var cantidadcal = parseInt(cantidad);
+                var costocal = parseFloat(costo);
+
+                if (!isNaN(costo) && costo !== "") {  // Validar que costo sea un número válido y no esté vacío
+                    costo = parseFloat(costo).toFixed(2);
+                }
+
+                // Validar que los valores de cantidad y costo no sean cero o NaN
+                if (isNaN(cantidadcal) || cantidadcal === 0 || isNaN(costocal) || costocal === 0) {
+                    subtotal = 0;
+
+                } else {
+                    subtotal = cantidad * costo;
+                    subtotal = subtotal.toFixed(2);
+                }
+
+                if ((! id_producto ) || (!id_unidadmedida) || (!cantidad) || (!costo)) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        type: 'error',
+                        title: 'Complete los campos',
+                        showConfirmButton: false,
+                        timer: 1500
+                    });
+                    return false;
+                }else{
+                    Swal.fire({
+                        type: 'success',
+                        title: 'Producto agregado',
+                        showConfirmButton: false,
+                        timer: 1500
+                    });
+                }
+                $("#detallevacio").remove();
+                $("#detallefactura").append("<tr id='fila_" + id_producto + "' >" +
+                                '<td style="text-align: justify" class="producto" id="producto1"><div>'+producto+'</div></td>' +
+                    '<td style="text-align: center;display:none"><input style="text-align: center" name="producto" type="hidden" value="' + id_producto + '"></td>' +
+                                '<td style="text-align: center" class="unidadmedida"><div>'+unidadmedida+'</div></td>' +
+                    '<td style="text-align: center;display:none"><input style="text-align: center" name="unidadmedida" type="hidden" value="' + id_unidadmedida + '"></td>' +
+                                '<td style="text-align: center" class="cantidad"><div>'+cantidad+'</div></td>' +
+                    '<td style="text-align: center;display:none"><input style="text-align: center" name="cantidad" type="hidden" value="' + cantidad + '"></td>' +
+                                '<td style="text-align: center" class="costo"><div>$'+costo+'</div></td>' +
+                     '<td style="text-align: center;display:none"><input style="text-align: center" name="costo" type="hidden" value="' + costo + '"></td>' +
+                                '<td style="text-align: center" class="subtotal" ><div>$'+subtotal+'</div></td>' +
+                     '<td style="text-align: center;display:none" ><input  style="text-align: center" name="subtotal" type="hidden" value="' + subtotal + '"></td>' +
+                                "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu'  title='Eliminar'  idp='" + id_producto + "' ><i class='fa fa-remove'></i></a></td>" +
+
+                                '</tr>');
+
+                $(".eliminaritem").unbind("click.eliminarItem");
+                $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+
+                if ($(this).attr('id') == 'itemspanel_adicionarcerrar') {
+                        $("#itemspanel").modal("hide");
+                    }
+            });
+
+        });
+
+        $("#itemspanel_cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+            });
+
+        eliminarItem = function () {
+                var id = $(this).attr("idp");
+                var producto = $(this).closest("tr").find(".producto div").text().trim();
+                productos[id]=producto //productos eliminados de la tabla detalle
+
+                $("#fila_" + id).remove();
+                calcularTotal();
+                if ($('.eliminaritem').length == 0) {
+                    $("#itemsbody").html('<tr id="detallevacio"><td colspan="10">NO EXISTEN PRODUCTOS</td></tr>');
+                }
+            };
+
+
+    </script>
+{% endblock %}
+{% block titulo %}Ingreso de Factura{% endblock %}
+{% block atras %}/helpdesk_adm_bodegainventario?action=configfacturacompra{% endblock %}
+{% block formaction %}/helpdesk_adm_bodegainventario{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formdestination %}/helpdesk_adm_bodegainventario?action=configfacturacompra{% endblock %}
+{% block formsuffix %}
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="detallefactura">
+                    <thead>
+                        <tr>
+                            <th class="text-center" colspan="5">Detalle de Factura</th>
+                            <th class="text-center">
+                                <button type="button" id="itemsadicionar" class="btn btn-success"><span class="fa fa-plus"></span></button>
+{#                                 <button type="button" class="btn btn-large btn-info" style="margin-left:5px; " onclick="uiModalSeachTableServices.open()"><i class="fa fa-list"></i></button>#}
+                            </th>
+                        </tr>
+                        <tr>
+                            <th style=" background-color: #f5f4f8;">Producto</th>
+                            <th style="width: 200px; text-align: center; background-color: #f5f4f8;">Unidad de medida</th>
+                            <th style="width: 100px; text-align: center; background-color: #f5f4f8;">Cantidad</th>
+                            <th style="width: 130px; text-align: center; background-color: #f5f4f8;">Costo</th>
+                            <th style="width: 130px; text-align: center; background-color: #f5f4f8;">Total</th>
+                            <th style="width: 40px; text-align: center; background-color: #f5f4f8;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsbody">
+                        <tr id="detallevacio" ><td colspan="10">NO EXISTEN PRODUCTOS</td></tr>
+{#                        <th class="text-justify" colspan="4">Total</th>#}
+{#                        <th id="totaltabla" style="width: 100px; text-align: center"></th>#}
+                    </tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+<div class="modal fade" id="itemspanel" tabindex="-1" aria-labelledby="itemspanelLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered ">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="paneltitle" id="itemspanelLabel">Detalle de Factura</h3>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="itemspanel_body">
+
+        <div id="form2">
+          {% for field in form2 %}
+          <fieldset class="form-group">
+            <label for="id_{{ field.name }}" class="form-label control-label-modal" style="margin-bottom: 0px; margin-top: 10px">{{ field.label }}:</label>
+            <div class="controls-modal">
+              {{ field }}
+              <p class="form-text">{{ field.help_text }}</p>
+            </div>
+
+          </fieldset>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" id="itemspanel_adicionarcerrar">
+          <i class="fa fa-plus"></i> Adicionar
+        </button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal" id="itemspanel_cerrar">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addfactura'/>
+{% endblock %}
+{% block formback %}/helpdesk_adm_bodegainventario?action=configfacturacompra{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+
+
+

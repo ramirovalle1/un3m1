@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block atras %}/{% endblock %}
+{% block heading %}
+    {#    css propio #}
+    <link rel="stylesheet" href="/static/css/bloques.css?v=1">
+    {#    Complementos para elementos #}
+    <link rel="stylesheet" href="/static/dropify/css/dropify.min.css">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/cabonads.css?0.3.3">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <link href="/static/smartwizard/smart_wizard_all.min.css" rel="stylesheet" type="text/css"/>
+    <style>
+        .btn-close {
+            margin: -8px -3px -0rem auto !important;
+        }
+
+        .table_primary th {
+            color: #122436;
+        }
+
+        td a {
+            color: #5c5776;
+        }
+    </style>
+    {% block heading_ext %}{% endblock %}
+{% endblock %}
+{% block extraJs %}
+    {#    Envio de datos por ajax #}
+    <script src="/static/adicionalesjs/formquestionb4.js?0.25"></script>
+    {#    Complementos para elementos   #}
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript" src='/static/dropify/js/dropify.min.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1"
+            data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+    <script src="/static/smartwizard/jquery.smartWizard.min.js" type="text/javascript"></script>
+
+    {# Inicia con el DOOM #}
+    <script type="text/javascript">
+        $(function () {
+            let item = $("#item_{{ request.session.viewactivopc.1 }}")
+            let icon = $("#icon_{{ request.session.viewactivopc.1 }}")
+            {#let acordion = $("#id_{{ request.session.viewactivopc.0 }}")#}
+            icon.removeClass('d-none')
+            item.addClass('active')
+            {#acordion.removeClass('collapse').addClass('show')#}
+        });
+
+    </script>
+
+    {# Funciones reutilizables #}
+    <script type="text/javascript">
+
+        {% if pendiente_hijos %}
+            confirmaEncuesta('Actualización de cargas familiares',
+                '¿Tiene usted hijos o infantes bajo su custodia?',
+                '{{ request.path }}', 'respondehijo', {{ persona.id }}, '{{ request.path }}', 'SI', 'NO');
+        {% endif %}
+
+
+        function confirmaEncuesta(titulo, mensaje, url, action, id, urlDestino) {
+            Swal.fire({
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                allowEnterKey: false,
+                type: 'question',
+                title: titulo,
+                html: mensaje,
+                showCancelButton: true,
+                showConfirmButton: true,
+                confirmButtonText: 'SI',
+                cancelButtonText: 'No',
+            }).then((result) => {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: url,
+                    data: {
+                        action: action,
+                        csrfmiddlewaretoken: '{{ csrf_token }}',
+                        id: id,
+                        valor: result.value,
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            if (data.showSwal) {
+                                $.unblockUI();
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            } else {
+                                location.href = urlDestino;
+                            }
+                        } else {
+                            $.unblockUI();
+                            if (data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            })
+        }
+
+
+        function formModal(idp, id, text, action, dimension = 'modal-lg', footer = true, idex = '', icon = 'fa-outdent') {
+            bloqueointerface()
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': idp,
+                    'idex': idex,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    footer ? $('#footermodal').hide() : $('#footermodal').show();
+                    $('#title-icon').removeClass('fa-outdent').addClass(icon)
+                    $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                    if (data.result === true) {
+                        $('#itemspanel .panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        if (data.reload) {
+                            location.reload();
+                        } else {
+                            mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalArchivo(id, text, action, footer = true) {
+            $("#id_obj").val(id)
+            $("#id_action").val(action)
+            footer ? $('#footermodal').hide() : $('#footermodal').show();
+            $('#itemspanelarchivo .paneltitle-archivo').html(text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
+            $("#itemspanelarchivo").modal({backdrop: 'static'}).modal('show');
+        }
+
+        //Actualizar estados de checks
+        function ActualizarEstadoExt(id, action, objeto, idex) {
+            bloqueointerface();
+            var check = objeto.is(':checked')
+            //console.log(id+'-'+action+'-'+check+'-'+idex)
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': action, 'id': id, 'val': check, 'idex': idex},
+                success: function (data) {
+                    if (data.result === true) {
+                        $.unblockUI();
+                        alertaSuccess(data.mensaje)
+                        if (idex == 'reload') {
+                            location.reload()
+                        } else if (idex == 'refresh') {
+                            $(".activo").prop('checked', false)
+                            objeto.prop('checked', check);
+                        } else if (idex) {
+                            ActualizarTabla(data.context)
+                            $(".activo").prop('checked', false)
+                            objeto.prop('checked', check);
+                        }
+                    } else {
+                        $.unblockUI();
+                        objeto.prop('checked', !check);
+                        Swal.fire({
+                            type: 'info',
+                            allowOutsideClick: false,
+                            text: data.mensaje,
+                            showDenyButton: true,
+                        }).then((result) => {
+                            /* Read more about isConfirmed, isDenied below */
+                            if (result.value) {
+                                location.reload()
+                            }
+                        })
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    objeto.prop('checked', !check);
+                    alertaDanger("Error al enviar los datos.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminarajaxl(pk, nombre, accion, url = '{{ request.path }}', titulo = 'Estás por eliminar este registro:') {
+            Swal.fire({
+                title: 'Alerta!',
+                html: `${titulo} ${nombre}`,
+                text: "Esta acción es irreversible",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            alertaSuccess(data.mensaje)
+                            limpiar(pk)
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Advertencia!: Error en el servidor');
+                    }).always(function () {
+                    });
+                } else {
+                }
+            })
+        }
+
+    </script>
+    {% block extraheading %} {% endblock %}
+{% endblock %}
+{% block canvas %}
+    <div class="row">
+        <div class="col-md-4 col-xl-6">
+            <div class="headtitle">
+                <h3 class="texto-blue">Producción Científica</h3>
+                <h6>Gestión de Artículos, Ponencias, Libros y Capítulos</h6>
+            </div>
+        </div>
+        <div class="col-md-8 col-xl-6">
+
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-4 col-xl-3 mt-1">
+                <div class="accordion accordion-flush" id="items">
+                    <!-- Artículos -->
+                    <div class="accordion-item mb-2">
+                        <div class="accordion-header">
+                            <button class="accordion-button accordion-btn-white {% if not request.session.viewactivopc.0 == 'mnuarticulos' %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#id_mnuarticulos" aria-expanded="true">
+                                <h4 class="mb-0 texto-blue">Artículos</h4>
+                            </button>
+                        </div>
+                        <div id="id_mnuarticulos" class="accordion-collapse {% if request.session.viewactivopc.0 == 'mnuarticulos' %}show {% else %}collapse{% endif %}" data-bs-parent="#items" aria-expanded="false">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush">
+                                    <a href="{{ request.path }}" class="list-group-item-white p-4 py-2 bloqueo_pantalla" id="item_articulos">
+                                        Artículos <i class="arrow-item-md ms-2 d-none" id="icon_articulos"></i>
+                                    </a>
+                                    <a href="{{ request.path }}?action=solicitudarticulo" class="list-group-item-white p-4 py-2 bloqueo_pantalla" id="item_solicitudesart">
+                                        Solicitudes <i class="arrow-item-md ms-2 d-none" id="icon_solicitudesart"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=revistas" class="list-group-item-white p-4 py-2" id="item_revistas">#}
+{#                                        Revistas <i class="arrow-item-md ms-2 d-none" id="icon_revistas"></i>#}
+{#                                    </a>#}
+                                    <a href="/articulosinvestigacion?action=listadorevistas" class="list-group-item-white p-4 py-2" id="item_revistas">
+                                        Revistas <i class="arrow-item-md ms-2 d-none" id="icon_revistas"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=bases" class="list-group-item-white p-4 py-2" id="item_bases">#}
+{#                                        Bases<i class="arrow-item-md ms-2 d-none" id="icon_bases"></i>#}
+{#                                    </a>#}
+                                    <a href="/articulosinvestigacion?action=listadobases" class="list-group-item-white p-4 py-2" id="item_bases">
+                                        Bases<i class="arrow-item-md ms-2 d-none" id="icon_bases"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=perfilesorcid" class="list-group-item-white p-4 py-2" id="item_perfilesorcid">#}
+{#                                        Perfiles ORCID <i class="arrow-item-md ms-2 d-none" id="icon_perfilesorcid"></i>#}
+{#                                    </a>#}
+                                    <a href="/articulosinvestigacion?action=perfilesorcid" class="list-group-item-white p-4 py-2" id="item_perfilesorcid">
+                                        Perfiles ORCID <i class="arrow-item-md ms-2 d-none" id="icon_perfilesorcid"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=perfilesscopus" class="list-group-item-white p-4 py-2" id="item_perfilesscopus">#}
+{#                                        Perfiles Scopus <i class="arrow-item-md ms-2 d-none" id="icon_perfilesscopus"></i>#}
+{#                                    </a>#}
+                                    <a href="/articulosinvestigacion?action=perfilesscopus" class="list-group-item-white p-4 py-2" id="item_perfilesscopus">
+                                        Perfiles Scopus <i class="arrow-item-md ms-2 d-none" id="icon_perfilesscopus"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ponencias -->
+                    <div class="accordion-item mb-2">
+                        <div class="accordion-header">
+                            <button class="accordion-button accordion-btn-white {% if not request.session.viewactivopc.0 == 'mnuponencias' %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#id_mnuponencias" aria-expanded="true">
+                                <h4 class="mb-0 texto-blue">Ponencias</h4>
+                            </button>
+                        </div>
+                        <div id="id_mnuponencias" class="accordion-collapse {% if request.session.viewactivopc.0 == 'mnuponencias' %}show {% else %}collapse{% endif %}" data-bs-parent="#items" aria-expanded="false">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush">
+{#                                    <a href="{{ request.path }}?action=ponencias" class="list-group-item-white p-4 py-2" id="item_ponencias">#}
+{#                                        Ponencias <i class="arrow-item-md ms-2 d-none" id="icon_ponencias"></i>#}
+{#                                    </a>#}
+                                    <a href="/ponenciasinvestigacion" class="list-group-item-white p-4 py-2" id="item_ponencias">
+                                        Ponencias <i class="arrow-item-md ms-2 d-none" id="icon_ponencias"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=solicitudponencia" class="list-group-item-white p-4 py-2" id="item_solicitudponencia">#}
+{#                                        Solicitudes<i class="arrow-item-md ms-2 d-none" id="icon_solicitudponencia"></i>#}
+{#                                    </a>#}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Libros -->
+                    <div class="accordion-item mb-2">
+                        <div class="accordion-header">
+                            <button class="accordion-button accordion-btn-white {% if not request.session.viewactivopc.0 == 'mnulibros' %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#id_mnulibros" aria-expanded="true">
+                                <h4 class="mb-0 texto-blue">Libros</h4>
+                            </button>
+                        </div>
+                        <div id="id_mnulibros" class="accordion-collapse {% if request.session.viewactivopc.0 == 'mnulibros' %}show {% else %}collapse{% endif %}" data-bs-parent="#items" aria-expanded="false">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush">
+{#                                    <a href="{{ request.path }}?action=ponencias" class="list-group-item-white p-4 py-2" id="item_ponencias">#}
+{#                                        Ponencias <i class="arrow-item-md ms-2 d-none" id="icon_ponencias"></i>#}
+{#                                    </a>#}
+                                    <a href="/librosinvestigacion" class="list-group-item-white p-4 py-2" id="item_libros">
+                                        Libros <i class="arrow-item-md ms-2 d-none" id="icon_libros"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=solicitudponencia" class="list-group-item-white p-4 py-2" id="item_solicitudponencia">#}
+{#                                        Solicitudes<i class="arrow-item-md ms-2 d-none" id="icon_solicitudponencia"></i>#}
+{#                                    </a>#}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Capítulos de Libros -->
+                    <div class="accordion-item mb-2">
+                        <div class="accordion-header">
+                            <button class="accordion-button accordion-btn-white {% if not request.session.viewactivopc.0 == 'mnucapitulos' %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#id_mnucapitulos" aria-expanded="true">
+                                <h4 class="mb-0 texto-blue">Capítulos de Libros</h4>
+                            </button>
+                        </div>
+                        <div id="id_mnucapitulos" class="accordion-collapse {% if request.session.viewactivopc.0 == 'mnucapitulos' %}show {% else %}collapse{% endif %}" data-bs-parent="#items" aria-expanded="false">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush">
+{#                                    <a href="{{ request.path }}?action=ponencias" class="list-group-item-white p-4 py-2" id="item_ponencias">#}
+{#                                        Ponencias <i class="arrow-item-md ms-2 d-none" id="icon_ponencias"></i>#}
+{#                                    </a>#}
+                                    <a href="/librosinvestigacion?action=listacapitulos" class="list-group-item-white p-4 py-2" id="item_capitulos">
+                                        Capítulos de Libros <i class="arrow-item-md ms-2 d-none" id="icon_capitulos"></i>
+                                    </a>
+{#                                    <a href="{{ request.path }}?action=solicitudponencia" class="list-group-item-white p-4 py-2" id="item_solicitudponencia">#}
+{#                                        Solicitudes<i class="arrow-item-md ms-2 d-none" id="icon_solicitudponencia"></i>#}
+{#                                    </a>#}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-xl-9">
+                {% block extra_inputs %}{% endblock %}
+                <div class="card">
+                    <div class="card-header border-bottom rounded-md-2">
+                        <div class="nav-container">
+                            <div class="headtitle mb-0 ms-0">
+                                <h3 class="texto-blue"> {{ title }} </h3>
+                                <h6>{% block subtitle %}{{ subtitle }}{% endblock %}</h6>
+                            </div>
+                            <div>
+                                {% block buttons_action %}
+
+                                {% endblock %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body rounded-md-2">
+                        {% block content %}{% endblock %}
+                    </div>
+                </div>
+                {% block content_card %}
+
+                {% endblock %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><i class="fa fa-outdent" id="title-icon"></i> <b class="paneltitle"> FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body p-0">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="panelbody m-3">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default cerrar" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelarchivo" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><i class="fa fa-upload" id="title-icon"></i> <b class="paneltitle-archivo"> FORMULARIO</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body panelbody-archivo">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <div class="alert alert-default-info p-0">
+                                    <i class="fa fa-info-circle"></i> Estimad{% if persona.es_mujer %}a{% else %}
+                                    o{% endif %}
+                                    <b>{{ persona.un_nombre_dos_apellidos }}</b>, si selecciono esta opción para subir
+                                    el certificado, tenga en cuenta que tiene que estar firmado de manera adecuada.
+                                </div>
+                            </div>
+                            <input type="hidden" value="" name="action" id="id_action">
+                            <input type="hidden" value="" name="id_obj" id="id_obj">
+                            <div class="col-lg-12">
+                                <label class="fw-semi-bold">Archivo: <b class="text-danger">*</b></label>
+                                <input type="File" name="archivo" id="id_archivo" class="form-control w-100" required
+                                       accept=".pdf">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12 text-end">
+                                <button type="submit" class="btn btn-orange fs-5"><i class="fa fa-plus"></i> Guardar
+                                </button>
+                                <a href="javascript:;" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"
+                                   aria-label="Close"><i class="fa fa-remove"></i> Cancelar</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% block moreblock_ext %}{% endblock %}
+{% endblock %}

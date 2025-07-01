@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+{#    <link rel="stylesheet" href="/static/css/stylesfc.css">#}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode === 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            busqueda = function () {
+                let desde = $("#desde").val();
+                let hasta = $("#hasta").val();
+                let estado = $("#estado").val();
+                let term = $("#searchinput").val().toUpperCase().trim();
+                let criterios = `desde=${desde}&hasta=${hasta}&estadoid=${estado}`;
+                if (term.length > 0){
+                    criterios = criterios + `&s=${term}`
+                }
+                location.href = `/adm_docenteinvitado?action=informes&${criterios}`
+            };
+
+            $(".validarasistencia").click(function() {
+                let id = $(this).attr('id');
+                let tipo = $(this).attr("tipo");
+                if (tipo !== 'I'){
+                    $("#icaprobar").show();
+                    $("#icinfo").hide();
+                }else{
+                    $("#icinfo").show();
+                    $("#icaprobar").hide();
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'validarasistencia', 'id': id, 'tipo': tipo},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitlevalidarasistencia").html(data.title);
+                            $(".panelbodyvalidarasistencia").html(data.data);
+                            $("#itemspanelvalidarasistencia").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelvalidarasistencia .guardar").click(function () {
+                enviarFormulario("/adm_docenteinvitado", "validarasistencia");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action === 'validarasistencia'){
+                    $("#frmValidarAsistencia").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmValidarAsistencia").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'firmarreporteasistencia'){
+                    $("#frmFirmarDocumento").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFirmarDocumento").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'validarasistencia')
+                        formdata = new FormData($("#frmValidarAsistencia")[0]);
+                    else if(action === 'firmarreporteasistencia')
+                        formdata = new FormData($("#frmFirmarDocumento")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                if(action === 'validarasistencia'){
+                                    urlDestino = "/adm_docenteinvitado?action=detalleasistencia&id={{ solicitud.id|encrypt }}";
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                }
+                                else if (action === 'firmarreporteasistencia'){
+                                    location.href = `/adm_docenteinvitado?action=detalleasistencia&id={{ solicitud.id|encrypt }}&imp=S`;
+                                }
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".imprimirreporte").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'reporteasistenciapdf', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok'){
+                            //window.open(data.documento, '_blank');
+                            //location.reload();
+                            location.href = `/adm_docenteinvitado?action=detalleasistencia&id={{ solicitud.id|encrypt }}&imp=S`;
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".firmardocumento").click(function() {
+                let id = $(this).attr('id');
+                let idper = $(this).attr('idper');
+                let tipofirma = $(this).attr('tipofirma');
+                let accion = $(this).attr('acc');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': accion, 'id': id, 'idper': idper, 'tipofirma': tipofirma},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyfirmardocumento").html(data.data);
+                            $(".paneltitlefirmardocumento").html(data.title);
+                            $("#itemspanelfirmardocumento").modal({backdrop:'static'}).modal('show');
+                            $("#itemspanelfirmardocumento .guardar").attr('accion', accion);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelfirmardocumento .guardar").click(function () {
+                enviarFormulario("/adm_docenteinvitado", $(this).attr('accion'));
+                return false;
+            });
+
+            {% if reporteasistencia %}
+                Fancybox.show([
+                    {
+                        src: "{{ reporteasistencia }}",
+                        width: 2048,
+                        height: 1365,
+                        caption:"{{ tituloreporte }}"
+                    }
+                ]);
+            {% endif %}
+
+
+            $(".enviarwhatsapp").click(function() {
+                enviarWhatsapp();
+            });
+
+            enviarWhatsapp = function (){
+                let id = '12345';
+                let url = "/adm_docenteinvitado";
+                let action = "enviarwhatsapp";
+                let urlDestino = "";
+                let titulo = "Finalizar Edición de los Rubros del Presupuesto";
+                let mensaje = "¿Está seguro de finalizar con la edición de los rubros del presupuesto del proyecto?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_docenteinvitado?action=asistencias{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Validación de Asistencias de Profesores - Solicitud N° {{ solicitud.numero }} ({{ solicitud.fechaenvio|date:"d-m-Y" }})</h6>&nbsp;<span class="label label-{{ solicitud.color_estado }}">{{ solicitud.get_estado_display|title }}</span>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# FILA DE MENÚ #}
+        <div class='row'>
+            <div class="col-sm-12 pb-2">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Configuraciones <i class="fa fa-angle-down"></i></button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item" href="/adm_docenteinvitado"><i class="fa fa-users"></i>&nbsp;Docentes Invitados</a>
+                    </div>
+                </div>
+                {% if not esuath %}
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item" href="/adm_docenteinvitado?action=informes"><i class="fa fa-file-text"></i>&nbsp;Informes de Actividades</a>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if esdiruath %}
+                    {% if solicitud.totaldocente == solicitud.total_asistencias_aprobadas %}
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Reportes <i class="fa fa-angle-down"></i></button>
+                            <div class="dropdown-menu">
+                                {% if not solicitud.repimpreso %}
+                                    <a class="dropdown-item imprimirreporte" href="javascript:;" id="{{ solicitud.id|encrypt }}"><i class="fa fa-print"></i>&nbsp;Validación Asistencias</a>
+                                {% else %}
+                                    <li class="dropdown-item"><a href="{{ solicitud.archivorep.url }}" data-width="2048" data-height="1380" data-fancybox="reporteasistencia{{ forloop.counter }}" data-caption="Reporte de Validación de Asistencia sin Firmar"><i class="fa fa-print"></i> Validación Asistencias</a></li>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+                    {% if solicitud.repimpreso %}
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Procesos <i class="fa fa-angle-down"></i></button>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item firmardocumento" href="javascript:;" id="{{ solicitud.id|encrypt }}" idper="{{ solicitud.aprueba.id|encrypt }}" tipofirma="APR" acc="firmarreporteasistencia"><i class="fa fa-signature"></i>&nbsp;Firmar Reporte Validación</a>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endif %}
+{#                <div class="btn-group">#}
+{#                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Procesos <i class="fa fa-angle-down"></i></button>#}
+{#                    <div class="dropdown-menu">#}
+{#                        <a class="dropdown-item enviarwhatsapp" href="javascript:;" id="{{ solicitud.id|encrypt }}" idper="{{ solicitud.aprueba.id|encrypt }}" tipofirma="APR" acc="firmarreporteasistencia"><i class="fa fa-signature"></i>&nbsp;Enviar WhatsApp</a>#}
+{#                    </div>#}
+{#                </div>#}
+            </div>
+        </div>
+        {# FILA DE MENÚ #}
+        {# FILA DE FILTROS #}
+{#        <div class="form-row pb-0 pt-0">#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="desde"><i class="fa fa-calendar tu" title="Solicitud recibida desde"></i> Desde:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="date" class="form-control" name="desde" id="desde" value="{% if desde %}{{ desde|date:"Y-m-d" }}{% endif %}"/>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="hasta"><i class="fa fa-calendar tu" title="Solicitud recibida hasta"></i> Hasta:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="date" class="form-control" name="hasta" id="hasta" value="{% if hasta %}{{ hasta|date:"Y-m-d" }}{% endif %}"/>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-md-4 col-lg-2 col-12 pe-md-2">#}
+{#                <label for="estado"><i class="fa fa-traffic-light tu" title="Estado"></i> Estado:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <select id="estado" name="estado">#}
+{#                    <option value="0" selected>Todos</option>#}
+{#                    {% for estado in estados %}#}
+{#                        <option {% if estado.id == estadoid %}selected{% endif %} value="{{ estado.id }}">{{ estado.descripcion|title }}</option>#}
+{#                    {% endfor %}#}
+{#                </select>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="col-12 col-md-5 col-lg-6 pe-md-2">#}
+{#                <label for="searchinput"><i class="fa fa-search"></i> Criterio:</label>#}
+{#                <div class="input-group mb-2">#}
+{#                    <input type="text" class="form-control" autocomplete="off" placeholder="Apellidos del profesor" aria-label="Buscar" id='searchinput' name="searchinput" value="{{ s }}">#}
+{#                    <div class="input-group-append">#}
+{#                        <button class="btn btn-primary-old" id="search" type="button"><i class="fa fa-search"></i></button>#}
+{#                        {% if url_vars %}#}
+{#                            {% if s or desde or hasta or estadoid %}#}
+{#                                <a title="Ver todo" href="{{ request.path }}?action=informes" class="btn btn-default tr"><i class="fas fa-sync-alt"></i></a>#}
+{#                            {% endif %}#}
+{#                        {% endif %}#}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+        {# FILA DE FILTROS #}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead class="table-light cabecera-fija">
+                            <tr>
+                                <th style="width: 10%; font-weight: bold; text-align: center">F.Solicitud</th>
+                                <th style="width: 7%; font-weight: bold; text-align: center">F.Valida</th>
+                                <th style="width: 13%; font-weight: bold; text-align: center">N°Informe</th>
+                                <th style="width: 16%; font-weight: bold; text-align: center">Profesor</th>
+                                <th style="width: 7%; font-weight: bold; text-align: center">Mes/Días</th>
+                                <th style="width: 7%; font-weight: bold; text-align: center">Contrato</th>
+                                <th style="width: 10%; font-weight: bold; text-align: center">Vigencia</th>
+                                <th style="width: 10%; font-weight: bold; text-align: center">Estado</th>
+                                <th style="width: 15%; font-weight: bold; text-align: center">Observaciones</th>
+                                <th style="width: 5%; font-weight: bold; text-align: center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for detalle in detalles %}
+                                <tr>
+                                    <td class="text-center">
+                                        {{ solicitud.fechaenvio|date:"d-m-Y" }}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if detalle.fechavalida %}
+                                            {{ detalle.fechavalida|date:"d-m-Y" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {{ detalle.informe.numero }}<br>
+                                        <a href="{{ detalle.informe.archivofirmado.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="informefirmado{{ forloop.counter }}" data-caption="Informe firmado {{ detalle.informe.numero }}" data-bs-toggle="tooltip" data-placement="top" title="Ver informe"><i class="fa fa-eye"></i> </a>
+                                    </td>
+                                    <td class="text-justify">
+                                        {{ detalle.informe.docente.profesor.persona.nombre_completo_inverso|title }}<br>
+                                    </td>
+                                    <td class="text-center">
+                                        {{ detalle.informe.inicio.month|nombremes|title }}<br>
+                                        <b>{{ detalle.informe.dialaborado }}</b>
+                                    </td>
+                                    <td class="text-center">
+                                        {{ detalle.informe.docente.numerocontrato }}<br>
+                                        <a href="{{ detalle.informe.docente.archivocontrato.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="contrato{{ forloop.counter }}" data-caption="Contrato de Talento Humano" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Archivo"><i class="fa fa-eye"></i> </a>
+                                    </td>
+                                    <td class="text-center">
+                                        <b>Ini:</b> {{ detalle.informe.docente.inicio|date:"d-m-Y" }}<br>
+                                        <b>Fin:</b>{{ detalle.informe.docente.fin|date:"d-m-Y" }}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display|title }}</span>
+                                    </td>
+                                    <td class="text-justify">
+                                        {{ detalle.observacion }}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <div class="dropbottom" style="text-align: left">
+                                            <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                            <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                {% if detalle.puede_validar and esanluath %}
+                                                    <li class="dropdown-item"><a class="validarasistencia" id="{{ detalle.id|encrypt }}" href="javascript:;" tipo="V"><i class="fa fa-check"></i> Validar Asistencia</a></li>
+                                                {% elif detalle.puede_revisar and esexpuath %}
+                                                    <li class="dropdown-item"><a class="validarasistencia" id="{{ detalle.id|encrypt }}" href="javascript:;" tipo="R"><i class="fa fa-check"></i> Revisar Asistencia</a></li>
+                                                {% elif detalle.puede_aprobar and esdiruath %}
+                                                    <li class="dropdown-item"><a class="validarasistencia" id="{{ detalle.id|encrypt }}" href="javascript:;" tipo="A"><i class="fa fa-check"></i> Aprobar Asistencia</a></li>
+                                                {% else %}
+                                                    <li class="dropdown-item"><a class="validarasistencia" id="{{ detalle.id|encrypt }}" href="javascript:;" tipo="I"><i class="fa fa-info-circle"></i> Mostrar Validación</a></li>
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr><td style="text-align: center" colspan="10">NO EXISTEN REGISTROS DE SOLICITUDES DE VALIDACIÓN DE ASISTENCIAS</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelvalidarasistencia" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-check" id="icaprobar"></i><i class="fa fa-info-circle" id="icinfo"></i>&nbsp;<span class="paneltitlevalidarasistencia">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyvalidarasistencia pb-0">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelfirmardocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-signature"></i>&nbsp;<span class="paneltitlefirmardocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyfirmardocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar" accion=""> Firmar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

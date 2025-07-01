@@ -1,0 +1,254 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script>
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+
+            $("#tiposervicioc, #servicioc, #modalidadc, #tipopersonac, #solicitantec, #motivoc").addClass("validate[required]");
+            
+            let accionbuscar = '';
+            
+            $("#persona_select2").val(0).trigger("change");
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#persona_select2").select2({
+                placeholder: "-------------------------------------------",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    },
+                    "errorLoading": function () {
+                        return "No se pudieron cargar los resultados...";
+                    },
+                },
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/adm_asesoriainvestigacion?action="+accionbuscar+"&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                //$("#persona").attr({"value":(evt.params.data.id)});
+            });
+
+            $('#tiposervicioc').change(function(){
+                $('#servicioc').empty().append('<option value="">---------</option>').val('').trigger("change");
+                let control = $(this);
+                let idg = parseInt($("#idgestion").val());
+                let idr = parseInt($("#idresponsable").val());
+                let tipo = parseInt($("#tiposervicioc").val());
+                if (tipo > 0) {
+                    $("#persona_select2").val(0).trigger("change");
+                    if(tipo === 1){
+                        $("#solicitantec2").val("");
+                        $("#divsolicitante2").hide();
+                        $("#divsolicitante1").show();
+                        $("#persona_select2").addClass("validate[required]");
+                        $("#tipopersonac").val("").trigger("change");
+                        $("#tipopersonac").prop("disabled", false);
+                        $("#persona_select2").prop("disabled", true);
+                    }else {
+                        $("#solicitantec2").val($("#responsablec").val());
+                        $("#divsolicitante1").hide();
+                        $("#divsolicitante2").show();
+                        $("#persona_select2").removeClass("validate[required]");
+                        $("#tipopersonac").val("2").trigger("change");
+                        $("#tipopersonac").prop("disabled", true);
+                    }
+
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_asesoriainvestigacion",
+                        data: {'action': 'serviciogestionresponsable', 'idg': idg, 'idr': idr, 'tipo': tipo},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#servicioc').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#tipopersonac").val("").trigger("change");
+                    $("#tipopersonac").prop("disabled", true);
+                    $("#divsolicitante1").hide();
+                    $("#divsolicitante2").show();
+                }
+            });
+
+            $('#tipopersonac').change(function(){
+                $("#persona_select2").val(0).trigger("change");
+                if($(this).val() !== ''){
+                    if ($(this).val() === '1')
+                        accionbuscar = 'buscarprofesor'
+                    else if ($(this).val() === '2')
+                        accionbuscar = 'buscaradministrativo'
+                    else
+                        accionbuscar = 'buscaralumno'
+
+                    $("#persona_select2").prop("disabled", false);
+                }else{
+                    $("#persona_select2").prop("disabled", true);
+                }
+            });
+
+            $("#divsolicitante1").hide();
+            $("#divsolicitante2").show();
+            $("#tipopersonac").prop("disabled", true);
+            $("#solicitantec2").val("");
+        });
+    </script>
+{% endblock %}
+<form id="frmAddCita" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    <input type='hidden' name='action' value='addcita'/>
+    <input type='hidden' name='id' value='{{ horario.id|encrypt }}'/>
+    <input type='hidden' id='idresponsable' name='idresponsable' value='{{ horario.responsableservicio.responsable.id }}'/>
+    <input type='hidden' id='idgestion' name='idgestion' value='{{ horario.responsableservicio.mi_gestion.id }}'/>
+    <table class="table table-bordered mb-0">
+        <tbody>
+            <tr>
+                <td><b>Tipo Actividad:</b></td>
+                <td>
+                    <select id="tiposervicioc" name="tiposervicioc">
+                        {% for tipo in tiposervicio %}
+                            <option value="{{ tipo.0 }}">{{ tipo.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td colspan="2"></td>
+            </tr>
+            <tr>
+                <td style="width: 15%;"><b>Gestión:</b></td>
+                <td style="width: 35%;">
+                    <input type="text" style="width: 100%;" id="gestion" name="gestion" value="{{ horario.responsableservicio.mi_gestion.nombre }}" readonly>
+                </td>
+                <td style="width: 15%;"><b>Servicio:</b></td>
+                <td style="width: 35%;">
+                    <select id="servicioc" name="servicioc">
+                        <option value="" selected>---------</option>
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Responsable:</b></td>
+                <td colspan="3">
+                    <input type="text" style="width: 100%;" id="responsablec" name="responsablec" value="{{ horario.responsableservicio.responsable.nombre_completo_inverso }}" readonly>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Modalidad:</b></td>
+                <td>
+                    <select id="modalidadc" name="modalidadc">
+                        {% for modalidad in modalidades %}
+                            <option value="{{ modalidad.0 }}">{{ modalidad.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td><b>Fecha:</b></td>
+                <td>
+                    <input type="text" style="width: 100%;" id="fechac" name="fechac" value="{{ horario.fecha|date:"d-m-Y" }}" readonly>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Hora inicio:</b></td>
+                <td>
+                    <input type="text" style="width: 100%;" id="horainicioc" name="horainicioc" value="{{ horario.comienza|date:"H:i" }}" readonly>
+                </td>
+                <td><b>Hora fin:</b></td>
+                <td>
+                    <input type="text" style="width: 100%;" id="horafinc" name="horafinc" value="{{ horario.termina|date:"H:i" }}" readonly>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Tipo Persona:</b></td>
+                <td>
+                    <select id="tipopersonac" name="tipopersonac">
+                        {% for tipo in tiposolicitante %}
+                            <option value="{{ tipo.0 }}">{{ tipo.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td colspan="2"></td>
+            </tr>
+            <tr>
+                <td><b>Solicitante:</b></td>
+                <td colspan="3">
+                    <div id="divsolicitante1">
+                        <select id="persona_select2" name="persona_select2" style="width: 100%">
+                            <option value="" selected="selected">---------</option>
+                        </select>
+                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                        <small class="form-text text-muted">Ingrese los apellidos o número de identificación para realizar la búsqueda.</small>
+                    </div>
+                    <div id="divsolicitante2">
+                        <input type="text" style="width: 100%;" id="solicitantec2" name="solicitantec2" value="" readonly>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Motivo:</b></td>
+                <td colspan="3">
+                    <textarea id="motivoc" name="motivoc" cols="40" rows="4" style="width: 100%;"></textarea>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</form>

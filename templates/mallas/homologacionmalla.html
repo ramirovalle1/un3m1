@@ -1,0 +1,288 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script src="https://kit.fontawesome.com/a96c5b6f8d.js" crossorigin="anonymous"></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <script type="text/javascript">
+    function ocultar(bool=false){
+        if(bool == true){
+            $("#homologacion").attr('hidden', 'hidden')
+            $("#destino").removeAttr('hidden')
+        }else{
+             $("#destino").attr('hidden', 'hidden')
+            $("#homologacion").removeAttr('hidden')
+        }
+
+    }
+    $(function(){
+
+        $("select").select2({minimumResultsForSearch: 5,width:'100%'});
+         $("#mallaspro").select2({minimumResultsForSearch: 5,width:'100%'});
+         $("#modalidadpro").select2({minimumResultsForSearch: 5,width:'100%'});
+        $('#modalidad').change(function (){
+            $('#mallasfilter').empty().append('<option value=""></option>').val(0).trigger("change");
+            cargarmalla(false)
+            $('#verasign').empty()
+        });
+        $('#mallasfilter').change(function (){
+            cargarmalla(false)
+            $('#verasign').empty()
+
+        })
+        {% if malladestino %}
+            $('#mallasfilter').append($('<option>', {
+                            'value': '{{ malladestino.id }}',
+                            'text':'{{ malladestino }}'
+                         }));
+            cargarmalla(true,'{{ malladestino.id }}')
+            crearbotones('{{ malla.id|encrypt }}','{{ malladestino.id }}')
+        {% else %}
+            cargarmalla(false)
+        {% endif %}
+        $('#mallasfilter').select2({
+            language: {
+                inputTooShort: function () {
+                    return "Ingresa al menos un caracter...";
+                },
+                "noResults": function () {
+                    return "Sin resultados (Recuerda ingresar tu puntaje para buscar poder buscar una carrera)";
+                },
+                "searching": function () {
+                    return "Buscando...";
+                }
+            },
+            allowClear : true,
+            debug: true,
+            ajax: {
+                delay: 250,
+                type: 'POST',
+                url: '/mallas',
+                data: function (params) {
+                    return {
+                        term: params.term,
+                        'action': 'buscarmallas',
+                        'modalidad':$('#modalidad').val(),
+                        'id':'{{ malla.id }}'
+                    };
+                },
+                processResults: function (data) {
+                    return {
+                        results: data
+                    };
+
+                },
+            },
+            width:'100%',
+            placeholder: 'BUSCAR MALLA A HOMOLOGAR',
+            minimumInputLength: 1,
+        }).on('select2:select', function (e) {
+            bloqueointerface()
+            var iddestino=$(this).val()
+            $.get(window.location.pathname, {'action':'tablahomologacion', 'iddestino': $(this).val(), 'origen':{{ malla.id }}},
+                function(data) {
+                    if (data.result === true ) {
+                        {#cargarmalladestino(id)#}
+                        $.unblockUI();
+                        $('#contenidomalla').html(data.data);
+                        $('.homologar').removeAttr('hidden')
+                        crearbotones('{{ malla.id|encrypt }}', iddestino)
+                    }
+                    else{
+                        NotificationJG.error(data.mensaje)
+                    }
+                }, 'json');
+        });
+        $("#id_malladestino").click(function (){
+            ocultar(true)
+        })
+
+    });
+    function crearbotones(idorigen,iddestino){
+        $('#verasign').append($('<br>')).append($('<a>', {
+                            'class': 'btn btn-warning',
+                            'href': `{{ request.path }}?action=malladestino&id=${idorigen}&iddestino=${iddestino}`,
+                            'html':'<i class="fa fa-book-open"></i> Ver Asignaturas'
+                         }));
+    }
+    function formModal(idasignatura) {
+        var idmalla= $("#mallasfilter").val()
+        bloqueointerface();
+        $.ajax({
+            type: "GET",
+            url: "/mallas",
+            data: {
+                'action': "addhomologacionasignaturas",
+                'idmalladestino': idmalla,
+                'idasignaturaorigen':idasignatura
+            },
+            success: function (data) {
+                $.unblockUI();
+                if (data.result === true) {
+                    $('.panelasignaturas').html(data.data);
+                    $("#modalasignaturas").modal({backdrop: 'static', width: '900'}).modal('show');
+                } else {
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                smoke.alert("Error de conexión.");
+            },
+            dataType: "json"
+        });
+        }
+    function cargarmalla(bandera=true,id){
+        $.ajax({
+            type: "GET",
+            url: "/mallas",
+            data: {
+                'action': "tablahomologacion",
+                'iddestino': id,
+                'origen': {{ malla.id }},
+            },
+            success: function (data) {
+                $.unblockUI();
+                if (data.result === true) {
+                    $('#contenidomalla').html(data.data);
+                    {% if malladestino %}
+                        if (bandera == true){
+                            $('.homologar').removeAttr('hidden')
+                        }
+                    {% endif %}
+                } else {
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                smoke.alert("Error de conexión.");
+            },
+            dataType: "json"
+        });
+    }
+    function cargarmalladestino(id){
+        $.ajax({
+            type: "GET",
+            url: "/mallas",
+            data: {
+                'action': "malladestino",
+                'id': id,
+            },
+            success: function (data) {
+                $.unblockUI();
+                if (data.result === true) {
+                    $('#malladestino').html(data.data);
+                } else {
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                smoke.alert("Error de conexión.");
+            },
+            dataType: "json"
+        });
+    }
+
+    </script>
+    <style>
+        .modal.fade.inmodalmedio {
+            top: 45%;
+        !important;
+        }
+    </style>
+{% endblock %}
+{% block atras %}/mallas{% endblock %}
+{% block canvas %}
+    <div class="modal fade inmodalmedio" id="modalasignaturas" style="display: none;">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <h4><i class="fa fa-list"></i> <b class="paneltitle"></b>HOMOLOGAR ASIGNATURAS</h4>
+        </div>
+        <div class="modal-body">
+            <form autocomplete="off" method="post"
+                  enctype="multipart/form-data" action="{{ request.path }}">
+                {% csrf_token %}
+                <div class="row-fluid panelasignaturas">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="footermodalproceso">
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                    class="fa fa-window-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12" style="margin: 10px">
+            <h4><i class="fa fa-project-diagram"></i> HOMOLOGACIÓN DE MALLA CURRICULAR</h4>
+            <h5><i class="fa fa-table"></i>  MALLA PROCEDENCIA: {{ malla }}</h5>
+            <h5><i class="fa fa-calendar"></i>  FECHA APROBADA: {{ malla.inicio|date:"d-m-Y" }}</h5>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+{#            <form method="GET" action="/alu_cambiocarrera">#}
+{#                <input type="hidden" name="action" value="solicitantes">#}
+{#                <input type="hidden" name="id" value="1">#}
+                <table id="tablaBusqueda" class="table table-hover tablaBusquedaSearch">
+                    <tbody>
+                    <tr style="width: 100%">
+                        <td style="width: 30%">
+                            <i class="fa fa-moon" aria-hidden="true"></i> Modalidad Procedencia: <br>
+                            <select name="modalidadpro" id="modalidadpro" disabled>
+                                <option value="{{ malla.modalidad.id }}">{{ malla.modalidad.nombre }}</option>
+                            </select>
+                        </td>
+                        <td style="width:70%">
+                            <i class="fa fa-table " aria-hidden="true"></i> Malla Procedencia : <br>
+                            <select name="mallapro" id="mallapro" disabled>
+                                <option value="{{ malla.id }}">{{ malla }}</option>
+                            </select>
+{#                            <a href="javascript:void(0);" class="btn btn-warning" id="id_malladestino"><i class="fa fa-book-open"></i> Ver Asignaturas</a>#}
+                        </td>
+                    </tr>
+                    <tr class="">
+                        <td style="width: 30%">
+                            <i class="fa fa-moon" aria-hidden="true"></i> Modalidad Destino: <br>
+                            <select name="modalidad" id="modalidad" class="form-control">
+                        {% for modalidad in modalidades %}
+                            <option value="{{ modalidad.id }}">{{ modalidad.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                        </td>
+                        <td style="width:30%">
+                            <i class="fa fa-table " aria-hidden="true"></i> Malla Destino: <br>
+                            <select name="carreras" id="mallasfilter" class="select2 form-control mallasfilter"></select>
+{#                            <a href="javascript:void(0);" class="btn btn-warning" id="id_malladestino"><i class="fa fa-book-open"></i> Ver Asignaturas</a>#}
+                        </td>
+                        <td style="width: 40%; text-align: left">
+                            <div id="verasign" class="form-control">
+
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+{#            </form>#}
+        </div>
+    </div>
+    <div class="row-fluid" id="homologacion">
+        <div class="span12">
+            <div style="overflow:auto;" id="contenidomalla">
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid" id="destino" hidden>
+        <div class="span12">
+            <div id="malladestino">
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}

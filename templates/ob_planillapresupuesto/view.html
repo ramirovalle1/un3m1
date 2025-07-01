@@ -1,0 +1,159 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script>
+
+        $(function() {
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/ob_planillapresupuesto?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $('#searchinput').focus();
+
+
+            $('.finalizar').unbind();
+            $('.finalizar').blur(function () {
+                var id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ob_planillapresupuesto",
+                    data: {'action': 'finalizar', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#label_estado_'+id).html(data.estado);
+                            $('#saldoanticipo_'+id).html(data.saldoanticipo);
+                            $('#label_estado_'+id).removeClass();
+                            $('#label_estado_'+id).addClass('label label-success');
+                            $('#menu_estado_'+id).attr({'hidden': ''});
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión");
+                    },
+                    dataType: "json"
+                });
+
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            {% if perms.sagest.puede_modificar_planilla_presupuesto %}
+                <a href="/ob_planillapresupuesto?action=add" class='btn btn-success'><span class="fa fa-plus " ></span> Adicionar</a>
+            {% endif %}
+        </div>
+        <div class='span6'>
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> <t class="hidden-phone hidden-tablet ">Buscar</t></a>
+                {% if search or ids %}
+                    <a href="/ob_planillapresupuesto" class='btn btn-info'><i class="fa fa-refresh "></i> <t class="hidden-phone hidden-tablet ">Todos</t></a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th>Proyecto</th>
+                    <th style="text-align: center; width: 70px">Tipo Planilla</th>
+                    <th style="text-align: center; width: 70px">Mes Planilla</th>
+                    <th style="text-align: center; width: 75px">Periodo inicio</th>
+                    <th style="text-align: center; width: 70px">Periodo fin</th>
+                    <th style="text-align: center; width: 70px">Estado</th>
+                    <th style="text-align: center; width: 70px">Valor Anticipo</th>
+                    <th style="text-align: center; width: 70px">Monto</th>
+                    <th style="text-align: center; width: 70px">Monto a Pagar</th>
+                    <th style="width: 80px;"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in planillas %}
+                    <tr>
+                        <td>{{ p.presupuestoobra.descripcion }}</td>
+                        <td style="width: 70px; text-align: center"><label id="label_tipo_{{ p.id }}" class="label {% if p.tipo_avance %}label-info {% elif p.tipo_complementario %}label-important {% endif %}">{{ p.rep_planilla }}</label></td>
+                        <td style="width: 70px; text-align: center">{{ p.mesplanilla|default_if_none:'' }}</td>
+                        <td style="width: 70px; text-align: center">{{ p.periodoinicio|date:'d-m-Y' }}</td>
+                        <td style="width: 70px; text-align: center">{{ p.periodofin|date:'d-m-Y' }}</td>
+                        <td style="width: 70px; text-align: center"><label id="label_estado_{{ p.id }}" class="label {% if p.esta_pendiente %}label-important {% elif p.esta_finalizada %}label-success {% endif %}">{{ p.rep_estado }}</label></td>
+                        <td style="width: 70px; text-align: right">{{ p.valoranticipo|floatformat:2 }}</td>
+                        <td style="width: 70px; text-align: right">{{ p.monto|floatformat:2 }}</td>
+                        <td style="width: 70px; text-align: right">{{ p.montoapagar|floatformat:2 }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                    {% if p.esta_pendiente and perms.sagest.puede_modificar_planilla_presupuesto  %}
+                                        <li><a href="/ob_planillapresupuesto?action=edit&id={{ p.id }}"><i class="fa fa-edit"></i> Editar</a></li>
+                                        <li><a class="confirmacionmodal tu" href="javascript:;" nhref="/ob_planillapresupuesto?action=finalizar&id={{ p.id }}"><i class="fa fa-list"></i> Finalizar</a></li>
+                                    {% endif %}
+                                    <li><a href="/ob_planillapresupuesto?action=reporte&id={{ p.id }}"><i class="fa fa-list"></i> Imprimir</a></li>
+                                    {% if p.esta_pendiente and perms.sagest.puede_modificar_planilla_presupuesto %}
+                                        <li class="divider"></li>
+                                        <li><a class="eliminacionmodal tu" href="javascript:;" nhref="/ob_planillapresupuesto?action=delete&id={{ p.id }}"><i class="fa fa-remove"></i>Eliminar</a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="12">
+                            NO EXISTEN PLANILLA DE PRESUPUESTO
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/ob_planillapresupuesto?page=1">1</a></li>
+                        <li><a href="/ob_planillapresupuesto?page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/ob_anexosrecursos?page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/ob_planillapresupuesto?page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/ob_planillapresupuesto?page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/ob_planillapresupuesto?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <script type="text/javascript">
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+
+            $("select").select2({minimumResultsForSearch: 20});
+
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var g = $("#grupo_list").val();
+                var p = $("#perfil").val();
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "/administrativos?s=" + term + "&g=" + g + "&perfil=" + p;
+                } else {
+                    bloqueointerface();
+                    location.href = "/administrativos?g=" + g + "&perfil=" + p;
+                }
+                return false;
+            };
+
+            $("#grupo_list").change(function () {
+                busqueda();
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $(".tl").tooltip({position: "center up"});
+
+            $("#perfil").change(function () {
+                busqueda();
+            });
+            $(".auditoria").click(function () {
+                var id = $(this).attr('idi');
+                bloqueointerface();
+                $.post("/administrativos", {'action': 'auditoria', 'id': id}, function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $('.modal-body', $("#modalauditoria")).html(data.contenido);
+                        var height = $(window).height() - 150;
+                        $("#modalauditoria").modal({backdrop: 'static', width: '60%', height: height}).modal('show');
+                    } else {
+                        $.unblockUI();
+                        NotificationJG.error(data.mensaje)
+                    }
+                }, 'json');
+            });
+
+            $("#exportarnota").click(function () {
+                var id = $(this).attr('idperiodo');
+                var idgrupo = $(this).attr('idgrupo');
+                bloqueointerface();
+                $.post("{{ resquest.path }}", {'action': 'traeralumnos', 'id': id, 'idgrupo':idgrupo}, function (data) {
+                    if (data.result=='ok') {
+                        $.unblockUI();
+                        $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                        var indice = 0;
+                        var cantidad = parseInt(data.cantidad);
+                        var inscritos = data.inscritos;
+                        recalculo(inscritos, indice, (cantidad-1));
+                        mensajeSuccessSwal('Notificacion','Notas exportadas exitosamente.', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                    } else {
+                        $.unblockUI();
+                        mensajeErrorSwal('Error','Ha ocurrido un error al exportar las notas', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                    }
+                }, 'json');
+            });
+
+            $("#importarnota").click(function () {
+                var idgrupo = $(this).attr('idgrupo');
+                bloqueointerface();
+                $.post("{{ resquest.path }}", {'action': 'importarnotaexamen', 'idgrupo':idgrupo}, function (data) {
+                    if (data.error === false) {
+                        $.unblockUI();
+                        mensajeSuccessSwal('Notificacion','Notas importadas exitosamente.', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                        location.reload()
+                    } else {
+                        $.unblockUI();
+                        mensajeErrorSwal('Error','Ha ocurrido un error al importar las notas', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                    }
+                }, 'json');
+            });
+
+            $(".action-close", $("#modalauditoria")).click(function () {
+                $("#modalauditoria").modal("hide");
+            });
+        });
+
+        function traerAlumnos(id){
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': 'traeralumnos', 'idgrupo':id},
+                success: function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                        var indice = 0;
+                        var cantidad = parseInt(data.cantidad);
+                        var inscritos = data.inscritos;
+                        recalculo(inscritos, indice, (cantidad-1));
+                    } else {
+                        mensajeErrorSwal('Error','Ha ocurrido un error al importar las notas', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                        mensajeErrorSwal('Error','Ha ocurrido un error al importar las notas', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+                },
+                dataType: "json"
+            });
+        }
+
+        function fallorecalculo(nombrepersona,err){
+            $.unblockUI();
+            $("#recalcularmodal").modal("hide");
+            Swal.fire(`Fallo al recalcular los resultados de ${nombrepersona} error: ${err}`, "Notas Alumnos", 'error');
+        }
+
+        function terminarecalculo(){
+            $("#recalcularmodal").modal("hide");
+             mensajeSuccessSwal('Notificacion','Notas exportadas exitosamente.', "/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}")
+        }
+
+        function recalculo(lista, elemento, cantidad){
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad+1)) * elemento + '%';
+            if (elemento>cantidad){
+                terminarecalculo();
+            } else {
+                var nombrepersona = inscrito.inscripcion__persona__apellido1 + ' ' + inscrito.inscripcion__persona__apellido2 + ' ' + inscrito.inscripcion__persona__nombres;
+                $("#recalcularmodalprogresshint").html('<i class="fa fa-user"></i> '+nombrepersona);
+                $("#progressbar").css({'width': cp});
+                $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {"action": "exportarnotasindividual", 'id': '{{ grupo.periodo.id|encrypt }}', 'idgrupo': inscrito.id },
+                    success: function(data) {
+                        console.log(data)
+                        if (data.result=='ok'){
+                            intentos = 0;
+                            recalculo(lista, elemento+1, cantidad)
+                        } else {
+                            intentos += 1;
+                            if (intentos>=3){
+                                fallorecalculo(nombrepersona,data.mensaje);
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function() {
+                        intentos += 1;
+                        if (intentos>=3){
+                            fallorecalculo(nombrepersona,"error");
+                        } else {
+                            recalculo(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+        function registraralumno(idgrupo,idperiodo){
+             bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {'action': 'registraralumno','idgrupo':idgrupo,'idperiodo':idperiodo},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html();
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+         const actionDelete = (id,grupo, description) => {
+            const mensaje = `  <br>¿Está seguro de eliminar al alumno <span class="badge badge-info">${description}</span>?`;
+            Swal.fire({
+                title: "Esta acción es irreversible",
+                html: mensaje,
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: '{{ reques.path }}',
+                        data: {
+                            action: 'deleteinscip',
+                            id: id,
+                            grupo:grupo,
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                let timerInterval
+                                Swal.fire({
+                                    title: '',
+                                    html: 'Alumno Eliminado',
+                                    timer: 5000,
+                                    timerProgressBar: true,
+                                    didOpen: () => {
+                                        Swal.showLoading()
+                                        const b = Swal.getHtmlContainer().querySelector('b')
+                                        timerInterval = setInterval(() => {
+                                            b.textContent = Swal.getTimerLeft()
+                                        }, 100)
+                                    },
+                                    willClose: () => {
+                                        clearInterval(timerInterval)
+                                    }
+                                }).then((result) => {
+                                    /* Read more about handling dismissals below */
+                                    if (result.dismiss === Swal.DismissReason.timer) {
+                                        console.log('I was closed by the timer')
+                                    }
+                                    location.reload();
+                                })
+
+                            }else{
+                                alertaDanger(data.mensaje, 10000);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                        },
+                        dataType: "json"
+                    });
+
+                }
+            });
+        }
+
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_idioma?action=vergrupos&id={{ grupo.periodo.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="recalcularmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">Migrar notas al record académico</b></h4>
+                </div>
+                <div class="modal-body">
+                    <div  class="progress" style="height: 35px">
+                        <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" id="progressbar" style="font-size: medium; font-weight: bold;"></div>
+                    </div>
+                    <b>
+                        <div id="recalcularmodalprogresshint">
+                        </div>
+                    </b>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6><b>Grupo: </b>{{ grupo.nombre }}</h6>
+                <h6><b>Cantidad de inscritos: </b>{{ list_count }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-6 col-md-4 col-12">
+                {% comment %}<a  class='btn btn-primary' id="exportarnota" idperiodo="{{ grupo.periodo.id|encrypt }}" idgrupo="{{ grupo.id|encrypt }}"
+                    ><span
+                        class="fa fa-paper-plane"></span>
+                    <t class="hidden-phone hidden-tablet visible-desktop"> Exportar al record académico</t>
+                </a>{% endcomment %}
+
+                {% comment %}<a  class='btn btn-warning' onclick="traerAlumnos('{{ grupo.id|encrypt }}')" href="javascript:;"
+                    ><span
+                        class="fa fa-file-download"></span>
+                    <t class="hidden-phone hidden-tablet visible-desktop"> Importar notas y exportar estudiantes al récord académico</t>
+                </a>{% endcomment %}
+                <a class="btn btn-success" onclick="registraralumno('{{ grupo.id|encrypt }}','{{ grupo.periodo.id|encrypt }}')">Registrar  <i class="fa fa-user" aria-hidden="true"></i></a>
+            </div>
+            <div class="col-lg-6 col-md-4 col-12">
+                <form method="GET">
+                <input type="hidden" name="idg" value="{{ id|encrypt }}">
+                    <input type="hidden" name="action" value="{{ action }}">
+                    <div class="input-group mb-2">
+                        <input class='searchinput form-control' type='text' name="s" placeholder="Buscar inscritos por nombres o cédula"
+                               value='{{ s }}'
+                               autocomplete="off"/>
+                        <div class="input-group-append">
+                            <button id='button-addon2' class='btn btn-info'><span
+                                    class="fa fa-search "></span>
+                                Buscar
+                            </button>
+                            {% if search %}
+                                <a href="/adm_idioma?action=verinscritos&idg={{ grupo.id|encrypt }}" id='allresults' class='btn btn-info btn-form'><span
+                                        class="fa fa-refresh "></span> Todos</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body rounded-3 ">
+                <div class="table-responsive-xxl">
+                    <table class="table table_primary tabla_responsive">
+                        <thead>
+                        <tr>
+                            <th class="text-center" style="width: 5%;"> N°</th>
+                            <th class="text-center" style="width: 35%;">Datos del estudiante</th>
+                            <th class="text-center" style=" width: 30%;">Carrera</th>
+                            <th class="text-center" style="width: 25px;">Fecha y hora de inscripción</th>
+                            <th class="text-center" style="width: 25px;">Nota</th>
+                            <th class="text-center" style="width: 10px;">Estado</th>
+                            <th class="text-center" style="width: 15%;">Observación</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for inscrito in listado %}
+                            <tr>
+                                <td class="text-center">
+                                    {{ forloop.counter }}
+                                </td>
+                                <td class="text-secondary">
+                                    <div class="mb-3" style="max-width: 540px;">
+                                        <div class="row g-0">
+                                            <div class="col-md-3 text-center"
+                                                 style="display: flex; align-items: center; align-content: center; justify-content: center">
+                                                <img src="{{ inscrito.inscripcion.persona.get_foto }}" alt=""
+                                                     class="img-fluid rounded-circle"
+                                                     width="60px">
+                                            </div>
+                                            <div class="col-md-9">
+                                                <div class="">
+                                                    <small class="card-text" title="Nombre completo"
+                                                           data-bs-toggle="tooltip"><i
+                                                            class="fa fa-user"></i> {{ inscrito.inscripcion.persona.nombre_completo_minus }}
+                                                    </small><br>
+                                                    <small class="card-text" title="Cédula" data-bs-toggle="tooltip"><i
+                                                            class="fa fa-address-card"></i> {{ inscrito.inscripcion.persona.cedula }}
+                                                    </small><br>
+                                                    <small class="card-text">
+                                                        {% if inscrito.inscripcion.persona.telefono %}
+                                                            <i class="fa fa-phone"></i>
+                                                            {{ inscrito.inscripcion.persona.telefono }}
+                                                            <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ inscrito.inscripcion.persona.telefono }}&text=Hola {{ inscrito.inscripcion.persona }}'
+                                                               target="_blank" class="btn btn-mini btn-success tu"
+                                                               title="Enviar mensaje por whatsapp">
+                                                                <i class="fa fa-whatsapp"></i>
+                                                            </a>
+                                                        {% endif %}
+                                                    </small><br>
+                                                    <small class="card-text" title="Correo electronico"
+                                                           data-bs-toggle="tooltip">
+                                                        <i class="fa fa-envelope"></i>
+                                                        {% if inscrito.correo %}
+                                                            {{ inscrito.correo }}
+                                                        {% elif inscrito.inscripcion.persona.emailinst %}
+                                                            {{ inscrito.inscripcion.persona.emailinst }}
+                                                        {% else %}
+                                                            {{ inscrito.inscripcion.persona.email }}
+                                                        {% endif %}
+                                                    </small>
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="fs-6 text-secondary">
+                                    <p><b>Coordinación: </b> {{ inscrito.inscripcion.coordinacion.nombre }}</p>
+                                    <p><b>Carrera: </b> {{ inscrito.inscripcion.carrera.nombre }}
+                                    </p>
+                                </td>
+                                <td class="fs-6 text-secondary" style="text-align: center;">
+                                    <p>{{ inscrito.fecha_creacion|date:'d-m-Y' }} - {{ inscrito.fecha_creacion|time:"H:i a" }}</p></td>
+                                 <td class="fs-6 text-secondary" style="text-align: center;">
+                                    <p>{{ inscrito.nota }}</p></td>
+                                <td class="text-center">
+
+                                    {% if inscrito.estado == 0 %}
+                                        <div class="container mt-3">
+                                            <div class="d-flex align-items-center">
+                                                <span class="badge badge-warning">En curso</span>
+                                                <div class="dropdown dropstart ml-2">
+                                                    <a class="btn-icon btn btn-ghost btn-sm rounded-circle" href="javascript:void(0)" id="dropdownTask1" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                        <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                                    </a>
+                                                    <div class="dropdown-menu">
+                                                        <a class="dropdown-item d-flex align-items-center" onclick="actionDelete({{ inscrito.inscripcion.id }},{{ grupo.id }}, '{{ inscrito.inscripcion.persona.nombre_completo_minus }}')"  href="javascript:void(0)">
+                                                            <i class="dropdown-item-icon fa fa-table" aria-hidden="true"></i>
+                                                            Eliminar
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                     {% if inscrito.estado == 1 %}
+                                        <span class="badge badge-success">Asignado </span></small><br>
+                                     {% endif %}
+                                     {% if inscrito.estado == 2 %}
+                                        <span class="badge badge-important">No asignado </span></small><br>
+                                     {% endif %}
+                                </td>
+                                <td class="fs-6 text-secondary" style="text-align: center;">
+                                    <p>{{ inscrito.observacion }}</p></td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="12" STYLE="text-align: center">No existen estudiantes inscritos
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

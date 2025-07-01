@@ -1,0 +1,208 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        $(document).ready(function() {
+            var h =$(window).height() - 332;
+            var table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging":   false,
+                "ordering": false,
+                "info":     false,
+                "scrollY": h,
+                "order": [[ 2, 'asc' ]],
+                "columnDefs": [{ "visible": false,"targets": 2 }],
+                "drawCallback": function ( settings ) {
+                    var api = this.api();
+                    var rows = api.rows( {page:'current'} ).nodes();
+                    var last=null;
+                    api.column(2, {page:'current'} ).data().each( function ( group, i ) {
+                        if ( last !== group ) {
+                            $(rows).eq( i ).before(
+                                '<tr class="group"><td colspan="14" height="30" class="">'+group+'</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+
+            $(".cargararchivo").click(function() {
+                var action = $(this).attr('action');
+                var iddocdet = $(this).attr('iddocdet');
+                var record = $(this).attr('record');
+                var tipo = $(this).attr('tipo');
+                var listo = $(this).attr('listo');
+                var ancho = (parseInt($(this).attr('ancho'))==0)? $(window).width()-100: $(this).attr('ancho');
+                var alto = (parseInt($(this).attr('alto'))==0)? '530px': $(this).attr('alto');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/poa_revisaevidencia",
+                    data: {'action': action, 'iddocdet': iddocdet, 'record': record, 'listo': listo, 'tipo': tipo, 'idd':{{ idd}},'idp':{{ idp}} },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: ancho, height: alto}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".cargarobservacion").click(function() {
+                var iddocumento = $(this).attr('iddocumento');
+                var ancho = (parseInt($(this).attr('ancho'))==0)? $(window).width()-100: $(this).attr('ancho');
+                var alto = (parseInt($(this).attr('alto'))==0)? '530px': $(this).attr('alto');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/poa_revisaevidencia",
+                    data: {'action': 'ver_observacion', 'iddocumento': iddocumento },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyobs").html(data.data);
+                            $("#itemspanelobs").modal({backdrop:'static', width: ancho, height: alto}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#cerrarpanelobs").click(function() {
+                $("#itemspanelobs").modal("hide");
+                return false;
+            });
+
+        });
+
+        function informe(mes) {
+            var ancho = $(window).width()-100;
+            var alto = '530px';
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/poa_revisaevidencia",
+                data: {'action': 'informe', 'mes': mes, 'idd':{{ idd}}, 'idp':{{ idp}} },
+                success: function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $(".paneltitle").html("Informe de evidencias")
+                        $(".panelbody").html(data.data);
+                        $("#itemspanel").modal({backdrop:'static', width: ancho, height: alto}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}poa_revisaevidencia?action=revisadepartamento&idp={{ idp }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Periodo: {{ periodopoa.descripcion }}</h5>
+            <h5>{{ departamento }}</h5>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" id="example">
+                <thead>
+                <tr>
+                    <th width="70px" style="text-align: center; font-weight: bold;">PORCENTAJE</th>
+                    <th style="text-align: center; font-weight: bold;">ACCIONES</th>
+                    <th width="70px">INF.</th>
+                    {% for m in meses %}
+                        {% with existe=departamento|args:idp|args:forloop.counter|call:"existe_informe"%}
+                            <th style="width: 4%; text-align: center" id="mes{{ forloop.counter }}">{% if existe %}<a class="btn btn-default btn-mini informe" href="javascript:;" onclick="informe({{ forloop.counter }})">{% endif %}{{ m }}{% if existe %}</a>{% endif %}</th>
+                        {% endwith %}
+                    {% endfor %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for docu in documento %}
+                    <tr>
+                        <td align='center'><div align='center'>{{ docu.porcentaje }}%</div></td>
+                        <td>
+                            <span class="label label-{% if docu.tipo == 1 %}info{% endif %}{% if docu.tipo == 2 %}warning{% endif %}{% if docu.tipo == 3 %}success{% endif %} label-mini">
+                                {{ docu.get_tipo_display }}
+                            </span>
+                            {% if docu.tipo == 2 %}
+                                <a href="{{ docu.enlace }}" target="_blank"><span class="btn btn-tini"><i class="fa fa-link"></i></span></a>
+                                <a class="btn btn-tini cargarobservacion" iddocumento="{{ docu.id }}"><i class="fa fa-eye"></i></a>
+                            {% endif %}
+                            {{ docu.descripcion }}</td>
+                        <td><strong>OBJ. OP.: </strong>{{ docu.indicadorpoa.objetivooperativo }}
+                            <br><strong>IND: -{{ docu.indicadorpoa }}</strong></td>
+                        {% for lista in docu.lista_detalles_revision %}
+                            <td style="text-align: center; {% if lista.0 %}background-color: {% if lista.4 == 0 %}papayawhip{% else %}#eeeeee{% endif %}; font-weight: bold{% endif %}" did="{{ lista.0 }}" colspan="{{ lista.3 }}">
+                                {% if lista.4 == 0 %}
+                                    {{ lista.1|date:'d' }} - {{ lista.2|date:'d' }}
+                                {% else %}
+                                    {% if lista.12 == 0 %}
+                                        {% if lista.7 == 0 %}
+                                            <a href="javascript:;" class="btn btn-danger btn-mini cargararchivo" iddocdet="{{ lista.0 }}" listo="{{ lista.12 }}" ancho="900px" alto="420px" record="0" action="{{ lista.10 }}"><i class="fa fa-remove"></i></a>
+                                        {% else %}
+                                            <a href="javascript:;" class="btn btn-{% if lista.6 != 1 %}success{% else %}warning{% endif %} btn-mini cargararchivo" listo="{{ lista.12 }}" ancho="0" alto="0" record="{{ lista.8 }}" iddocdet="{{ lista.0 }}" action="{{ lista.10 }}"><i class="fa fa-{% if lista.6 != 1 %}check{% else %}file-pdf-o{% endif %}"></i></a>
+                                        {% endif %}
+                                    {% else %}
+                                        <a href="javascript:;" data-original-title="{{ lista.9 }}" data-toggle="tooltip" class="btn btn-default btn-mini cargararchivo" listo="{{ lista.12 }}" ancho="0" alto="0" record="{{ lista.8 }}" iddocdet="{{ lista.0 }}" action="{{ lista.10 }}"><img src="/static/images/16/{{ lista.11 }}.png" width="16px"></a>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitle">Revisión de Evidencia</h3></td>
+                    <td><a href="javascript:;" id="cerrarpanel" class="btn btn-danger btn-mini pull-right"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelobs" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitleobs">Observación</h3></td>
+                    <td><a href="javascript:;" id="cerrarpanelobs" class="btn btn-danger btn-mini pull-right"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyobs" align="justify">
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,517 @@
+{% extends 'faceid/base.html' %}
+{% block heading %}
+    {% if valida_captcha %}
+        <script src='https://www.google.com/recaptcha/api.js?v=2.0.1'></script>
+        <link rel="stylesheet" href="/static/css/captcha/chaptcha_response.css?v=2.0.1" type="text/css" media="screen"/>
+    {% endif %}
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <style>
+        body {
+            background: #ffffff !important;
+        }
+
+        #video {
+            border: 1px solid black;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .video-container {
+            position: relative;
+            padding-bottom: 75%; /* Relación de aspecto 4:3 (480/640 * 100) */
+            height: 0;
+            overflow: hidden;
+            max-width: 100%;
+            background: #000;
+        }
+
+        .video-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    {% include 'faceid/marcadas/utils_info.html' %}
+    <script type="application/javascript">
+        const registerChecked = async (dataURL='') => {
+                let capippriva = '';
+                navegador = window.jscd.browser + ' ' + window.jscd.browserMajorVersion;
+                os = window.jscd.os + ' ' + window.jscd.osVersion;
+                cookies = window.jscd.cookies;
+                screensize = window.jscd.screen;
+                bloqueointerface();
+                $(this).attr({"disabled": "disabled"});
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {
+                        'action': 'checkAuth2',
+                        'capippriva': capippriva,
+                        'navegador': navegador,
+                        'os': os,
+                        'cookies': cookies,
+                        'screensize': screensize,
+                        'usuario': $("#inputUsuario").val(),
+                        'password': $("#inputPassword").val(),
+                        'marcada': marcada,
+                        'imagen': JSON.stringify({ image: dataURL }),
+                        'g-recaptcha-response': captcha
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            $("#usuario").val('');
+                            $("#password").val('');
+                            $(".marcada").each(function (index) {
+                                $(this).attr('checked', false);
+                            });
+                            Swal.fire({
+                                html: `Marcación realizada el ${data.fecha} ${data.horaactual}:${data.minutoactual}:${data.segundoactual}`,
+                                text: "¡Registro guardado correctamente!",
+                                type: 'success',
+                                showCancelButton: false,
+                                allowOutsideClick: false,
+                                confirmButtonText: 'Continuar',
+                            }).then((result) => {
+                                if (result.value) {
+                                    bloqueointerface();
+                                    location.reload();
+                                }
+                            })
+                        } else {
+                            $.unblockUI();
+                            mensajeDanger(data.mensaje);
+                        }
+                        {% if valida_captcha %}
+                            grecaptcha.reset();
+                        {% endif %}
+                    },
+                    error: function () {
+                        $("#login").removeAttr('disabled');
+                        $("#errormensaje").html('Error al enviar los datos').show();
+                        {% if valida_captcha %}
+                            grecaptcha.reset();
+                        {% endif %}
+                    },
+                    dataType: "json"
+                });
+            };
+
+        $(async function () {
+            $("#intentar_new").hide();
+            await reloadTime();
+            await clienteinfo(window);
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const captureButton = document.getElementById('registrar');
+            const intentarNew = document.getElementById('intentar_new');
+            const resultText = document.getElementById('result');
+            const cloudFunctionUrl = 'https://us-central1-unemi-biometrico-sga.cloudfunctions.net/analyze_photo';
+            const usernameInput = document.getElementById('inputUsuario');
+
+            let blinkCount = 0;
+            let lastBlinkDetected = false;
+            let noBlinkFrameCounter = 0;
+            let camera;
+            let ingresoApi=false
+
+            function calculateEAR(eye) {
+                const A = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
+                const B = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+                const C = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
+                return (A + B) / (2.0 * C);
+            }
+
+            function onResults(results) {
+                if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                    blinkCount = 0
+                    resultText.innerText = "No se detectó un rostro. Inténtelo de nuevo.";
+                    resultText.classList.add('text-danger');
+                    resultText.classList.remove('text-success');
+                    clearInterval(progressInterval);
+                    return;
+                }
+
+                const landmarks = results.multiFaceLandmarks[0];
+                const leftEAR = calculateEAR([landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]]);
+                const rightEAR = calculateEAR([landmarks[263], landmarks[387], landmarks[385], landmarks[362], landmarks[380], landmarks[373]]);
+                const blinkDetected = (leftEAR < 0.2 || rightEAR < 0.2); // Umbral para considerar un parpadeo
+
+                if (blinkDetected) {
+                    if (!lastBlinkDetected && noBlinkFrameCounter > 3) {
+                        blinkCount++;
+                        console.log(`Parpadeo detectado: ${blinkCount}`);
+                        if (blinkCount === 3) {
+                            resultText.innerText = "Prueba de vida exitosa (3 parpadeos detectados)";
+                            captureAndSendImage();
+                        } else {
+                            resultText.classList.remove('text-danger');
+                            resultText.innerText = `Parpadeos detectados: ${blinkCount}`;
+                        }
+                    }
+                    noBlinkFrameCounter = 0;
+                } else {
+                    noBlinkFrameCounter++;
+                }
+                lastBlinkDetected = blinkDetected;
+
+                if (blinkCount === 3) {
+                    resultText.innerText = "Prueba de vida exitosa (3 parpadeos detectados)";
+                    resultText.classList.add('text-success');
+                    resultText.classList.remove('text-danger');
+                    $("#intentar_new").hide();
+                    {#camera.stop(); // Detener la cámara después de la prueba exitosa#}
+                }
+            }
+
+            function startDetection() {
+                const faceMesh = new FaceMesh({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                    }
+                });
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                faceMesh.onResults(onResults);
+
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: video});
+                    },
+                    width: 640,
+                    height: 480
+                });
+                camera.start();
+                startProgressBar();
+
+            }
+
+            function stopDetection() {
+                // Detener la cámara
+                if (camera) {
+                    camera.stop(); // Detener la cámara
+                }
+
+                // Detener el flujo de medios (apagar la cámara)
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+
+                // Limpiar el video para liberar recursos
+                video.srcObject = null;
+
+                // Actualizar la interfaz
+                resultText.innerText = "Detección detenida.";
+                resultText.classList.add('text-danger');
+                resultText.classList.remove('text-success');
+                $("#intentar_new").hide();
+                stopProgressBar();
+            }
+
+            function startProgressBar() {
+                const progressBar = document.getElementById('progress-bar');
+                const duration = 5000; // 5 segundos
+                const startTime = performance.now(); // Hora de inicio de la animación
+
+                function updateProgressBar(currentTime) {
+                    const elapsedTime = currentTime - startTime;
+                    const progress = Math.min(100, (elapsedTime / duration) * 100);
+
+                    progressBar.style.width = progress + '%';
+                    progressBar.setAttribute('aria-valuenow', progress);
+
+                    if (progress < 100) {
+                        progressInterval = requestAnimationFrame(updateProgressBar);
+                    } else {
+                        stopDetection(); // Llama a stopDetection cuando se complete la barra
+                        if (!ingresoApi) {
+                            $("#intentar_new").show();
+                        }
+                    }
+                }
+
+                progressInterval = requestAnimationFrame(updateProgressBar);
+            }
+
+            function stopProgressBar(){
+                // Detener la barra de progreso
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    cancelAnimationFrame(progressInterval);
+                }
+                // Resetear la barra de progreso a 0
+                const progressBar = document.getElementById('progress-bar');
+                progressBar.style.width = '0%';
+                progressBar.setAttribute('aria-valuenow', 0);
+            }
+
+            intentarNew.addEventListener('click', async () => {
+                blinkCount = 0;
+                resultText.innerText = "";
+                startProgressBar();
+                startDetection();
+                $("#intentar_new").hide();
+            });
+
+            captureButton.addEventListener('click', async () => {
+                blinkCount = 0;
+                let isValid = validarCampos();
+                {% if valida_captcha %}
+                    if ($("#g-recaptcha-response").length !== 0) {
+                        if (!checkRecaptcha()) {
+                            isValid = false;
+                            $("#helpRecaptcha").html("Complete el captcha para continuar");
+                            $("#helpRecaptcha").addClass('text-danger');
+                        }
+                    }
+                    captcha = $("#g-recaptcha-response").val();
+                {% endif %}
+                if (!isValid) {
+                    $.unblockUI();
+                    return false;
+                }else{
+                    formModal('Capturar imagen', 'modal-md', false, 'fa fa-camera');
+                    navigator.mediaDevices.getUserMedia({video: true})
+                        .then(stream => {
+                            video.srcObject = stream;
+                            video.play();
+                            video.onloadedmetadata = () => {
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                            };
+                        })
+                        .catch(err => {
+                            console.error("Error de acceso a la camara: ", err);
+                            mensajeDangerReload('Error al acceder a la cámara. <br> Por favor verifique los permisos y recargue la pagina.', 'Recargar');
+                        });
+                    startDetection(); // Iniciar detección cuando se presiona "Registrar"
+                }
+            });
+
+            function validarCampos(){
+                const usuario = $("#inputUsuario").val();
+                let isValid = true;
+                if (usuario.length == 0) {
+                    $("#inputUsuario").focus();
+                    $("#helpUsuario").html("Ingrese un usuario");
+                    $("#helpUsuario").addClass('text-danger');
+                    $("#inputUsuario").addClass('is-invalid');
+                    return false;
+                } else {
+                    $("#inputUsuario").addClass('is-valid');
+                }
+                {#const password = $("#inputPassword").val();#}
+                {#if (password.length == 0) {#}
+                {#    if (usuario.length != 0) {#}
+                {#        $("#inputPassword").focus();#}
+                {#    }#}
+                {#    $("#helpPassword").html("Ingrese una contraseña");#}
+                {#    $("#helpPassword").addClass('text-danger');#}
+                {#    $("#inputPassword").addClass('is-invalid');#}
+                {#    return false;#}
+                {# } else {#}
+                {#    $("#inputPassword").addClass('is-valid');#}
+                {# }#}
+                $('.marcada').each(function (index) {
+                    if ($(this).is(':checked')) {
+                        isValid = true;
+                        marcada = $(this).val();
+                    }
+                });
+                if (marcada == 0) {
+                    $("#options-marcada").html("Seleccione la jornada de marcada");
+                    $("#options-marcada").addClass('text-danger');
+                    return false;
+                }
+                return true
+            }
+
+            function captureAndSendImage() {
+                bloqueointerface();
+                ingresoApi=true
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const dataURL = canvas.toDataURL('image/jpeg');
+
+                    const username = usernameInput.value;
+                    const payload = JSON.stringify({
+                        image: dataURL,
+                        cedula: username
+                    });
+                    stopDetection()
+                    $(".cerrar").trigger('click');
+                    fetch(cloudFunctionUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: payload
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log(data);
+                            if (data.status === 'success') {
+                                registerChecked(dataURL);
+                            } else {
+                                $.unblockUI();
+                                mensajeDanger(' No se pudo identificar al usuario con la imagen capturada, asegure que sus datos sean correctos y vuelva a intentarlo.');
+                            }
+                        })
+                        .catch(error => {
+                            $.unblockUI();
+                            console.error('Error:', error);
+                            mensajeDangerReload('Ocurrió un error inesperado en la verificación de imagen, por favor recargue la página e intente de nuevo');
+                        });
+                } else {
+                    mensajeDanger('La cámara no está lista. Por favor, inténtelo de nuevo.');
+                }
+            }
+
+            $(".cerrar").on('click', function () {
+                $('#itemspanelbase').modal('hide');
+                ingresoApi=false
+                stopDetection();
+                resultText.innerText = "";
+                resultText.classList.remove('text-danger');
+                resultText.classList.remove('text-success');
+                $("#intentar_new").hide();
+            });
+        });
+    </script>
+
+{% endblock %}
+{% block clock %}
+    <ul class="p-0 m-2">
+        <li class="ms-2">
+            <div class="fecha_line">
+                <ul class="list-inline p-0 m-0">
+                    <li class="list-inline-item m-0">
+                        <span class="hours display-6 fw-bold text-warning">{{ tiempo.hour }}</span>
+                    </li>
+                    <li class="list-inline-item m-0">
+                        <span class="display-6 fw-bold text-warning">:</span>
+                    </li>
+                    <li class="list-inline-item m-0">
+                        <span class="minutes display-6 fw-bold text-warning ">{{ tiempo.minute }}</span>
+                    </li>
+                    <li class="list-inline-item m-0 hidden-phone">
+                        <span class="display-6 fw-bold text-warning">:</span>
+                    </li>
+                    <li class="list-inline-item m-0 hidden-phone">
+                        <span class="seconds display-6 fw-bold text-warning ">{{ tiempo.second }}</span>
+                    </li>
+                </ul>
+            </div>
+        </li>
+    </ul>
+{% endblock %}
+{% block canvas %}
+    <div class="row justify-content-center pt-4 min-vh-100">
+        <div class="col-lg-4 col-xl-3 col-md-5 col-sm-8 col-10 py-0 py-xl-0 ">
+            <div class="card m-0 border-2" style="background: #f5f5f5 !important;">
+                <div class="card-header px-1 pb-0 text-center" style="background: #f5f5f5 !important;">
+                    <h2 class="card-title fw-bold texto-azul">Marcar asistencia</h2>
+                </div>
+                <div class="card-body px-1 pt-0">
+                    <form>
+                        <div class="form-floating mb-1 mx-3 mt-0">
+                            <input type="text" class="form-control" id="inputUsuario" placeholder="Nombre de usuario">
+                            <label for="inputUsuario">Usuario</label>
+                            <span class="fs-6 text-danger" id="helpUsuario"></span>
+                        </div>
+{#                        <div class="form-floating mb-1 mx-3 mt-0">#}
+{#                            <input type="password" class="form-control" id="inputPassword" placeholder="******************">#}
+{#                            <label for="inputPassword">Contraseña</label>#}
+{#                            <span class="fs-6 text-danger" id="helpPassword"></span>#}
+{#                        </div>#}
+                        <div class="row mt-1">
+                            <div class="col-sm-12 text-center">
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="entrada_trabajo" value="1" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="entrada_trabajo">Entrada <br>trabajo<br><img width="60" height="60" src="/static/images/iconos/entradajob.png"></label>
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="salida_trabajo" value="2" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="salida_trabajo">Salida <br>trabajo<br><img width="60" height="60" src="/static/images/iconos/entradajob.png"></label>
+                            </div>
+                        </div>
+                        <div class="row mt-1">
+                            <div class="col-sm-12 text-center">
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="salida_comida" value="3" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="salida_comida">Salida <br>Comida<br><img width="60" height="60" src="/static/images/iconos/salidacomida.png"></label>
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="entrada_comida" value="4" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="entrada_comida">Entrada <br>comida<br><img width="60" height="60" src="/static/images/iconos/salidacomida.png"></label>
+                            </div>
+                        </div>
+                         <div class="row mt-1">
+                            <div class="col-sm-12 text-center">
+                                <h5 class="text-danger" id="options-marcada"></h5>
+                            </div>
+                        </div>
+
+
+
+                        {% if valida_captcha %}
+                            <div class="mb-1 mt-0 mx-3">
+                                <label for="inputSeguridad" class="form-label pb-0 mb-0">Seguridad:</label>
+                                <div style="margin-top: 1px;" id="g-recaptcha-response" class="g-recaptcha" data-sitekey="{{ public_key }}"></div>
+                                <span class="fs-6 text-danger" id="helpRecaptcha"></span>
+                            </div>
+                        {% endif %}
+                        <div class="d-grid gap-2 col-8 mx-auto my-3">
+                            <a class="btn btn-orange btn-lg text-dark"  id="registrar" href="javascript:;"><i class="fa fa-video"></i> Registrar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelbase" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable" role="document" id="wmodalbase">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-outdent" id="titleicon"></i> <b class="paneltitle-base"> FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="panelbody-base m-3">
+                        <div class="row justify-content-center">
+                        <div class="col-12 text-center px-3">
+                            <h2 class="card-title fw-bold texto-azul">Prueva de vida y captura de imagen </h2>
+                            <p class="text-orange lh-15 mb-2">Por favor, parpadee 3 veces consecutivas</p>
+                           <div class="progress">
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+                            </div>
+                            <div class="video-container mt-2">
+                                <video id="video" class="img-fluid" autoplay playsinline muted></video>
+                                <canvas id="canvas" style="display:none;"></canvas>
+                            </div>
+                            <h5 id="result" class="lh-15 mt-2"></h5>
+                            <a class="btn btn-orange btn-lg text-dark"  id="intentar_new" href="javascript:;">
+                                <i class="fa fa-video"></i> Intentar nuevamente
+                            </a>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                <div class="modal-footer" id="footermodalbase">
+                    <button type="button" class="btn btn-default cerrar" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,851 @@
+{% extends "ajaxformbs.html" %}
+{% block atras %}/adm_liquidacion_compras{% endblock %}
+{% block extraheading %}
+{#    <style>#}
+{#        span.select2-container {#}
+{#            z-index: 10050;#}
+{#        }#}
+{#    </style>#}
+    <script>
+        let lista_items1 = [];
+        let total = 0, subtotalserv=0, ivaserv=0;
+        function panelservicio(term = null, search = false) {
+            let datas = {
+                'action': 'searchserviciocompra',
+                'idser': JSON.stringify(lista_items1)
+            }
+            if (term !== null && term !== ''){
+                datas['term'] = term
+            }
+            $.ajax({
+                type: "GET",
+                url: "/adm_liquidacion_compras",
+                data: datas,
+                success: function (data) {
+                    if (data.result === true) {
+                        $('.panelbody').html(data.html);
+                        if (!search){
+                            $("#itemspanel").modal({backdrop: 'static', width: '800'}).modal('show');
+                        }
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+        function formModal(id, text, action) {
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        $('.panelbodyform').html('').html(data.data);
+                        $('#itemspanelform .paneltitleform').html(text);
+                        $("#itemspanelform").modal({backdrop: 'static', width: '800'}).modal('show');
+                    } else {
+
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+        function llenar_detalle() {
+        $.ajax({
+            type: "GET",
+            url: "/adm_liquidacion_compras",
+            data: {
+                'action': 'llenardetalle',
+                'idser': JSON.stringify(lista_items1),
+                'idimpuesto': $('#id_impuesto').val()
+            },
+            success: function (data) {
+                if (data.result === true) {
+                    $('#itemsbody').html(data.html);
+                    $('#totales').html(data.totales);
+                    total = data.total
+                    subtotalserv = data.subtotal
+                    ivaserv = data.iva
+                    //refresca_totales();
+                    $('[name="total"]').val(total);
+                    $('[name="iva"]').val(ivaserv);
+                    $('[name="subtotal"]').val(subtotalserv);
+                } else {
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function () {
+                smoke.alert("Error de conexión.");
+            },
+            dataType: "json"
+        });
+    }
+        function remover_detalle(id){
+        lista_items1.splice($.inArray(id, lista_items1), 1);
+        llenar_detalle();
+    }
+        function refresca_totales() {
+            if ($('#retencion2').val() !== '') {
+                $('#base02').val(subtotalserv);
+            }
+            if ($('#retencion3').val() !== '') {
+                $('#baseiva3').val(ivaserv);
+            }
+            calculartotal();
+        }
+        $(function(){
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '---------';
+                }
+            };
+            $("#id_cuentacontable").attr({"value": "0"});
+            $("#id_cuentacontable_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CuentaContable&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_cuentacontable").attr({"value": (evt.params.data.id)});
+            });
+            $('#itemspanel_adicionarcerrar').click(function (e){
+                $('.selecserv').each(function () {
+                    if ($(this).is(":checked")) {
+                        var idc = $(this).attr('pk');
+                        lista_items1.push(idc)
+                        $('#itemspanel').modal('hide');
+                        llenar_detalle();
+
+                    }
+                });
+            });
+            $("#itemsadicionar").click(function() {
+                if ($('#id_impuesto').val()){
+                    panelservicio();
+                } else {
+                    smoke.alert('Debe seleccionar un impuesto')
+                }
+
+            });
+
+            $("#itemspanel_cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                 });
+            $("#id_proveedor,#id_autorizacion,#id_tipodocumento,#id_impuesto,#id_numerodocumento,#id_fechaemision, #id_fechavencimiento, #id_fechacaducidad, #id_cuentacontable_select2").addClass("validate[required]");
+
+            //$("#id_numerodocumento, #numretencion").mask('999-999-999999999').val('');
+
+            $("#base01,#base02,#baseiva1,#baseiva2,#baseiva3,#baseiva4,#iva,#subtotbaseiva,#subtotbase0,#valorretenido1,#valorretenido2,#subtotalbasenogravaiva,#subtotalbaseexenta").blur(function(){
+                numerico($(this), 0, 0, 2);
+            });
+
+            $("#retencion2,#retencion1,#base01,#base02,#baseiva1,#baseiva2,#baseiva3,#baseiva4,#subtotal,#iva,#total,#subtotvalorretenido,#valorretenido1,#valorretenido2,#numretencion,#numautorizacion,#retencion3,#retencion4,#pagoproveedor,#retencioniva").attr({'disabled': true});
+            $("#id_fechaemision, #id_fechavencimiento, #id_fechacaducidad, #id_fecharegistro").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+
+
+            /*$("#id_proveedor").change(function(){
+                var id = $(this).val();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "{{ request.path }}",
+                        data: {"action": "get_proveedor", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                $("#id_autorizacion").val(data.autorizacion);
+                                $("#id_fechacaducidad").val(data.fechacaducidad);
+                            }else{
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });*/
+
+            $("#id_tipodocumento").change(function(){
+                var id = $(this).val();
+                if (id == 2)
+                {
+                    $("#seleccionar1,#seleccionar2,#subtotbaseiva").attr({'disabled': true});
+                }else{
+                    $("#seleccionar1,#seleccionar2,#subtotbaseiva").attr({'disabled': false});
+                }
+            });
+
+            $("#id_impuesto").change(function(){
+                var id = $(this).val();
+                if (id>0){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "{{ request.path }}",
+                        data: {"action": "get_impuesto", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result==='ok') {
+                                $("#porcentaje").val(data.porcentaje/100);
+                            }else{
+                                $("#porcentaje").val(0);
+                            }
+                            calculartotal();
+                            if(lista_items1.length >0){
+                                llenar_detalle();
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#porcentaje").val(0);
+                    calculartotal();
+                }
+            });
+
+            $("#retencion1").change(function(){
+                var id = parseInt($(this).val());
+                if (id > 0){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_cuentaspagar",
+                        data: {"action": "sacaimpuestoretencion", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                $("#porcentajeretencion1").val(data.porcentaje);
+                            }else{
+                                $("#porcentajeretencion1").val(0);
+                            }
+                            calculartotal();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#porcentajeretencion1").val("0");
+                }
+            });
+
+            $("#retencion2").change(function(){
+                var id = parseInt($(this).val());
+                if (id > 0){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_cuentaspagar",
+                        data: {"action": "sacaimpuestoretencion", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                $("#porcentajeretencion2").val(data.porcentaje);
+                                $("#base02").val(subtotalserv)
+                            }else{
+                                $("#porcentajeretencion2").val("0");
+                            }
+                            calculartotal();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#porcentajeretencion2").val("0");
+                }
+            });
+
+            $("#retencion3").change(function(){
+                var id = parseInt($(this).val());
+                if (id > 0){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_cuentaspagar",
+                        data: {"action": "sacaimpuestoretencion", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                $("#porcentajeretencion3").val(data.porcentaje);
+                                $("#baseiva3").val(ivaserv);
+                            }else{
+                                $("#porcentajeretencion3").val("0");
+                            }
+                            calculartotal();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#porcentajeretencion3").val("0");
+                    calculartotal();
+                }
+            });
+
+            $("#retencion4").change(function(){
+                var id = parseInt($(this).val());
+                if (id > 0){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_cuentaspagar",
+                        data: {"action": "sacaimpuestoretencion", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                $("#porcentajeretencion4").val(data.porcentaje);
+                            }else{
+                                $("#porcentajeretencion4").val("0");
+                            }
+                            calculartotal();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }else{
+                    $("#porcentajeretencion4").val("0");
+                    calculartotal();
+                }
+            });
+
+            $("#seleccionar1").on( 'click', function() {
+                if( $(this).is(':checked')  || $("#seleccionar2").is(':checked')  ){
+                    $("#subtotbase0, #subtotbaseiva").attr({'disabled': true});
+                }else{
+                    $("#subtotbase0, #subtotbaseiva").attr({'disabled': false});
+                }
+                if( $(this).is(':checked')){
+                    $("#retencion1, #base01, #baseiva1").attr({'disabled': false});
+                } else {
+                    $("#base01, #baseiva1").attr({'disabled': true});
+                    $("#retencion1").val("0").attr({'disabled': true}).trigger('change');
+                }
+                $("#subtotbase0, #subtotbaseiva, #subtotal, #iva, #total, #base01, #baseiva1, #valorretenido1").val("0.00");
+                calculartotal();
+            });
+
+            $("#seleccionar2").on( 'click', function() {
+                if( $(this).is(':checked')  || $("#seleccionar1").is(':checked')  ){
+                    $("#subtotbase0, #subtotbaseiva").attr({'disabled': true});
+                }else{
+                    $("#subtotbase0, #subtotbaseiva").attr({'disabled': false});
+                }
+                if( $(this).is(':checked')){
+                    $("#retencion2, #base02, #baseiva2").attr({'disabled': false});
+                } else {
+                    $("#base02, #baseiva2").attr({'disabled': true});
+                    $("#retencion2").val("0").attr({'disabled': true}).trigger('change');
+                }
+                $("#subtotbase0,#subtotbaseiva,#subtotal,#iva,#total,#base02,#baseiva2,#valorretenido2").val("0.00");
+                calculartotal();
+            });
+
+
+            $("#seleccionar3").on( 'click', function() {
+                if( $(this).is(':checked')){
+                    $("#baseiva3,#retencion3").attr({'disabled': false});
+                } else {
+                    $("#baseiva3,#retencion3").attr({'disabled': true});
+                }
+                $("#baseiva3").val("0.00");
+                calculartotal();
+            });
+
+            $("#seleccionar4").on( 'click', function() {
+                if( $(this).is(':checked')){
+                    $("#baseiva4,#retencion4").attr({'disabled': false});
+                } else {
+                    $("#baseiva4,#retencion4").attr({'disabled': true});
+                }
+                $("#baseiva4").val("0.00");
+                calculartotal();
+            });
+
+            bloqueanumrete = function () {
+                if( parseInt($("#subtotvalorretenido").val()) > 0 ){
+                    $("#numretencion, #numautorizacion").attr({'disabled': false}).addClass("validate[required]");
+                }else{
+                    $("#numretencion, #numautorizacion").attr({'disabled': true}).removeClass("validate[required]");
+                }
+            };
+
+            $("#base01").keyup(function(e) {
+                if ($("#retencion1").val()==0){
+                    smoke.alert("Debe seleccionar Retención de Bienes");
+                    return false;
+                }
+                calculartotal();
+            });
+
+            $("#base02").keyup(function(e) {
+                if (parseFloat($("#retencion2").val())==0){
+                    smoke.alert("Debe seleccionar Retención de servicios");
+                    return false;
+                }
+                calculartotal();
+            });
+
+            $("#baseiva1").keyup(function(e) {
+                if (parseFloat($("#retencion1").val())==0){
+                    smoke.alert("Debe seleccionar Retención de Bienes");
+                    return false;
+                }
+                calculartotal();
+            });
+
+            $("#baseiva2").keyup(function(e) {
+                if (parseFloat($("#retencion2").val())==0){
+                    smoke.alert("Debe seleccionar Retención de servicios");
+                    return false;
+                }
+                calculartotal();
+            });
+
+
+            $("#baseiva3").keyup(function(e) {
+                if (parseFloat($("#retencion3").val())==0){
+                    smoke.alert("Debe seleccionar Retención Iva Servicios");
+                    return false;
+                }
+                calculartotal();
+            });
+
+
+            $("#baseiva4").keyup(function(e) {
+                if (parseFloat($("#retencion4").val())==0){
+                    smoke.alert("Debe seleccionar Retención Iva Bienes");
+                    return false;
+                }
+                calculartotal();
+            });
+
+            $("#subtotbase0, #subtotbaseiva, #base01, #base02, #baseiva1, #baseiva2, #subtotalbasenogravaiva, #subtotalbaseexenta").keyup(function(e) {
+                calculartotal();
+            });
+
+            calculartotal = function () {
+                console.log(lista_items1)
+                if ($("#id_impuesto").val() == 0){
+                    $("#subtotbaseiva, #baseiva1, #baseiva2").val('0.00');
+                }
+
+                if( $("#seleccionar1").is(':checked')  || $("#seleccionar2").is(':checked')  ) {
+                    $("#subtotbase0, #subtotbaseiva").val('0.00');
+                }
+
+                $("#subtotal, #iva, #total, #valorretenido1, #valorretenido2, #pagoproveedor").val('0.00');
+                var base01=parseFloat($("#base01").val());
+                var base02=parseFloat($("#base02").val());
+                var subtotbase0 = parseFloat(base01+base02);
+                if(subtotbase0 > 0){
+                    $("#subtotbase0").val(redondeo(subtotbase0, 2));
+                }else{
+                    subtotbase0 = parseFloat($("#subtotbase0").val());
+                }
+
+                var baseiva1=parseFloat($("#baseiva1").val());
+                var baseiva2=parseFloat($("#baseiva2").val());
+                var baseiva3=parseFloat($("#baseiva3").val());
+                var baseiva4=parseFloat($("#baseiva4").val());
+
+                var porcentajeretencion1 = parseFloat($("#porcentajeretencion1").val()/100);
+                var porcentajeretencion2 = parseFloat($("#porcentajeretencion2").val()/100);
+                var porcentajeretencion3 = parseFloat($("#porcentajeretencion3").val()/100);
+                var porcentajeretencion4 = parseFloat($("#porcentajeretencion4").val()/100);
+
+                var subtotbaseiva = parseFloat(baseiva1+baseiva2);
+                if(subtotbaseiva > 0){
+                    $("#subtotbaseiva").val(redondeo(parseFloat(baseiva1+baseiva2), 2));
+                }else{
+                    subtotbaseiva = parseFloat($("#subtotbaseiva").val());
+                }
+                var valorretenidouno = parseFloat((base01+baseiva1)*porcentajeretencion1);
+                $("#valorretenido1").val(redondeo(valorretenidouno, 2));
+                var valorretenidodos = parseFloat((base02+baseiva2)*porcentajeretencion2);
+                if(valorretenidodos > 0){
+                    $("#valorretenido2").val(redondeo(valorretenidodos, 2));
+                }
+
+                var valorretenidotres = parseFloat((baseiva3)*porcentajeretencion3);
+                var valorretenidocuatro = parseFloat((baseiva4)*porcentajeretencion4);
+
+                var valorretenido1 = parseFloat($("#valorretenido1").val());
+                var valorretenido2 = parseFloat($("#valorretenido2").val());
+                var valorretenido3 = parseFloat($("#retencioniva3").val());
+                var valorretenido4 = parseFloat($("#retencioniva4").val());
+
+                $("#retencioniva3").val(redondeo(valorretenidotres, 2));
+                $("#retencioniva4").val(redondeo(valorretenidocuatro, 2));
+
+
+                var subtotbasenogravaiva = parseFloat($("#subtotalbasenogravaiva").val());
+                var subtotbaseexenta = parseFloat($("#subtotalbaseexenta").val());
+
+                var subtotal = subtotbaseiva+subtotbase0+subtotbasenogravaiva+subtotbaseexenta;
+                if(parseFloat(subtotal)>0){
+                    $("#subtotal").val(redondeo(parseFloat(subtotal), 2));
+                }else{
+                    subtotal = 0;
+                    $("#subtotal").val("0.00");
+                }
+
+                var impuesto =parseFloat( $("#porcentaje").val());
+                var ivaval = parseFloat(subtotal*impuesto);
+                $("#iva").val(redondeo(ivaval, 2));
+                var iva =parseFloat( $("#iva").val());
+                let tot = redondeo(parseFloat(subtotal+iva), 2)
+                $("#total").val(redondeo(parseFloat(subtotal+iva), 2));
+
+                {#var total=$("#total").val();#}
+                var total=tot;
+                var porcentajeretencion3=$("#porcentajeretencion3").val();
+                var totporiva=iva*porcentajeretencion3/100;
+                $("#retencioniva").val(redondeo(totporiva, 2));
+                {#$("#subtotvalorretenido").val(redondeo(parseFloat(valorretenido1 + valorretenido2 + totporiva), 2));#}
+                $("#subtotvalorretenido").val(redondeo(parseFloat(valorretenido1 + valorretenido2 + valorretenido3+ valorretenido4), 2));
+                var totalretenciones = valorretenido1 + valorretenido2 + totporiva;
+                var totalpagoproveedor = total-totalretenciones;
+                $("#pagoproveedor").val(redondeo(totalpagoproveedor, 2));
+                bloqueanumrete();
+            };
+
+            $('#generardiario').click(function(){
+                calculartotal();
+                bloqueointerface();
+                var idproveedor= $("#id_proveedor").val();
+                var mensaje="<ul>";
+
+                if (idproveedor==0){
+                    smoke.alert("Debe selecionar proveedor");
+                    $.unblockUI();
+                    return false;
+
+                }
+                var id_impuesto= $("#id_impuesto").val();
+                if (id_impuesto==0){
+                    smoke.alert("Debe selecionar impuesto");
+                    $.unblockUI();
+                    return false;
+
+                }
+                var retencion3= $("#retencion3").val();
+                var retencion4= $("#retencion4").val();
+                var retencion1= $("#retencion1").val();
+                var retencion2= $("#retencion2").val();
+                var iva =parseFloat($("#iva").val());
+                var total = $("#pagoproveedor").val();
+                var glosa ="";
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_cuentaspagar",
+                    data: {'action': 'datosparagenerardiario', 'idproveedor': idproveedor,'idimpuesto':id_impuesto,'idretencioniva':retencion3,'idretencionbien':retencion1,'idretencionservicio':retencion2},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            glosa=data.proveedor + ", Num. comp: "+ $("#id_numerodocumento").val()+ " ("+$('#id_glosageneral').val()+") ";
+                            if (data.impidcuenta>0){
+                                if(parseFloat($("#iva").val()) > 0){
+                                    var glosaiva="IVA EN COMPRA - "+ glosa;
+                                    llenartabla(data.impidcuenta,data.impcuenta,data.impdesccuenta,glosaiva,1,'DEBITO',parseFloat($("#iva").val()));
+                                }
+                            }else{
+                                mensaje +="<li>no esta configurado cuenta contable del impuesto </li>";
+                            }
+
+                            if (data.idcuenta>0){
+                                llenartabla(data.idcuenta,data.cuenta,data.descripcion,glosa,2,'CREDITO',total);
+
+                            }else{
+                                mensaje +="<li>no esta configurado cuenta contable del proveedor </li>";
+                            }
+
+                            if (iva>0){
+                                if (data.retidcuenta>0 ){
+                                    var glosaretiva="RET. IVA, Numret: "+ $("#numretencion").val() +" - "+ glosa;
+                                    var tot=iva*data.retporcentaje;
+                                    llenartabla(data.retidcuenta, data.retcuenta, data.retdesccuenta, glosaretiva, 2, 'CREDITO', redondeo(tot, 2));
+                                }else{
+                                    if ($('#retencion3').val()>0){
+                                        mensaje +="<li>no esta configurado cuenta contable de la retención del IVA </li>";
+                                    }
+                                }
+                            }
+
+                            if (retencion1 > 0){
+                                var valorretenido1 = $("#valorretenido1").val();
+                                if (data.retbienidcuenta>0){
+                                    var glosaretbien="RET. BIENES, Numret: "+ $("#numretencion").val() +" - "+ glosa;
+                                    llenartabla(data.retbienidcuenta,data.retbiencuenta,data.retbiendesccuenta,glosaretbien,2,'CREDITO',valorretenido1);
+                                }else{
+                                    mensaje+="<li>no esta configurado cuenta contable de la retención de Bienes</li>";
+                                }
+                            }
+
+                            if (retencion2 > 0) {
+                                var valorretenido2 = $("#valorretenido2").val();
+                                if (data.retservicioidcuenta>0){
+                                    var glosaretservicio="RET. SERVICIOS, Numret: "+ $("#numretencion").val() +" - "+ glosa;
+                                    llenartabla(data.retservicioidcuenta, data.retserviciocuenta, data.retserviciodesccuenta, glosaretservicio, 2, 'CREDITO', valorretenido2);
+
+                                }else{
+                                    mensaje+="<li>no esta configurado cuenta contable de la retención de Servicios</li>";
+                                }
+                            }
+                            mensaje+="</ul>";
+                            if (mensaje!="<ul></ul>"){
+                                smoke.alert(mensaje);
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#id_proveedor").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=Proveedor&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        console.log(data)
+                        listing = [];
+
+                        $.each(data.results, function(i, item){
+                            //console.log(item)
+                            listing.push({'id': item.id, 'text': item.name});
+                        });
+                        return {
+                            results: listing,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block validaciones %}
+    $("#subtotbaseiva,#subtotbase0,#retencion2,#retencion1,#base01,#base02,#baseiva1,#baseiva2,#subtotal,#iva,#total,#subtotvalorretenido,#valorretenido1,#valorretenido2,#numretencion,#numautorizacion,#retencion3,#retencion4,#pagoproveedor,#retencioniva").attr({'disabled': false});
+{% endblock %}
+{% block errorsuccess %}
+    $("#subtotbaseiva,#subtotbase0,#retencion2,#retencion1,#base01,#base02,#baseiva1,#baseiva2,#subtotal,#iva,#total,#subtotvalorretenido,#valorretenido1,#valorretenido2,#numretencion,#numautorizacion,#retencion3,#retencion4,#pagoproveedor,#retencioniva").attr({'disabled': true});
+    calculartotal();
+{% endblock %}
+{% block errorajax %}
+    $("#subtotbaseiva,#subtotbase0,#retencion2,#retencion1,#base01,#base02,#baseiva1,#baseiva2,#subtotal,#iva,#total,#subtotvalorretenido,#valorretenido1,#valorretenido2,#numretencion,#numautorizacion,#retencion3,#retencion4,#pagoproveedor,#retencioniva").attr({'disabled': true});
+    calculartotal();
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_liquidacion_compras{% endblock %}
+{% block formdestination %}/adm_liquidacion_compras{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='{{ action }}'/>
+    <input type='hidden' name='porcentajeretencion1' id="porcentajeretencion1" value='0.00'/>
+    <input type='hidden' name='porcentajeretencion2' id="porcentajeretencion2" value='0.00'/>
+    <input type='hidden' name='porcentajeretencion3' id="porcentajeretencion3" value='0.00'/>
+    <input type='hidden' name='porcentajeretencion4' id="porcentajeretencion4" value='0.00'/>
+    <input type='hidden' name='porcentaje' id="porcentaje" value='0.00'/>
+    <input type="hidden" name="total" id="id_total">
+    <input type="hidden" name="subtotal" id="id_subtotal">
+    <input type="hidden" name="iva" id="id_iva">
+    <input type="hidden" name="secuencial" id="id_secuencial" value="{{ secuencial }}">
+{% endblock %}
+{% block formback %}/adm_liquidacion_compras{% endblock %}
+{% block formsuffix %}
+{#    <div class="control" style="float: left; width: 500px;">#}
+{#        Glosa:#}
+{#        <textarea id="id_glosageneral" name="glosageneral"></textarea>#}
+{#        <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px;"></p>#}
+{#    </div>#}
+    <div class='row-fluid'>
+        <table class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th style="width: 100px">Remover</th>
+                <th>Descripci&oacute;n</th>
+                <th style="width: 100px; text-align: center">Cantidad</th>
+                <th style="width: 100px; text-align: center">Costo</th>
+                <th style="width: 100px; text-align: center">Total</th>
+            </tr>
+            </thead>
+            <tbody id="itemsbody" class="datatable">
+            <tr>
+                <td colspan="15">NO EXISTEN SERVICIOS INGRESADOS</td>
+            </tr>
+            </tbody>
+            <tfoot>
+            </tfoot>
+        </table>
+        <span class='help-text' id="itemshelptext"></span><br/>
+        <a href="javascript:;" id="itemsadicionar" class="btn btn-info btn-mini"><i class="fa fa-plus"></i> Adicionar</a>
+        <div id="totales">
+            <table class="table table-bordered" style="float: right; width: 250px">
+                <tr>
+                    <td style="text-align: right">TOTAL</td>
+                    <td id="totalserv" style="text-align: right">0.00</td>
+                </tr>
+                <tr>
+                    <td style="text-align: right">IVA</td>
+                    <td id="totaliva" style="text-align: right">0.00</td>
+                </tr>
+                <tr>
+                    <td style="text-align: right">SUBTOTAL</td>
+                    <td id="subtotal" style="text-align: right">0.00</td>
+                </tr>
+            </table>
+        </div>
+
+    </div>
+{% endblock %}
+{% block moreblock %}
+     <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Producto</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Revise los valores en la cantidad o costos no pueden ser ceros
+            </div>
+            <div class="alert alert-danger" id="alertaingreso" style="display: none;">
+                Este producto ya se encuentra en la lista
+            </div>
+            <div class="row-fluid">
+                <form id="form2" class="form-horizontal form-modal" style="width: 870px; margin-bottom: 0">
+                    {% for field in form2 %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins" style="min-height:35px; float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}" >
+                            <div class="control-label label-text" {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %} style="display: table;height: 30px;">
+                                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                    <label for="id_{{ field.name }}" style="padding-right: 20px">{{ field.label }}</label>
+                                </div>
+                            </div>
+                            <div class="control" style="float: left; width: {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}0{% endif %}">
+                                {% if field.field.widget.attrs.select2search %}
+                                    <select id="id_{{ field.name }}_select2" {% if field.field.widget.attrs.disabled %}disabled=""{% endif %} >
+                                        <option value="0" selected="selected">---------</option>
+                                    </select>
+                                    <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}" hidden="hidden" {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %} class="select2hidden">
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+                                <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+{#            <a href="javascript:;" class="btn btn-inverse" id="itemspanel_adicionar" onclick="formModal(0, 'Adicionar Servcio', 'addservicio')"><i class="fa fa-plus"></i> Adicionar Servicio</a>#}
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionarcerrar"><i class="fa fa-plus"></i> Agregar al detalle y Cerrar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar"> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelform" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitleform"></h3></td>
+                    <td><a href="javascript:;" id="cerrarpanelform" class="btn btn-danger btn-mini pull-right"><i
+                            class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <form action="" id="form2">
+            <div class="modal-body panelbodyform">
+
+            </div>
+        </form>
+    </div>
+{% endblock %}
+

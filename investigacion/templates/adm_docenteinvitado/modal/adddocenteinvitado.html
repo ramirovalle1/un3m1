@@ -1,0 +1,188 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script>
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 5, width: '100%'});
+
+            $("#profesor_select2, #modalidad, #numerocontrato, #inicio, #fin").addClass("validate[required]");
+            $("#remuneracion").addClass("validate[required, min[1], max[10000]]")
+            $("#archivoselecc").addClass("validate[required]");
+
+            let accionbuscar = 'buscarprofesorinvitado';
+
+            $("#profesor_select2").val(0).trigger("change");
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#profesor_select2").select2({
+                placeholder: "-------------------------------------------",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    },
+                    "errorLoading": function () {
+                        return "No se pudieron cargar los resultados...";
+                    },
+                },
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/adm_docenteinvitado?action="+accionbuscar+"&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#coordinacion").val(evt.params.data.coordinacion);
+                $("#dedicacion").val(evt.params.data.dedicacion);
+                $("#horas").val(evt.params.data.horas);
+            }).on("select2:unselect", function (evt) {
+                $("#coordinacion").val("");
+                $("#dedicacion").val("");
+                $("#horas").val("");
+            });
+
+            $("#remuneracion").blur(function () {
+                if($(this).val().indexOf(",") >= 0)
+                    $(this).val($(this).val().replace(".", "").replace(",", "."));
+                numerico($(this), 0, 10000, 2);
+            });
+
+            $(".archivos").change(function () {
+                let cantidad = $(this).get(0).files.length;
+                $("#bgarchivo").html(cantidad.toString());
+
+                if(cantidad > 0)
+                    $("#archivoselecc").val("SI");
+                else
+                    $("#archivoselecc").val("");
+            });
+
+        });
+    </script>
+{% endblock %}
+<form id="frmAddDocenteInvitado" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    {% csrf_token %}
+    <input type='hidden' name='action' value='adddocenteinvitado'/>
+    <table class="table table-bordered mb-0">
+        <tbody>
+            <tr>
+                <td><b>Profesor:</b></td>
+                <td colspan="3">
+                    <select id="profesor_select2" name="profesor_select2" style="width: 100%">
+                        <option value="" selected="selected">---------</option>
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    <small class="form-text text-muted">Ingrese los apellidos o número de identificación para realizar la búsqueda.</small>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Coordinación:</b></td>
+                <td colspan="3">
+                    <input type="text" style="width: 100%;" maxlength="500" id="coordinacion" name="coordinacion" value="" autocomplete="off" readonly>
+                </td>
+            </tr>
+            <tr>
+                <td style="width: 20%;"><b>Dedicación:</b></td>
+                <td style="width: 30%;">
+                    <input type="text" style="width: 100%;" maxlength="500" id="dedicacion" name="dedicacion" value="" autocomplete="off" readonly>
+                </td>
+                <td style="width: 20%;"><b>Horas:</b></td>
+                <td style="width: 30%;">
+                    <input type="text" style="width: 100%;" maxlength="500" id="horas" name="horas" value="" autocomplete="off" readonly>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Modalidad:</b></td>
+                <td>
+                    <select id="modalidad" name="modalidad">
+                        <option value="">---------</option>
+                        {% for modalidad in modalidades %}
+                            <option value="{{ modalidad.id }}">{{ modalidad.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td><b>N° Contrato:</b></td>
+                <td>
+                    <input type="text" style="width: 100%; text-transform: uppercase" maxlength="100" id="numerocontrato" name="numerocontrato" value="" autocomplete="off">
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Archivo Contrato:</b></td>
+                <td colspan="3">
+                    <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgarchivo" class="badge">0</span><input type="file" style="color: transparent" class="archivos" id="archivocontrato" name="archivocontrato" hidden> </label>
+                    <small class="form-text text-muted">Tamaño Maximo permitido 4Mb, en formato pdf</small>
+                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Inicio Contrato:</b></td>
+                <td>
+                    <input style="width: 98%;" type="date" id="inicio" name="inicio" value=""/>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td><b>Fin Contrato:</b></td>
+                <td>
+                    <input style="width: 98%;" type="date" id="fin" name="fin" value=""/>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Remuneración:</b></td>
+                <td>
+                    <input style="width: 98%;" type="text" id="remuneracion" name="remuneracion" value=""/>
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </td>
+                <td colspan="2"></td>
+            </tr>
+{#            <tr>#}
+{#                <td><b>Observaciones:</b></td>#}
+{#                <td colspan="3">#}
+{#                    <textarea style="width: 100%; resize: none; text-transform: none" cols="40" id="observacion" name="observacion" rows="4"></textarea>#}
+{#                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>#}
+{#                </td>#}
+{#            </tr>#}
+        </tbody>
+    </table>
+</form>

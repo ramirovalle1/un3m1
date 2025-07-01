@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <style>
+        .dropdown-icon {
+            padding-right: 4px!important;
+        }
+
+        .dataTables_wrapper .dataTables_filter {
+            display: none;
+        }
+
+        .mi_tabla_responsive thead th {
+            text-transform: uppercase;
+        }
+
+        table.mi_tabla_responsive tbody td {
+            vertical-align: middle!important;
+        }
+
+        .dataTables_info {
+            padding-left: 5px;
+            color: #7C7C7C;
+        }
+
+    </style>
+    <script>
+
+        $(function () {
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            $("#itemspanel .btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            $(".mostrardetalle").click(function () {
+                $("#aprobarcerrar").css('display', 'none');
+                var id = $(this).attr('idd');
+                let tipoincidente = $(this).attr('tipoincidente');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_hdusuario",
+                    data: {'action': 'detalle_incidente', 'id': id, 'tipoincidente':tipoincidente},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop: 'static', width: '1200px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            const tabla = $('.mi_tabla_responsive').DataTable({
+                responsive: true,
+                ordering: false,
+                paging: true,
+                searching: true,
+                bInfo: true,
+                dom: 'Bfrtip',
+                language: {
+                    "url": '/static/js/i18n/Spanish.json'
+                },
+                buttons: []
+            });
+
+            tabla.buttons().container().appendTo('.mi_tabla_responsive .col-md-6:eq(0)');
+
+            $('.mi_tabla_responsive tbody').on('click', 'tr', function () {
+                var data = tabla.row(this).data();
+            });
+
+            $("#id_search").keyup(function () {
+                tabla.search($(this).val().trim()).draw();
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    {% if faltantes > 0 %}
+        <div class="alert alert-danger">
+            <a href="javascript:;" class="close" data-dismiss="alert">×</a>
+            <h4 class="alert-heading">AVISO</h4>
+            No puede solicitar nuevo <b>Registro de incidentes</b> porque tiene encuestas pendientes, favor realizar
+            encuesta en Acciones ==> Realizar encuesta
+        </div>
+    {% endif %}
+
+    <div class='row ps-0'>
+        <div class='col-12'>
+            <div class="headtitle ps-0 ms-0">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>{{ persona }}</h6>
+            </div>
+        </div>
+    </div><br>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="btn-group">
+                <a href="/adm_hdusuario?action=addsolicitud" class="btn btn-success btn-md rounded-2"><i class="fa fa-plus" style="font-size: 12px"></i>&nbsp;Adicionar</a>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-12">
+            <!-- Card -->
+            <div class="card mb-4">
+                <!-- Card Header -->
+                <div class="card-header border-bottom-0">
+                    <div class="d-flex align-items-center mt-1">
+                        <span class="position-absolute ps-3 search-icon">
+                            <i class="fa fa-search fs-6"></i>
+                        </span>
+                        <input id="id_search" type="search" class="form-control ps-5" value="{{ s }}" placeholder="Buscar por asunto, bloque, ubicación, etc..."/>
+                    </div>
+                </div>
+                <!-- Table  -->
+                <div class="border-0">
+                    <table class="table mb-0 mi_tabla_responsive" style="position: relative!important;z-index: 1!important;">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width: 150px" scope="col" class="border-0"></th>
+                            <th style="width: 1100px" scope="col" class="border-0">Asunto</th>
+                            <th style="width: 800px" scope="col" class="border-0">Bloque/Ubicación</th>
+                            <th style="width: 500px" scope="col" class="border-0">Fecha de creación</th>
+                            <th style="width: 400px" scope="col" class="border-0 text-center">Turno</th>
+                            <th style="width: 400px" scope="col" class="border-0 text-center">Estado</th>
+                            <th style="width: 400px" scope="col" class="border-0 text-center">Realizó encuesta</th>
+                            <th style="width: 400px" scope="col" class="border-0 text-center">Archivo</th>
+                            <th style="width: 300px" scope="col" class="border-0"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for incidente in incidentes_tic %}
+                            <tr class="fw-lighter">
+                                <td class="text-center">{{ incidente.pk }}</td>
+                                <td>{{ incidente.asunto }}<br><span class="label label-primary">{{ incidente.tipoincidente }}</span></td>
+                                <td>
+                                    {% if incidente.departamento %}{{ incidente.departamento }}{% else %}
+                                        {{ incidente.ubicacion.bloque }} -
+                                        {{ incidente.ubicacion.ubicacion }}{% endif %}
+                                </td>
+                                <td>{{ incidente.fechareporte|date:"d/m/Y" }} {{ incidente.horareporte|time:"h:i a" }}</td>
+                                <td style="text-align: center;vertical-align: middle;">
+                                    {% if incidente.esta_abierto %}
+{#                                        <label class="badge label-warning">Total: {{ incidente.cantidad_pendientes }} </label>#}
+{#                                        <br>#}
+                                        <label class="badge">{{ incidente.turno }}/{{ incidente.cantidad_pendientes }}</label>
+                                    {% elif  incidente.esta_pendiente %}
+{#                                        <label class="badge label-warning">Total: {{ incidente.cantidad_pendientes }} </label>#}
+{#                                        <br>#}
+                                        <label class="badge label-warning">{{ incidente.turno }}/{{ incidente.cantidad_pendientes }}</label>
+                                    {% elif  incidente.esta_cerrado %}
+                                        <label class="badge label-danger"> Cerrado </label>
+                                    {% elif  incidente.esta_resulto %}
+                                        <label class="badge label-success"> Terminado </label>
+                                    {% elif  incidente.esta_aprobado %}
+                                        <label class="badge label-important"> Aprobado </label>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if incidente.esta_abierto %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_pendiente %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_cerrado %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_resulto %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_rechazado %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." style="width: 30px" src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if incidente.tipoincidente.id == 2 %}
+                                        {% if incidente.realizoencuesta %}
+                                            <span class="badge badge-success">SI</span>
+                                        {% else %}
+                                            <span class="badge badge-important">NO</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% if incidente.archivo %}
+                                        <a href="{{ incidente.download_link }}" target="_blank"
+                                           class=" btn btn-warning btn-mini fa fa-download"></a>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="dropdown dropstart" title="ACCIONES">
+                                        <a class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle" href="#" role="button" id="courseDropdown7" data-bs-toggle="dropdown" data-bs-offset="-20,20" aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v fs-6 pe-1"></i>
+                                        </a>
+                                        <span class="dropdown-menu dropdown-menu-end" aria-labelledby="courseDropdown7">
+                                            {% if incidente.esta_abierto %}
+                                                <a class="dropdown-item" href='/helpdesk_hdusuario?action=editsolicitud&id={{ incidente.id }}'><i class="dropdown-icon fa fa-edit"></i> Editar solicitud</a>
+                                                <a class="dropdown-item eliminacionmodal" href="javascript:;" nhref="/helpdesk_hdusuario?action=delsolicitud&id={{ incidente.id }}"><i class="dropdown-icon fa fa-times fa-fw fa fa-remove"></i> Eliminar solicitud</a>
+                                            {% endif %}
+                                            {% if not incidente.revisionequipoexterno %}
+                                                {% if not incidente.realizoencuesta %}
+                                                    {% if incidente.ultimo_agente_asignado %}
+                                                        <a class="dropdown-item" href='/helpdesk_hdusuario?action=realizarencuesta&tipoincidente={{ incidente.tipoincidente.id }}&idincidente={{ incidente.id|encrypt }}'><i class="dropdown-icon fa fa-edit"></i> Realizar encuesta</a>
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% endif %}
+                                            <div class="dropdown-divider"></div>
+                                            <a href="javascript:;" class="mostrardetalle tu dropdown-item" idd="{{ incidente.id }}" tipoincidente="{{ incidente.tipoincidente.id }}"><i class="dropdown-icon fa fa-list"></i> Detalle de solicitud</a>
+                                        </span>
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        {% for incidente in incidentes %}
+                            <tr class="fw-lighter">
+                                <td class="text-center">{{ incidente.pk }}</td>
+                                <td>{{ incidente.asunto }}<br><span class="label label-primary">{{ incidente.tipoincidente }}</span></td>
+                                <td>
+                                    {% if incidente.departamento %}{{ incidente.departamento }}{% else %}
+                                        {{ incidente.ubicacion.bloque }} -
+                                        {{ incidente.ubicacion.ubicacion }}{% endif %}
+                                </td>
+                                <td>{{ incidente.fechareporte|date:"d/m/Y" }} {{ incidente.horareporte|time:"h:i a" }}</td>
+                                <td style="text-align: center;vertical-align: middle;">
+                                    {% if incidente.esta_abierto %}
+{#                                        <label class="badge label-warning">Total: {{ incidente.cantidad_pendientes }} </label>#}
+{#                                        <br>#}
+                                        <label class="badge">{{ incidente.turno }}/{{ incidente.cantidad_pendientes }}</label>
+                                    {% elif  incidente.esta_pendiente %}
+{#                                        <label class="badge label-warning">Total: {{ incidente.cantidad_pendientes }} </label>#}
+{#                                        <br>#}
+                                        <label class="badge label-warning">{{ incidente.turno }}/{{ incidente.cantidad_pendientes }}</label>
+                                    {% elif  incidente.esta_cerrado %}
+                                        <label class="badge label-danger"> Cerrado </label>
+                                    {% elif  incidente.esta_resulto %}
+                                        <label class="badge label-success"> Terminado </label>
+                                    {% elif  incidente.esta_aprobado %}
+                                        <label class="badge label-important"> Aprobado </label>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;">
+                                    {% if incidente.esta_abierto %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_pendiente %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_cerrado %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_resulto %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% elif  incidente.esta_rechazado %}
+                                        <a title="{{ incidente.estado }}" class="fancybox" rel="group"><img alt="..." style="width: 30px" src="https://sga.unemi.edu.ec{{ incidente.estado.imagen.url }}"></a>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if incidente.tipoincidente.id == 2 %}
+                                        {% if incidente.realizoencuesta %}
+                                            <span class="badge badge-success">SI</span>
+                                        {% else %}
+                                            <span class="badge badge-important">NO</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% if incidente.archivo %}
+                                        <a href="{{ incidente.download_link }}" target="_blank"
+                                           class=" btn btn-warning btn-mini fa fa-download"></a>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="dropdown dropstart" title="ACCIONES">
+                                        <a class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle" href="#" role="button" id="courseDropdown7" data-bs-toggle="dropdown" data-bs-offset="-20,20" aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v fs-6 pe-1"></i>
+                                        </a>
+                                        <span class="dropdown-menu dropdown-menu-end" aria-labelledby="courseDropdown7">
+                                            {% if incidente.esta_abierto %}
+                                                <a class="dropdown-item" href='/adm_hdusuario?action=editsolicitud&id={{ incidente.id }}'><i class="dropdown-icon fa fa-edit"></i> Editar solicitud</a>
+                                                <a class="dropdown-item eliminacionmodal" href="javascript:;" nhref="/adm_hdusuario?action=delsolicitud&id={{ incidente.id }}"><i class="dropdown-icon fa fa-times fa-fw fa fa-remove"></i> Eliminar solicitud</a>
+                                            {% endif %}
+                                            {% if not incidente.revisionequipoexterno %}
+                                                {% if not incidente.realizoencuesta %}
+                                                    {% if faltantes %}
+                                                        <a class="dropdown-item" href='/adm_hdusuario?action=realizarencuesta&tipoincidente={{ incidente.tipoincidente.id }}&idincidente={{ incidente.id|encrypt }}'><i class="dropdown-icon fa fa-edit"></i> Realizar encuesta</a>
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% endif %}
+                                            <div class="dropdown-divider"></div>
+                                            <a href="javascript:;" class="mostrardetalle tu dropdown-item" idd="{{ incidente.id }}" tipoincidente="{{ incidente.tipoincidente.id }}"><i class="dropdown-icon fa fa-list"></i> Detalle de solicitud</a>
+                                        </span>
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle text-uppercase">Mostrar detalle del Incidente</b></h4>
+                    <button type="button" class="close btn-icon btn btn-ghost btn-sm rounded-circle"
+                            data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="container">
+                        <div class="panelbody"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a>
+                            </td>
+                            <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

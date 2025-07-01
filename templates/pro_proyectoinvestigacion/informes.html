@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $(".mostrarevidencias").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'mostrarevidenciasinforme', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyevidencias").html(data.data);
+                            $("#itemspanelevidencias").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".imprimirinforme").click(function() {
+                let id=$(this).attr('id');
+                let accion=$(this).attr('tipo') == '1' ? "informetecnicopdf": "informetecnicofinalpdf";
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action':accion, 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            //window.open(data.documento, '_blank');
+                            //location.reload();
+                            location.href = "/pro_proyectoinvestigacion?action=informesproyecto&id="+data.id+"&idi="+data.idi;
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".firmardocumento").click(function() {
+                let id = $(this).attr('id');
+                let idper = $(this).attr('idper');
+                let tipofirma = $(this).attr('tipofirma');
+                let accion = $(this).attr('acc');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': accion, 'id': id, 'idper': idper, 'tipofirma': tipofirma},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyfirmardocumento").html(data.data);
+                            $(".paneltitlefirmardocumento").html(data.title);
+                            $("#itemspanelfirmardocumento").modal({backdrop:'static'}).modal('show');
+                            $("#itemspanelfirmardocumento .guardar").attr('accion', accion);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelfirmardocumento .guardar").click(function () {
+                envioformularioreg("/pro_proyectoinvestigacion", $(this).attr('accion'), false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                if(action == 'firmarinformeavance'){
+                    $("#frmFirmarDocumento").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFirmarDocumento").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'subirinforme'){
+                    $("#frmSubirInforme").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmSubirInforme").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if (action === 'firmarinformeavance')
+                        formdata = new FormData($("#frmFirmarDocumento")[0]);
+                    else if (action === 'subirinforme')
+                        formdata = new FormData($("#frmSubirInforme")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                if(action === 'firmarinformeavance')
+                                    urlDestino = `/pro_proyectoinvestigacion?action=informesproyecto&id={{ proyecto.id|encrypt }}&idi=${data.idi}`;
+                                else
+                                    urlDestino = `/pro_proyectoinvestigacion?action=informesproyecto&id={{ proyecto.id|encrypt }}`;
+
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".finalizaredicion").click(function() {
+                let id = $(this).attr('id');
+                let titulo = $(this).attr('titulo');
+                let url = "/pro_proyectoinvestigacion";
+                let action = "finalizaredicion";
+                let urlDestino = "/pro_proyectoinvestigacion?action=informesproyecto&id={{ proyecto.id|encrypt }}";
+
+                mensajeConfirmSwal("Confirmar Finalizar Edición de Informe", "¿Está seguro de finalizar la edición del informe técnico N° <b>"+titulo+"?", true, url, action, id, urlDestino);
+            });
+
+            $(".subirinforme").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'subirinforme', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodysubirinforme").html(data.data);
+                            $(".paneltitlesubirinforme").html(data.title);
+                            $("#itemspanelsubirinforme").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelsubirinforme .guardar").click(function () {
+                envioformularioreg("/pro_proyectoinvestigacion", "subirinforme", false);
+                return false;
+            });
+
+            {% if informe %}
+                Fancybox.show([
+                    {
+                        src: "{{ informe }}",
+                        width: 2048,
+                        height: 1365,
+                        caption:"{{ tipoinforme }}"
+                    }
+                ]);
+            {% endif %}
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Propuestas de Docentes (Convocatoria: {{ proyecto.convocatoria.descripcion }})</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# TITULO DEL PROYECTO #}
+        <div class='row'>
+            <div class="col-sm-12">
+                <div class="alert alert-info mb-1" style="text-align: justify">
+                    <strong>{{ proyecto.titulo }}</strong>
+                </div>
+            </div>
+        </div>
+        {# TITULO DEL PROYECTO #}
+        {# BOTON ADICIONAR #}
+        <div class='row'>
+            <div class="col-sm-12 pb-2">
+                {% if not proyecto.verificainforme %}
+                    <div class="alert alert-error" style="text-align: justify">
+                        <strong>ATENCIÓN: No tiene asignado revisor de informes. Por favor ponerse en contacto con la Coordinación de Investigación</strong>
+                    </div>
+                {% else %}
+{#                    {% if proyecto.puede_agregar_informe and not proyecto.informe_final %}#}
+{#                        {% if proyecto.convocatoria.apertura.year <= 2020 %}#}
+{#                            {% if not proyecto.informes_tecnicos %}#}
+{#                                <div class="btn-group">#}
+{#                                    <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Agregar <i class="fa fa-angle-down"></i></button>#}
+{#                                    <div class="dropdown-menu">#}
+{#                                        <a class="dropdown-item" href="/pro_proyectoinvestigacion?action=addinformefinal&idp={{ proyecto.id|encrypt }}"><i class="fa fa-file-text"></i>&nbsp;Informe Final</a>#}
+{#                                    </div>#}
+{#                                </div>#}
+{#                            {% endif %}#}
+{#                        {% else %}#}
+{#                            <div class="btn-group">#}
+{#                                <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Agregar <i class="fa fa-angle-down"></i></button>#}
+{#                                <div class="dropdown-menu">#}
+{#                                    <a class="dropdown-item" href="/pro_proyectoinvestigacion?action=addinforme&idp={{ proyecto.id|encrypt }}"><i class="fa fa-file-text"></i>&nbsp;Informe Avance</a>#}
+{#                                    {% if proyecto.informes_tecnicos %}#}
+{#                                        <a class="dropdown-item" href="/pro_proyectoinvestigacion?action=addinformefinal&idp={{ proyecto.id|encrypt }}"><i class="fa fa-file-text"></i>&nbsp;Informe Final</a>#}
+{#                                    {% endif %}#}
+{#                                </div>#}
+{#                            </div>#}
+{#                        {% endif %}#}
+{#                    {% endif %}#}
+                {% endif %}
+            </div>
+        </div>
+        {# BOTON ADICIONAR #}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead class="table-light cabecera-fija">
+                            <tr>
+                                <th style="width: 9%; text-align: center">Tipo</th>
+                                <th style="width: 10%; text-align: center">Número</th>
+                                <th style="width: 7%; text-align: center">Fecha</th>
+                                <th style="width: 7%; text-align: center">Archivo</th>
+                                <th style="width: 10%; text-align: center"># Actividades</th>
+                                <th style="width: 10%; text-align: center"># Evidencias</th>
+                                <th style="width: 10%; text-align: center">Evidencias</th>
+                                <th style="width: 7%; text-align: center">Firmas</th>
+                                <th style="width: 5%; text-align: center">Estado</th>
+                                <th style="width: 20%; text-align: center">Observaciones</th>
+                                <th style="width: 5%;text-align: center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for informe in informes %}
+                                <tr>
+                                    <td style="text-align: center;">{{ informe.get_tipo_display }} {% if informe.tipo == 1 %} # {{ forloop.counter }}{% endif %}</td>
+                                    <td style="text-align: center;">{% if informe.numero %}<span class="label label-success">{{ informe.numero }}</span>{% endif %}</td>
+                                    <td style="text-align: center;">{% if informe.fecha %}<span class="label label-info">{{ informe.fecha|date:"d-m-Y" }}</span>{% endif %}</td>
+                                    <td style="text-align: center;">
+                                        {% if informe.archivogenerado %}
+                                            <a href="{{ informe.archivogenerado.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="informesinfirma{{ forloop.counter }}" data-caption="Informe sin firma {{ informe.numero }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Informe sin firmas"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                        {% if informe.archivo %}
+                                            <a href="{{ informe.archivo.url }}" class="btn btn-mini btn-success" data-width="2048" data-height="1380" data-fancybox="informeconfirma{{ forloop.counter }}" data-caption="Informe firmado {{ informe.numero }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Ver Informe firmado"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center"><span class="badge badge-warning">{{ informe.total_actividades }}</span></td>
+                                    <td style="text-align: center"><span class="badge badge-info">{{ informe.total_evidencias }}</span></td>
+                                    <td style="text-align: center;">
+                                        <a href="javascript:;" id="{{ informe.id|encrypt }}" class="btn btn-info mostrarevidencias btn-mini" data-bs-toggle="tooltip" data-bs-placement="top" title="Mostrar evidencias"><i class="fa fa-list-ol"></i></a>
+                                    </td>
+                                    <td style="text-align: center">
+                                        {% with estadosfirmas=informe.estados_firmas %}
+                                            {% if estadosfirmas %}
+                                                <i class="fa fa-{{ estadosfirmas.elabora.icono }} text-{{ estadosfirmas.elabora.color }} tu" title="Elabora"></i>
+                                                {% if informe.tipo == 1 %}
+                                                    <i class="fa fa-{{ estadosfirmas.verifica.icono }} text-{{ estadosfirmas.verifica.color }} tu" title="Verifica"></i>
+                                                    <i class="fa fa-{{ estadosfirmas.aprueba.icono }} text-{{ estadosfirmas.aprueba.color }} tu" title="Aprueba"></i>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endwith %}
+                                    </td>
+                                    <td style="text-align: center;"><span class="label label-{{ informe.color_estado }}">{{ informe.get_estado_display }}</span></td>
+                                    <td style="text-align: justify">
+                                        {% if informe.observacionverificacion %}
+                                            <strong class="tu" title="Técnico de Investigación">TI:</strong>{{ informe.observacionverificacion }}<br>
+                                        {% endif %}
+                                        {% if informe.observacionaprobacion %}
+                                            <strong class="tu" title="Decano de Investigación">DI:</strong>{{ informe.observacionaprobacion }}<br>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        {% if rolparticipante == 1 %}
+                                            <div class="dropbottom" style="text-align: left">
+                                                <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                                <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                {% if informe.estado == 2 or informe.estado == 3 or informe.estado == 6 %}
+                                                    {% if informe.tipo == 1 %}
+                                                        <li class="dropdown-item"><a href="/pro_proyectoinvestigacion?action=editinforme&id={{ informe.id|encrypt }}"><i class="fa fa-edit"></i> Editar Informe</a></li>
+                                                    {% elif informe.estado == 2 or informe.estado == 6 %}
+                                                        <li class="dropdown-item"><a href="/pro_proyectoinvestigacion?action=editinformefinal&id={{ informe.id|encrypt }}"><i class="fa fa-edit"></i> Editar Informe</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if informe.estado == 2 and informe.tipo == 2 %}
+                                                    <li class="dropdown-item"><a class="finalizaredicion" id="{{ informe.id|encrypt }}" titulo="{{ informe.numero }}" href="javascript:;"><i class="fa fa-check"></i> Finalizar Edición</a></li>
+                                                {% endif %}
+                                                {% if informe.estado == 7 or informe.estado == 4 %}
+                                                    {% if not informe.firmaelabora %}
+                                                        {% if not informe.generado %}
+                                                            <li class="dropdown-item"><a href="javascript:;" class="imprimirinforme" id="{{ informe.id|encrypt }}" tipo="{{ informe.tipo }}"><i class="fa fa-print"></i> Imprimir Informe</a></li>
+                                                        {% else %}
+                                                            <li class="dropdown-item"><a href="{{ informe.archivogenerado.url }}" data-width="2048" data-height="1380" data-fancybox="informesinfirma{{ forloop.counter }}" data-caption="Informe sin firma {{ informe.numero }}" ><i class="fa fa-print"></i> Imprimir Informe</a></li>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                    {% if informe.generado %}
+                                                        {% if informe.tipo == 1 %}
+                                                            {% if not informe.firmaverifica %}
+                                                                <li class="dropdown-item"><a href="javascript:;" class="firmardocumento" id="{{ informe.id|encrypt }}" idper="{{ informe.proyecto.profesor.persona.id|encrypt }}" tipofirma="ELA" acc="firmarinformeavance"><i class="fa fa-pencil-alt"></i> Firmar Informe</a></li>
+                                                            {% endif %}
+{#                                                        <div class="dropdown-divider"></div>#}
+                                                        {% else %}
+                                                            <li class="dropdown-item"><a href="javascript:;" class="subirinforme" id="{{ informe.id|encrypt }}"><i class="fa fa-cloud-upload"></i> Subir Informe Firmado</a></li>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endif %}
+                                                </ul>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="11" style="text-align: center">NO EXISTEN REGISTROS DE INFORMES DEL PROYECTO</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelevidencias" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list-ol"></i>&nbsp;<span class="paneltitleevidencias">Evidencias del Informe de proyecto de investigación</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyevidencias">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelfirmardocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-pencil-alt"></i>&nbsp;<span class="paneltitlefirmardocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyfirmardocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar" accion=""> Firmar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelsubirinforme" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-cloud-upload"></i>&nbsp;<span class="paneltitlesubirinforme">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodysubirinforme">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{#    <div class="modal fade static" data-keyboard="false" id="itemspanelevidencias" style="display: none;">#}
+{#        <div class="modal-header">#}
+{#            <h4 class="paneltitleevidencias">Evidencias del Informe de proyecto de investigación</h4>#}
+{#        </div>#}
+{#        <div class="modal-body panelbodyevidencias">#}
+{#        </div>#}
+{#        <div class="modal-footer">#}
+{#            <table class="pull-right">#}
+{#                <tr>#}
+{#                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>#}
+{#                </tr>#}
+{#            </table>#}
+{#        </div>#}
+{#    </div>#}
+
+{% endblock %}

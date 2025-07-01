@@ -1,0 +1,346 @@
+<script type="text/javascript">
+    $(function () {
+        $("#obsg").addClass("validate[required]");
+        $(".respuestas").addClass("validate[required]");
+        $('input[type="radio"]').attr("style", "display : initial !important;");
+    });
+
+    function validacionradio(a) {
+        $("#observaionporno_" + a).val("");
+        if ($('input:radio[name=pregunta_' + a + ']:checked').val() == 'si') {
+            $("#observaionporno_" + a).prop("disabled", true);
+            $("#observaionporno_" + a).removeClass("selector");
+        } else {
+            $("#observaionporno_" + a).prop("disabled", false);
+            $("#observaionporno_" + a).addClass("selector");
+        }
+    }
+
+    function validar_checkbox_obligatorios() {
+        var encuesta_completa = true;
+        {% for pregunta in preguntas %}
+            {% if pregunta.obligatoria %}
+                {% if pregunta.tipo == 6 %}
+                    var preguntasTipo6 = $("input[type='checkbox'].recorremultiple_{{ pregunta.id }}");
+                    var alMenosUnoSeleccionado = false;
+                    var respuestaOtros = '';
+                    preguntasTipo6.each(function () {
+                        if ($(this).is(":checked")) {
+                            alMenosUnoSeleccionado = true;
+                            return false; // Detener el bucle si se encuentra al menos uno seleccionado
+                        }
+                    });
+
+                    {% for mul in pregunta.opciones_multiples %}
+                         {% if mul.opcotros %}
+                             respuestaOtros = $('#respuestaotros_{{ pregunta.id }}_{{ mul.id }}').val();
+                        {% endif %}
+                    {% endfor %}
+                    if (!(alMenosUnoSeleccionado || respuestaOtros !== "")){
+                        encuesta_completa = false;
+                        $("#alert_obligatoria_{{ pregunta.id }}").show();
+                    }else{
+                        $("#alert_obligatoria_{{ pregunta.id }}").hide();
+                    }
+                {% endif %}
+                {% if pregunta.tipo == 3 %}
+                    var abierta = $('textarea#pregunta_{{ pregunta.id }}');
+                     if (abierta.val() === "") {
+                         encuesta_completa = false;;
+                        $("#alert_obligatoria_{{ pregunta.id }}").show();
+                    }
+
+                {% endif %}
+                {% if pregunta.tipo == 2 %}
+                    var opciones = document.getElementsByName('pregunta_{{ pregunta.id }}');
+                    var seleccionado = false;
+                    for (var i = 0; i < opciones.length; i++) {
+                        if (opciones[i].checked) {
+                            seleccionado = true;
+                            break;
+                        }
+                    }
+                    if (!seleccionado) {
+                       encuesta_completa = false;
+                        $("#alert_obligatoria_{{ pregunta.id }}").show();
+                    }
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        if (encuesta_completa){
+            $("#id_encuesta_completa").val("true");
+        }else{
+            $("#id_encuesta_completa").val("false");
+
+        }
+    }
+
+
+    $("#enviar").click(function () {
+        validar_checkbox_obligatorios();
+    });
+
+    function respuestaotros(a, b, c = '', d) {
+        if (c == 'otro') {
+            $("#respuestaotros_" + a).val("");
+            $("#respuestaarchivo_" + a).prop("disabled", true);
+            $("#respuestaarchivo_" + a).removeClass("selector");
+            $("#tr_otros_"+a).hide()
+            if (b !== 'True') {
+                $("#respuestaotros_" + a).prop("disabled", true);
+                $("#respuestaotros_" + a).removeClass("selector");
+            } else {
+                $("#respuestaotros_" + a).prop("disabled", false);
+                $("#respuestaotros_" + a).addClass("selector");
+                $("#tr_otros_"+a).show()
+            }
+        }
+        else if (c == 'arch') {
+            $("#respuestaotros_" + a).prop("disabled", true);
+            $("#respuestaotros_" + a).removeClass("selector");
+            $("#tr_otros_"+a).hide()
+            if (b !== 'True') {
+                $("#respuestaarchivo_" + a).prop("disabled", true);
+                $("#respuestaarchivo_" + a).removeClass("selector");
+            } else {
+                $("#respuestaarchivo_" + a).prop("disabled", false);
+                $("#respuestaarchivo_" + a).addClass("selector");
+                $("#idarch2").show()
+            }
+        }
+        else {
+            $("#respuestaotros_" + a).prop("disabled", true);
+            $("#respuestaotros_" + a).removeClass("selector");
+            $("#respuestaarchivo_" + a).prop("disabled", true);
+            $("#respuestaarchivo_" + a).removeClass("selector");
+            $("#tr_otros_"+a).hide()
+            $("#idarch2").hide()
+        }
+    }
+
+</script>
+<div class="modal-dialog modal-lg">
+    <div class="modal-content">
+        <div class="modal-header" style="background-color: #1C3247 ; !important; color: white; padding-bottom: 10px; padding-top: 10px">
+            <h3 class="modal-title" style="color: white"><i class="fa fa-graduation-cap"></i> {{ encuesta.descripcion }}</h3>
+            {% if not encuesta.obligatoria %}
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>{% endif %}
+        </div>
+        <div class="bg-sga-2 navbar-fixed-top" style="height: 11px; margin-top: -1px"></div>
+        <form class='form' method="POST" action="/" enctype="multipart/form-data">
+            <div class="modal-body">
+                <p class="container-fluid" style="font-size: 15px; text-align: justify"> {{ encuesta.leyenda|safe }}</p>
+                {% csrf_token %}
+                {#                <div class="modal-body">#}
+
+                <div class='col-sm-12'>
+                    <div class='alert alert-danger encuestaincompleta' style="display: none;">
+                        <i class="fa fa-times-circle"></i> LA ENCUESTA ESTA INCOMPLETA, POR FAVOR LLENAR TODOS LOS CAMPOS.
+                    </div>
+                    {#                <i>Esta es una encuesta anonima. Sus datos no serán revelados.</i>#}
+                    <input type="hidden" name="action" value="encuestagrupo"/>
+                    <input type="hidden" id="id_encuesta_completa"  name="encuesta_completa" value="false"/>
+                    <input type="hidden" name="id" value="{{ encuesta.id }}">
+                    {% for pregunta in preguntas %}
+                        <table class='table'>
+                            <thead>
+                            {#                    <tr>#}
+                            {#                        <th colspan="2">Descripción de la actividad</th>#}
+                            {#                        <th>Valore el nivel de importancia</th>#}
+                            {#                        {% if encuesta.observaciondetallada %}#}
+                            {#                            <th>Observaciones</th>#}
+                            {#                        {% endif %}#}
+                            {#                    </tr>#}
+                            </thead>
+                            {#                    {% for ambito in ambitos %}#}
+                            {#                        <thead>#}
+                            {#                        <tr>#}
+                            {#                            <th style="font-size: 17px" colspan="6">{{ ambito.ambito.nombre }}</th>#}
+                            {#                        </tr>#}
+                            {#                        </thead>#}
+                            <tr>
+                                <td><strong style="font-size: 15px"> {{ forloop.counter }}) {{ pregunta.descripcion }} {% if pregunta.obligatoria %} <span class="text-danger">*</span>{% endif %}  </strong></td>
+                            </tr>
+                            <tr>
+                                {% if pregunta.tipo == 1 %}
+                                    <td>
+                                        <fieldset>
+                                            <label class="radio"><input type="radio" checked name="pregunta_{{ pregunta.id }}" class="selector {% if pregunta.obligatoria %}obligatorio{% endif %}" value="si" onclick="validacionradio({{ pregunta.id }});"> Si</label>
+                                            <label class="radio"><input type="radio" name="pregunta_{{ pregunta.id }}" class="selector {% if pregunta.obligatoria %}obligatorio{% endif %}" value="no" onclick="validacionradio({{ pregunta.id }});"> No</label>
+                                        </fieldset>
+                                        {% if not pregunta.esta_vacia %}
+                                            <strong>{{ pregunta.observacionporno }}</strong><br>
+                                            <textarea id="observaionporno_{{ pregunta.id }}" name="observaionporno_{{ pregunta.id }}" style="width: 100%" rows="2" disabled></textarea>
+                                        {% endif %}
+                                    </td>
+                                {% endif %}
+                                {% if pregunta.tipo == 2 %}
+                                    <td>
+                                        <fieldset>
+                                            {% for rango in pregunta.rangos %}
+                                                <label class="radio"><input type="radio" name="pregunta_{{ rango.pregunta.id }}" class="selector {% if pregunta.obligatoria %}obligatorio{% endif %}" value="{{ rango.id }}"> {{ rango.descripcion }}</label>
+                                            {% endfor %}
+                                        </fieldset>
+                                        {#                                <select name="valor{{ indicador.id }}"  id="valor{{ indicador.id }}" class="selector">#}
+                                        {#                                    <option value="">------------</option>#}
+                                        {#                                    {% for tipo in tiporespuesta %}#}
+                                        {#                                        <option value="{{ tipo.id }}">{{ tipo.nombre }}</option>#}
+                                        {#                                    {% endfor %}#}
+                                        {#                                </select>#}
+                                    </td>
+                                {% endif %}
+                                {% if pregunta.tipo == 3 %}
+                                    <td>
+                                        <textarea class="selector {% if pregunta.obligatoria %}obligatorio{% endif %}" id="pregunta_{{ pregunta.id }}" name="pregunta_{{ pregunta.id }}" rows="2" style="width: 100%"></textarea>
+                                        <small style="display: none;"  id="alert_obligatoria_{{ pregunta.id }}" class="text-danger">Pregunta obligatoria *</small>
+
+                                    </td>
+                                {% endif %}
+                                {% if pregunta.tipo == 4 %}
+                                    <td>
+                                        <input type="number" id="pregunta_{{ pregunta.id }}" name="pregunta_{{ pregunta.id }}" class="selector {% if pregunta.obligatoria %}obligatorio{% endif %}" name="numero" value="0" min="0" max="1000" step="1">
+                                    </td>
+                                {% endif %}
+                                {% if pregunta.tipo == 5 %}
+                                    <td>
+                                        <input type="hidden" class="totalopcionesfila" data-cant="{{ pregunta.total_opciones_cuadricula_filas }}" value="{{ pregunta.total_opciones_cuadricula_filas }}">
+                                        {% if pregunta.opciones_cuadricula_columnas.count > 4 %}
+                                                <table class='table table-bordered table-striped'>
+                                                <thead>
+                                                <tr>
+                                                    <th><strong>Item</strong></th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% for f in pregunta.opciones_cuadricula_filas %}
+                                                    <tr>
+                                                        <td>
+                                                            <b>{{ f.descripcion }}</b><br>
+                                                            {% for c in pregunta.opciones_cuadricula_columnas %}
+                                                                <label for="cuadricula_{{ pregunta.id }}_{{ f.id }}_{{ c.valor }}">
+                                                                    <input class="selectorcuadriculaopciones"
+                                                                           type="radio"
+                                                                           onclick="respuestaotros('{{ pregunta.id }}', '{% if c.opcotros %}{{ c.opcotros }}{% elif c.oparchivo %}{{ c.oparchivo }}{% else %}False{% endif %}','{% if c.opcotros %}otro{% elif c.opcarchivo %}arch{% else %}n{% endif %}')"
+                                                                           id="cuadricula_{{ pregunta.id }}_{{ f.id }}_{{ c.valor }}"
+                                                                           name="cuadricula_{{ pregunta.id }}_{{ f.id }}"
+                                                                           tip="'{% if c.opcotros %}talvez{% elif c.opcarchivo %}si{% else %}no{% endif %}"
+                                                                           value="{{ c.valor }}">
+                                                                    {{ c.descripcion }}
+                                                                </label>
+                                                                <br>
+                                                            {% endfor %}
+                                                            {% if pregunta.opcionarchivo %}
+                                                                <label for="respuestaarchivo_{{ pregunta.id }}">
+                                                                    Evidencia:
+                                                                    <input type="file" id="respuestaarchivo_{{ pregunta.id }}"
+                                                                           name="respuestaarchivo_{{ pregunta.id }}"
+                                                                           disabled="disabled">
+                                                                </label>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                                {% if pregunta.opcionotros %}
+                                                    <tr id="tr_otros_{{ pregunta.id }}" style="display: none">
+                                                        <td colspan="{{ pregunta.opciones_cuadricula_columnas.count }}">
+                                                            Otros:<input type="text" id="respuestaotros_{{ pregunta.id }}"
+                                                                   name="respuestaotros_{{ pregunta.id }}"
+                                                                   disabled="disabled">
+                                                        </td>
+                                                    </tr>
+                                                {% endif %}
+                                                </tbody>
+                                                </table>
+
+                                        {% else %}
+                                        <table class='table table-bordered table-striped'>
+                                            <tr>
+                                                <td><strong>Item</strong></td>
+                                                {% for c in pregunta.opciones_cuadricula_columnas %}
+                                                    <td style="text-align: center"><strong>{{ c.descripcion }}</strong></td>
+                                                {% endfor %}
+                                            </tr>
+                                            {% for f in pregunta.opciones_cuadricula_filas %}
+                                                <tr>
+                                                    <td>
+                                                        {{ f.descripcion }}<br>
+                                                    </td>
+                                                    {% for c in pregunta.opciones_cuadricula_columnas %}
+                                                        <td style="text-align: center"><input class="selectorcuadriculaopciones"
+                                                                                              type="radio"
+                                                                                              onclick="respuestaotros('{{ pregunta.id }}', '{% if c.opcotros %}{{ c.opcotros }}{% elif c.oparchivo%}{{ c.oparchivo }}{% else %}False{% endif %}','{% if c.opcotros %}otro{% elif c.oparchivo%}arch{% else %}n{% endif %}')"
+                                                                                              id="cuadricula_{{ pregunta.id }}_{{ f.id }}"
+                                                                                              name="cuadricula_{{ pregunta.id }}_{{ f.id }}"
+                                                                                              tip ="'{% if c.opcotros %}talvez{% elif c.oparchivo%}si{% else %}no{% endif %}"
+                                                                                              value="{{ c.valor }}"></td>
+                                                    {% endfor %}
+                                                </tr>
+                                            {% endfor %}
+                                            {% if pregunta.opcionotros %}
+                                                <tr id="tr_otros_{{ pregunta.id }}" style="display: none">
+                                                    <td>Otros:</td>
+                                                    <td colspan="{{ pregunta.opciones_cuadricula_columnas.count }}">
+                                                        <input type="text" id="respuestaotros_{{ pregunta.id }}" name="respuestaotros_{{ pregunta.id }}" disabled="disabled">
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                            {% if pregunta.opcionarchivo %}
+                                                <tr id="idarch2" style="display: none">
+                                                    <td>Evidencia:</td>
+                                                    <td colspan="{{ pregunta.opciones_cuadricula_columnas.count }}">
+                                                        <input type="file" id="respuestaarchivo_{{ pregunta.id }}" name="respuestaarchivo_{{ pregunta.id }}" disabled="disabled">
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+
+                                        </table>
+                                     {% endif %}
+                                    </td>
+                                {% endif %}
+                                {% if pregunta.tipo == 6 %}
+                                    <td>
+                                        <input type="hidden" class="totalopcionesmultiple"
+                                               value="{{ pregunta.opciones_multiples|length }}">
+                                        {% for mul in pregunta.opciones_multiples %}
+
+
+                                               {% if mul.opcotros %}
+                                                   otros:  <input class="{% if pregunta.obligatoria %}obligatorio{% endif %}" orden="{{ pregunta.orden }}" type="text" id="respuestaotros_{{ pregunta.id }}_{{ mul.id }}"
+                                                       name="respuestaotros_{{ pregunta.id }}_{{ mul.id }}">
+                                            {% else %}
+                                                    {#                                        <input type="number" id="pregunta_{{ pregunta.id }}" name="pregunta_{{ pregunta.id }}" class="selector" name="numero" value="0" min="0" max="1000" step="1">#}
+                                                 <input class=" recorremultiple_{{ pregunta.id }} {% if pregunta.obligatoria %}obligatorio{% endif %}" orden="{{ pregunta.orden }}" codmul="{{ mul.id }}"
+                                                   type="checkbox" id="multiple_{{ pregunta.id }}_{{ mul.id }}"
+                                                   name="multiple_{{ pregunta.id }}_{{ mul.id }}">
+                                            {{ mul.descripcion }}<br>
+                                            {% endif %}
+
+                                        {% endfor %}
+                                        <small style="display: none;"  id="alert_obligatoria_{{ pregunta.id }}" class="text-danger">Pregunta obligatoria *</small>
+
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        </table>
+                    {% endfor %}
+                    {% if preguntas.count >= 4 %}
+                        <div class='alert alert-danger encuestaincompleta' style="display: none;">
+                            <i class="fa fa-times-circle"></i> LA ENCUESTA ESTA INCOMPLETA, POR FAVOR LLENAR TODOS LOS CAMPOS.
+                        </div>
+                    {% endif %}
+
+                </div>
+
+                {#                </div>#}
+
+            </div>
+            <div class="modal-footer">
+                <button id="enviar" type="button" class="btn btn-warning"><i class="fa fa-check-circle"></i> Guardar</button>
+                {% if not encuesta.obligatoria %}
+                    <a href="javascript:;" id="cerrarencuesta" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times-circle"></i> Cerrar</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+

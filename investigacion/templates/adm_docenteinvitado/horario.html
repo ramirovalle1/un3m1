@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $(".habilitado").click(function(){
+                let id = $(this).attr('idh');
+                let valor = $(this).is(':checked') ? 'S': 'N';
+                let control = $(this);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'habilitarhorario', 'id': id, 'valor': valor},
+                    success: function(data) {
+                        if(data.result === 'ok'){
+                            $.unblockUI();
+                            urlDestino = "/adm_docenteinvitado?action=horarios&id={{ docente.id|encrypt }}";
+                            mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                        }else{
+                            $.unblockUI();
+                            control.prop('checked', !control.prop('checked'));
+                            if(data.swalType === 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        control.prop('checked', !control.prop('checked'));
+                        mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".aprobarhorario").click(function() {
+                let id = $(this).attr('id');
+                if ($(this).attr("tipo") === 'A'){
+                    $("#icaprobar").show();
+                    $("#icinfo").hide();
+                }else{
+                    $("#icinfo").show();
+                    $("#icaprobar").hide();
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'aprobarhorario', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleaprobarhorario").html(data.title);
+                            $(".panelbodyaprobarhorario").html(data.data);
+                            $("#itemspanelaprobarhorario").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelaprobarhorario .guardar").click(function () {
+                enviarFormulario("/adm_docenteinvitado", "aprobarhorario");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action === 'aprobarhorario'){
+                    $("#frmAprobarHorario").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAprobarHorario").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'aprobarhorario')
+                        formdata = new FormData($("#frmAprobarHorario")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                urlDestino = "/adm_docenteinvitado?action=horarios&id={{ docente.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_docenteinvitado{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Gestión de Horarios Registrados por el profesor {{ docente.profesor.persona.nombre_completo_inverso }} - Contrato {{ docente.numerocontrato }} ({{ docente.inicio|date:"d-m-Y" }} - {{ docente.fin|date:"d-m-Y" }})</h6>
+                &nbsp;<span class="label label-{{ docente.color_estado }}">{% if docente.vigente %}Vigente{% else %}No Vigente{% endif %}</span>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead class="table-light cabecera-fija">
+                            <tr>
+                                <th style="width: 12%; font-weight: bold; text-align: center">Mes</th>
+                                <th style="width: 17%; font-weight: bold; text-align: center">Inicio</th>
+                                <th style="width: 17%; font-weight: bold; text-align: center">Fin</th>
+                                <th style="width: 17%; font-weight: bold; text-align: center">Horas planificadas</th>
+                                <th style="width: 17%; font-weight: bold; text-align: center">Horas a planificar</th>
+                                <th style="width: 5%; font-weight: bold; text-align: center">Habilitado</th>
+                                <th style="width: 10%; font-weight: bold; text-align: center">Estado</th>
+                                <th style="width: 5%; font-weight: bold; text-align: center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for detalle in detallehorarios %}
+                                <tr>
+                                    <td class="text-center">{{ detalle.horario.inicio.month|nombremes|title }}</td>
+                                    <td class="text-center">{{ detalle.horario.inicio|date:"d-m-Y" }}</td>
+                                    <td class="text-center">{{ detalle.horario.fin|date:"d-m-Y" }}</td>
+                                    <td class="text-center">{{ detalle.horario.horaplanificada }}</td>
+                                    <td class="text-center">{{ detalle.horario.totalhora }}</td>
+                                    <td class="text-center">
+                                        <input id="habilitado{{ detalle.horario.id }}" idh="{{ detalle.horario.id|encrypt }}" class="form-check-input habilitado" type="checkbox" {% if detalle.horario.habilitado %}checked{% endif %} {% if not detalle.puedehabilitar %}disabled{% endif %}>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if detalle.horario.habilitado %}
+                                            <span class="label label-{{ detalle.horario.color_estado }}">{{ detalle.horario.get_estado_display|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        {% if detalle.horario.habilitado %}
+                                            <div class="dropbottom" style="text-align: left">
+                                                <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                                <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                    {% if detalle.horario.puede_aprobar %}
+                                                        <li class="dropdown-item"><a class="aprobarhorario" id="{{ detalle.horario.id|encrypt }}" href="javascript:;" tipo="A"><i class="fa fa-check"></i> Aprobar Horario</a></li>
+                                                    {% elif detalle.horario.puede_mostrar %}
+                                                        <li class="dropdown-item"><a class="aprobarhorario" id="{{ detalle.horario.id|encrypt }}" href="javascript:;" tipo="I"><i class="fa fa-info-circle"></i> Mostrar Horario</a></li>
+                                                    {% endif %}
+                                                </ul>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr><td style="text-align: center" colspan="8">NO EXISTEN REGISTROS DE HORARIOS</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelaprobarhorario" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-check" id="icaprobar"></i><i class="fa fa-info-circle" id="icinfo"></i>&nbsp;<span class="paneltitleaprobarhorario">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyaprobarhorario pb-0">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

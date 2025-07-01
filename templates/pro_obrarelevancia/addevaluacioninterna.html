@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        let switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            let searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(function() {
+            $("body").initSwitchery();
+            $("#tituloacademico, #observacion, #areaconocimiento").addClass("validate[required]");
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            let rubricasvalidas = false;
+            let lista_items1 = [];
+
+            $('#tituloacademico').change(function(){
+                let id = $(this).val();
+                $("#areaconocimiento").val("");
+                if(id!=''){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'areaconocimientotitulopersona', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {                                
+                                $("#areaconocimiento").val(`${data.nombrearea}`);
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $(".mostrararchivo").click(function() {
+                let url = $(this).attr('url');
+                let des = $(this).attr('desdoc');
+                $("#framearchivo").attr('src',url).show();
+                $("#titulodocumento").html(des);
+            });
+
+            $(".rubricas").on("change" , function() {
+                rubricasvalidas = true;
+                lista_items1 = [];
+                let totalrubricas = $(".rubricas").length;
+                let marcadas = 0;
+
+                $(".rubricas").each(function(){
+                    let iddet = $(this).attr("iddet");
+                    if($(this).is(":checked")){
+                        $("#observacionrub_"+iddet).val("");
+                        $("#observacionrub_"+iddet).prop("readOnly", true);
+                        $("#observacionrub_"+iddet).removeClass("validate[required]");
+                        marcadas++;
+                    }else{
+                        $("#observacionrub_"+iddet).prop("readOnly", false);
+                        $("#observacionrub_"+iddet).addClass("validate[required]");
+
+                        rubricasvalidas = false;
+                    }
+
+                    lista_items1.push({'id': $(this).attr("iddet"),
+                                       'valor': $(this).is(":checked")});
+                });
+
+                if(totalrubricas == marcadas){
+                    $("#cumplerequisito").val("S");
+                    $("#lblsicumple").show();
+                    $("#lblnocumple").hide();
+                }else{
+                    $("#cumplerequisito").val("N");
+                    $("#lblnocumple").show();
+                    $("#lblsicumple").hide();
+                }
+            });
+
+            agregar_validacion_observaciones = function (){
+                $(".observacionrubrica").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+            };
+
+            $(".guardar").click(function () {
+                envioformularioreg("/pro_obrarelevancia", "addevaluacioninterna", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                $("#frmEvaluacionInterna").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmEvaluacionInterna").validationEngine('validate', { scroll: false });
+                let formdata;
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'addevaluacioninterna'){
+                        formdata = new FormData($("#frmEvaluacionInterna")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                urlDestino = "/pro_obrarelevancia?action=postulacionesevaluacion&idc={{ obrarelevancia.convocatoria.id|encrypt }}&tipoeval={{ tipoevaluacion }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Evaluación Interna de Obras de relevancia sin haber guardado la información?", false, "/pro_obrarelevancia", "", "", "/pro_obrarelevancia?action=postulacionesevaluacion&idc={{ obrarelevancia.convocatoria.id|encrypt }}&tipoeval={{ tipoevaluacion }}");
+            });
+
+            actualizar_lista_rubricas = function(){
+                lista_items1 = [];
+
+                $(".rubricas").each(function(){
+                    lista_items1.push({'id': $(this).attr("iddet"),
+                                       'valor': $(this).is(":checked")});
+                });
+            };
+
+            {% if primerdocumento %}
+                $("#framearchivo").attr('src','{{ primerdocumento.archivo.url }}').show();
+                $("#titulodocumento").html('{{ primerdocumento.descripcion|escapejs }}');
+            {% endif %}
+
+            agregar_validacion_observaciones();
+            actualizar_lista_rubricas();
+
+            $("#cumplerequisito").val("N");
+            $("#lblnocumple").show();
+            $("#lblsicumple").hide();
+
+            let ouh2 = $("#tbevidencias").outerHeight(true);
+            let h1 = $("#tbevidencias").height();
+            let dif = (ouh2 - h1) * 2;
+
+            $("#framearchivo").height(($("#tbevidencias").height() + $("#tbrubricas").height()) - dif);
+
+            $("#observacion").css("padding", "3px");
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_obrarelevancia?action=postulacionesevaluacion&idc={{ obrarelevancia.convocatoria.id|encrypt }}&tipoeval={{ tipoevaluacion }}{% endblock %}
+{% block canvas %}
+    <form name="frmEvaluacionInterna" id="frmEvaluacionInterna">{% csrf_token %}
+        <input type="hidden" name="action" value="addevaluacioninterna">
+        <input type="hidden" name="id" value="{{ obrarelevancia.id|encrypt }}">
+        <div class='col-lg-12 col-sm-12 col-12'>
+            {# TITULO #}
+            <div class="row">
+                <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                    <div class="headtitle">
+                        <h3 class="texto-blue">{{ title }}</h3>
+                        <h6>Postulación del docente</h6>
+                    </div>
+                </div>
+            </div>
+            {# TITULO #}
+            {# CUERPO DEL FORMULARIO #}
+            <div class="card">
+  	            <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-5">
+                    {# FILA DATOS DE LA POSTULACION #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="table-responsive-xxl">
+                                <table class="table table-bordered table-striped" id="tbdatossolicitud">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="4">Datos de la Obra</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Profesor:</strong></td>
+                                            <td style="text-align: justify; width: 35%;">{{ obrarelevancia.profesor.persona.nombre_completo_inverso }}</td>
+                                            <td style="width: 15%;"><strong>Tipo de obra:</strong></td>
+                                            <td style="width: 35%;">{{ obrarelevancia.get_tipo_display }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Título del libro:</strong></td>
+                                            <td style="text-align: justify" colspan="3">{{ obrarelevancia.titulolibro }}</td>
+                                        </tr>
+                                        {% if obrarelevancia.titulocapitulo %}
+                                            <tr>
+                                                <td style="width: 15%;"><strong>Título del capítulo:</strong></td>
+                                                <td style="text-align: justify" colspan="3">{{ obrarelevancia.titulocapitulo }}</td>
+                                            </tr>
+                                        {% endif %}
+                                        <tr>
+                                            <td style="width: 15%;"><strong>ISBN:</strong></td>
+                                            <td style="text-align: justify">{{ obrarelevancia.isbn }}</td>
+                                            <td style="width: 15%;"><strong>Año de publicación:</strong></td>
+                                            <td>{{ obrarelevancia.aniopublicacion }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Editorial:</strong></td>
+                                            <td colspan="3" style="text-align: justify">{{ obrarelevancia.editorial }}</td>                                            
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Área de conocimiento:</strong></td>
+                                            <td style="text-align: justify">{{ obrarelevancia.areaconocimiento.nombre }}</td>
+                                            <td style="width: 15%;"><strong>Sub-Área de conocimiento:</strong></td>
+                                            <td>{{ obrarelevancia.subareaconocimiento.nombre }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Sub-Área específica:</strong></td>
+                                            <td style="text-align: justify">{{ obrarelevancia.subareaespecificaconocimiento.nombre }}</td>
+                                            <td style="width: 15%;"><strong>Línea de investigación:</strong></td>
+                                            <td>{{ obrarelevancia.lineainvestigacion.nombre }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="table-responsive-xxl">
+                                <table class="table table-bordered table-striped" id="tbdatosparticipantes">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="4">Participantes</th>
+                                        </tr>
+                                        <tr>
+                                            <th style="width: 5%; text-align: center;">#</th>
+                                            <th style="width: 15%; text-align: center;">Identificación</th>
+                                            <th style="width: 50%; text-align: center;">Nombres</th>
+                                            <th style="width: 30%; text-align: center">Filiación</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for participante in participantes %}
+                                            <tr>
+                                                <td style="text-align: center"><strong>{{ forloop.counter }}</strong></td>
+                                                <td style="text-align: center">{{ participante.persona.identificacion }}</td>
+                                                <td style="text-align: justify">{{ participante.persona.nombre_completo_inverso }}</td>
+                                                <td style="text-align: center">
+                                                    <span class="label label-{% if participante.filiacion == 1 %}success{% else %}warning{% endif %}">{{ participante.get_filiacion_display }}</span>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {# FILA DATOS DE LA POSTULACION #}
+                    {# FILA VALIDACION DE RUBRICAS Y VISTA DEL DOCUMENTO #}
+                    <div class="row">
+                        {# COLUMNA VALIDACION RUBRICAS #}
+                        <div class="col-sm-6">
+                            {# EVIDENCIAS #}
+                            <div class="table-responsive-xxl">
+                                <table class='table table-bordered table-striped' id="tbevidencias">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="3">Evidencias Cargadas</th>
+                                        </tr>
+                                        <tr>
+                                            <th style="text-align: center; width: 5%; text-transform: none;">#</th>
+                                            <th style="text-align: center; width: 75%; text-transform: none;">Documento</th>
+                                            <th style="text-align: center; width: 20%; text-transform: none;">Archivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for documento in documentos %}
+                                            <tr>
+                                                <td style="text-align: center"><b>{{ forloop.counter }}</b></td>
+                                                <td><a href="javascript:;" class="mostrararchivo" url="{{ documento.archivo.url }}" desdoc="{{ documento.descripcion|safe }}">{{ documento.descripcion|safe }}</a></td>
+                                                <td style="text-align: center">
+                                                    <a target="_blank" href="{{ documento.archivo.url }}" class="btn btn-info tu" title="Descargar"><i class="fa fa-download"></i> Descargar</a>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {# EVIDENCIAS #}
+                            {# RUBRICAS #}
+                            <div class="table-responsive-xxl">
+                                <table class="table table-bordered table-striped" id="tbrubricas">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="4">Rúbricas de Evaluación</th>
+                                        </tr>
+                                        <tr>
+                                            <th style="width: 3%; text-align: center">#</th>
+                                            <th style="width: 45%; text-align: center">Requisito</th>
+                                            <th style="width: 10%; text-align: center">Cumple</th>
+                                            <th style="width: 42%; text-align: center">Observación</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for detalle in rubricas %}
+                                            <tr>
+                                                <td style="text-align: center">
+                                                    <b>{{ forloop.counter }}</b>
+                                                    <input type="hidden" name="iddetallerub[]" value="{{ detalle.rubrica.id }}">
+                                                </td>
+                                                <td>
+                                                    {{ detalle.rubrica.descripcion|safe }}
+                                                </td>
+                                                <td style="text-align: center">
+                                                    <input type="checkbox" class="js-switch rubricas" iddet="{{ detalle.rubrica.id }}" />
+                                                </td>
+                                                <td>
+                                                    <input type="text" autocomplete="off" maxlength="1000" id="observacionrub_{{ detalle.rubrica.id }}" name="observacionrub[]" value="" class="observacionrubrica" style="width: 100%; text-transform: uppercase">
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="4" style="text-align: center">NO EXISTEN REGISTROS DE RÚBRICAS</td>
+                                            </tr>
+                                        {% endfor %}
+                                        {% if rubricas %}
+                                            <tr>
+                                                <td colspan="4">
+                                                    <b>La obra evaluada cumple con los requisitos para ser declarada relevante:</b>
+                                                    <span id="lblsicumple" class="label label-success">SI</span>
+                                                    <span id="lblnocumple" class="label label-important">NO</span>
+                                                    <input type="hidden" name="cumplerequisito" id="cumplerequisito" value="">
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {# RUBRICAS #}
+                        </div>
+                        {# COLUMNA VALIDACION RUBRICAS #}
+                        {# COLUMNA VISTA PREVIA #}
+                        <div class="col-sm-6">
+                            <table class="table table-bordered table-striped" id="tbvistadocumento">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th><span id="titulodocumento">Título del documento</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <iframe border=1 id="framearchivo" frameborder=0 height=600px width=100% src=""></iframe>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        {# COLUMNA VISTA PREVIA #}
+                    </div>
+                    {# FILA VALIDACION DE RUBRICAS Y VISTA DEL DOCUMENTO #}
+                    {# FILA VALIDACIÓN DE SOLICITUD #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="table-responsive-xxl">
+                                <table class="table table-bordered table-striped" id="tbvalidaciongeneral">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="2">Recomendación General</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>                                      
+                                        <tr>
+                                            <td style="width: 15%;">
+                                                <b>Comentarios:</b>
+                                            </td>
+                                            <td style="width: 85%;;">
+                                                <textarea name="observacion" cols="40" rows="3" col="12" class="form-control" id="observacion"></textarea>
+                                                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {# FILA VALIDACIÓN DE SOLICITUD #}
+                    {# FILA DATOS ADICIONALES DEL EVALUADOR #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="table-responsive-xxl">
+                                <table class="table table-bordered table-striped" id="tbdatosadicionalesevaluador">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th colspan="4">Datos Adicionales del Evaluador</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Título académico:</strong></td>
+                                            <td style="width: 85%;">
+                                                <select style="width: 99%;" id="tituloacademico" name="tituloacademico">
+                                                    <option value="" selected>---------</option>
+                                                    {% for titulacion in titulos %}
+                                                        <option value="{{ titulacion.id }}">{{ titulacion.titulo.nombre }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                            </td>                                       
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 15%;"><strong>Campo de conocimiento:</strong></td>
+                                            <td style="width: 85%;">
+                                                <input type="text" autocomplete="off" id="areaconocimiento" name="areaconocimiento" style="width: 99%;" readonly />
+                                                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {# FILA DATOS ADICIONALES DEL EVALUADOR #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </div>
+            </div>
+            {# CUERPO DEL FORMULARIO #}
+        </div>
+    </form>
+{% endblock %}

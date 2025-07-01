@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        /* Botón flotante */
+        .floating-button {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            text-align: center;
+            border-radius: 50%;
+            box-shadow: 0px 0px 6px 6px rgba(255, 165, 0, 0.5);
+            animation: shadow-pulse 2s infinite;
+            z-index: 99999999999;
+        }
+        @keyframes shadow-pulse {
+          0% {
+            box-shadow: 0px 4px 6px rgba(255, 165, 0, 0.5);
+          }
+          50% {
+            box-shadow: 0px 0px 20px 6px rgba(255, 165, 0, 0.7); /* Aumenta el tamaño */
+          }
+          100% {
+            box-shadow: 0px 4px 6px rgba(255, 165, 0, 0.5);
+          }
+        }
+        .floating-button a {
+            display: block;
+            color: #fff;
+            line-height: 30px;
+        }
+        .btn-ghost.btn-observacion {
+            background-color: transparent !important;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+
+            $(".eliminaregistro").click(function () {
+                var idnombre = $(this).attr('idnombre');
+                var pk = $(this).attr('indice');
+                var accion = $(this).attr('opc');
+                Swal.fire({
+                    html: '<b>Estás por eliminar registro: </b>' + idnombre,
+                    text: "Esta acción es irreversible",
+                    type: 'info',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: 'POST',
+                            url: '{{ reques.path }}',
+                            async: false,
+                            data: {
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                action: accion,
+                                id: pk,
+                            },
+                            dataType: "json",
+                            beforeSend: function () {
+                                bloqueointerface();
+                            }
+                        }).done(function (data) {
+                            if (data.result == 'ok') {
+                                location.reload();
+                            }
+                        }).fail(function (jqXHR, textStatus, errorThrown) {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                        }).always(function () {
+                        });
+                    } else {
+                    }
+                })
+            });
+
+{#            {% if totalhorasregistradas %}#}
+{#                if ('{{ totalhorasplanificadas }}' === '{{ totalhorasregistradas }}') {#}
+{#                    $('.floating-button').show()#}
+{#                }#}
+{#            {% endif %}#}
+
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                width:'90%',
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+
+            $("#resultado").change(function() {
+                actualizarcampos($(this), 'addresultados');
+            });
+
+            $("#planaccion").change(function() {
+                actualizarcampos($(this), 'addplanaccion');
+            });
+
+            actualizarcampos = function(campo, action){
+                console.log(campo);
+                let descripcion = campo.val().trim();
+                let id = campo.attr("idbitacora");
+                bloqueointerface();
+                $.ajax({
+                    type:"POST",
+                    url: `{{ request.path }}`,
+                    data:{'action': action, 'id': id, 'val': descripcion},
+                    error:function(){
+                        $.unblockUI();
+                        alertaDanger('Problemas al actualizar los datos.');
+                    },
+                    success:function(data){
+                        $.unblockUI();
+                        if (data.result=="ok"){
+                            alertaSuccess("Datos actualizados correctamente.");
+                        }
+                    }
+                });
+            };
+
+        });
+
+        function formModal(id, text, action, dimension, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'insc': '{{ pppinscripcion.inscripcion.id }}',
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-xl').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminarconfirmacion(idcab, id, text, action) {
+            Swal.fire({
+                title: '¿Estás seguro de eliminar?',
+                text: text,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, eliminar!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '/alu_practicassaludinscripcion',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: action,
+                            id: id,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result === true) {
+                            Swal.fire(
+                                'Registro eliminado correctamente!',
+                                '',
+                                'success'
+                            ).then(function () {
+                                location.reload();
+                                {#formModal('{{ idcab|encrypt }}','Editar Actividad','editbitacorappp');#}
+                            });
+                        } else {
+                            Swal.fire(data.mensaje);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        alert('Error al intentar conectar con el servidor, intente más tarde.');
+                    }).always(function () {
+                    });
+                }
+            })
+        }
+
+        const solicitarrevision = () => {
+            Swal.fire({
+                html: `<b>¿Esta segur{% if persona.es_mujer %}a{% else %}o{% endif %} de solicitar la revisión de su bitácora correspondiente al mes de {{ mesbitacora.fechafin|nombremes }}?</b><br><br><span>Una vez enviada la solicitud de revisión <b>NO</b> podrá modificar sus registros.<span><br>`,
+                text: "",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ request.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'solicitarrevisionbitacora',
+                            pk: '{{ mesbitacora.pk }}',
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result === 'ok') {
+                            location.reload();
+                        }
+                        else
+                        {
+                            mensajeDanger(data.mensaje);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                }
+            });
+         }
+
+    </script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+{% endblock %}
+{% block atras %}{{ reques.path }}?action=listadobitacorapracticas&id_practica={{ pppinscripcion.id|encrypt_alu }}{% endblock %}
+{% block canvas %}
+
+    {% if listadodetalle and puede_modificar_bitacora and puede_enviar_a_revision %}
+        <div class="floating-button" style="">
+            <a onclick="solicitarrevision()" href="javascript:;" class="btn btn-orange fs-5"><i class="bi bi-check2-circle"></i> Solicitar revisión</a>
+        </div>
+    {% endif %}
+
+    <div class='row' data-bitacora-pk="{{ mesbitacora.pk }}">
+        <div class='col-lg-12'>
+            <div class="headtitle py-0">
+                <h4 class="ps-1 my-0">{{ title }}</h4>
+                <h6 class="ms-1">{{ mesbitacora.nombre|lower|capfirst }}</h6>
+                <h6 class="ms-1">
+                    {{ subtitle }}
+                </h6>
+{#                <h6 class="ms-1">#}
+{#                    Porcentaje de cumplimiento: {{ porcentaje_cumplimiento }}%#}
+{#                </h6>#}
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class='col-lg-12 mb-1'>
+                {% if puede_modificar_bitacora %}
+                    <a href="javascript:void(0)"
+                       onclick="formModal('{{ mesbitacora.id|encrypt }}','Adicionar Actividad','addbitacorappp','modal-xl')" class="btn btn-success py-2">
+                        <i class="fa fa-plus"></i> Adicionar
+                    </a>
+                {% endif %}
+                <a href="?action=generarbitacorapdf&id={{ mesbitacora.id }}" target="_blank" class='btn btn-default py-2 rounded-2'><i class="fa fa-cloud-download" aria-hidden="true" style="font-size: 9px"></i> Exportar bitácora</a>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-sm-12">
+                <table class="table table_primary table_striped" id="example1">
+                    <thead>
+                        <tr>
+                            <th style="width: 500px; text-align: left;">Productos/Resultados</th>
+                            {% if habilitaplan %}
+                            <th style="width: 500px; text-align: left;">Plan de acción</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <textarea id="resultado" name="resultado" idbitacora='{{ mesbitacora.id }}' cols="2" rows="2" class="descripcion text-start">{{ mesbitacora.resultado }}</textarea>
+                            </td>
+                            {% if habilitaplan %}
+                            <td>
+                                <textarea id="planaccion" name="planaccion" idbitacora='{{ mesbitacora.id }}' cols="2" rows="2" class="descripcion text-start">{{ mesbitacora.planaccion }}</textarea>
+                            </td>
+                            {% endif %}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-sm-12">
+                <table class="table table_primary table_striped" id="example">
+                    <thead class="">
+                    <tr>
+                        <th style="width: 200px; text-align: left;">Nombre</th>
+                        <th style="width: 500px">Detalle</th>
+                        <th style="width: 100px;text-align: center;" class="hidden-phone hidden-tablet">Fecha</th>
+                        <th style="width: 100px;text-align: center;">Hora inicio</th>
+                        <th style="width: 100px;text-align: center;">Hora fin</th>
+                        <th style="width: 150px;text-align: center;">Horas registradas</th>
+                        <th style="width: 120px;text-align: center;">Archivo</th>
+                        <th style="width: 120px;text-align: left;padding-left:1%;">Estado</th>
+                        <th style="width: 20px;text-align: center;"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if listadodetalle %}
+                        {% for listabitacora in listadodetalle %}
+                            <tr>
+                                <td style="vertical-align:middle">{{ listabitacora.titulo|lower|title }}</td>
+                                <td>
+                                    <div class="accordion accordion-flush" id="items_{{ listabitacora.pk }}">
+                                        <div class="accordion-item">
+                                            <h4 class="accordion-header">
+                                                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#id_descripcion_{{ listabitacora.pk }}" aria-expanded="true">
+                                                    <h6 class="mb-0 texto-blue"><i class="bi bi-journal-text"></i> Detalle de la actividad</h6>
+                                                </button>
+                                            </h4>
+                                            <div id="id_descripcion_{{ listabitacora.pk }}" class="accordion-collapse collapse show" data-bs-parent="#items_{{ listabitacora.pk }}" aria-expanded="false">
+                                                <div class="accordion-body">
+                                                    {% if listabitacora.rol > 0 %}
+                                                        <p><strong>Rol: </strong> {{ listabitacora.get_rol_display|lower|capfirst }}</p>
+                                                    {% endif %}
+                                                    {% if listabitacora.tipo > 0 %}
+                                                        <p><strong>Tipo: </strong> {{ listabitacora.get_tipo_display|lower|capfirst }}</p>
+                                                    {% endif %}
+                                                    {% if listabitacora.descripcion %}
+                                                    <p><strong>Descripción</strong></p>
+                                                    <p class="lh-15" style="text-align: left;">
+                                                        {{ listabitacora.descripcion|safe }}
+                                                    </p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+
+
+                                <td style="text-align: center;vertical-align:middle">{{ listabitacora.fecha|date:"d/m/Y" }} </td>
+                                <td style="text-align: center;vertical-align:middle">{{ listabitacora.horainicio|time:"H:i" }}<br></td>
+                                <td style="text-align: center;vertical-align:middle">{{ listabitacora.horafin|time:"H:i" }}</td>
+                                <td style="text-align: center;vertical-align:middle">{{ listabitacora.diferencia }}</td>
+                                <td style="text-align: center;vertical-align:middle">
+                                    {% if listabitacora.archivo %}
+                                        <a href="{{ listabitacora.download_link }}" class="btn btn-mini btn-success py-1 gallerypdf">
+                                            <i class="fa fa-arrow-down" style="font-size: 9px;"></i> Descargar
+                                        </a>
+                                    {% endif %}
+                                    {% if listabitacora.link %}
+                                        <a href="{{ listabitacora.link }}" class="btn btn-mini btn-info py-1 tu" title="{{ listabitacora.link }}" target="_blank">
+                                            <i class="fa fa-paperclip" style="font-size: 9px;"></i> Link
+                                        </a>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: left;vertical-align:middle;padding-left:1%;">
+                                    <span class="text-{% if listabitacora.estadoaprobacion == 1 %}warning{% else %}{% if listabitacora.estadoaprobacion == 2 %}success{% else %}danger{% endif %}{% endif %}">
+                                        {{ listabitacora.get_estadoaprobacion_display|lower|title }}
+                                        {% if listabitacora.estadoaprobacion == 3 and listabitacora.observacion %}
+                                            <a title="Para mas información dar click aquí!" onclick="mensajeInfo('{{ listabitacora.observacion }}', 'Observación:')" href="javascript:;" class="btn tu btn-default btn-sm btn-ghost rounded-circle pb-2 ps-0 btn-observacion">
+                                                <img src="/static/images/icons/icon_advertencia.svg" alt="..." width="20" height="20">
+                                            </a>
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td style="text-align: center;vertical-align: middle">
+                                    <div class="dropdown dropstart">
+                                        <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v" style="font-size: 9px"></i>
+                                        </a>
+                                        <div class="dropdown-menu">
+                                            <div class="dropdown-header">ACCIONES</div>
+                                        {% if puede_modificar_bitacora or listabitacora.estadoaprobacion == 3 %}
+{#                                            {% if puede_modificar_bitacora or listabitacora.estadoaprobacion == 3 %}#}
+                                                <a href="javascript:void(0)" onclick="formModal('{{ listabitacora.id|encrypt }}','Editar Actividad','editbitacorappp', 'modal-xl')" class="dropdown-item"><i class="fa fa-edit"></i>&nbsp;Editar</a>
+{#                                            {% endif %}#}
+                                            {% if puede_modificar_bitacora %}
+                                                <a href="javascript:;" id='activado_{{ listabitacora.id }}' class="dropdown-item eliminaregistro" indice="{{ listabitacora.id }}" opc="deletedetallebitacora" idnombre="{{ listabitacora.titulo }}"><span class="fa fa-remove" style="font-size: 9px"></span>&nbsp;Eliminar</a>
+                                            {% endif %}
+                                        {% endif %}
+                                            <a href="javascript:void(0)" onclick="formModal('{{ listabitacora.id|encrypt }}','Detalle Actividad','detalleregistrobitacora', 'modal-lg')" class="dropdown-item"><i class="fa fa-eye"></i>&nbsp;Detalle</a>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8">NO EXISTEN REGISTROS</td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,211 @@
+{% extends 'ajaxformmodal.html' %}
+{% load sga_extras %}
+{% block extra_js %}
+    <script>
+        $(document).ready(function () {
+            var groupColumn = 0;
+            $('#table_evidencia').DataTable({
+                columnDefs: [{visible: false, targets: groupColumn}],
+                order: [[groupColumn, 'asc']],
+                ordering: false,
+                paging: false,
+                searching: false,
+                bInfo: false,
+                displayLength: 25,
+                drawCallback: function (settings) {
+                    var api = this.api();
+                    var rows = api.rows({page: 'current'}).nodes();
+                    var last = null;
+                    api.column(groupColumn, {page: 'current'}).data().each(function (group, i) {
+                        // Normaliza el grupo eliminando espacios y convirtiendo a minúsculas
+                        var normalizedGroup = group.trim().toLowerCase();
+                        if (last !== normalizedGroup) {
+                            $(rows)
+                                .eq(i)
+                                .before('<tr class="group"><td colspan="5" class="bg-light-success px-1">' + group + '</td></tr>');
+                            last = normalizedGroup;
+                        }
+                    });
+                },
+            });
+            $('.metaejecutada').on('change', function () {
+                calculoCumplimiento($(this))
+            });
+        });
+        function calculoCumplimiento(element) {
+            let data_id = element.attr('data-id');
+            let ejecutada = parseFloat(element.val())
+            let planificada = parseInt(element.attr('data-planificada'));
+            let cumplimiento = (ejecutada/planificada)*100;
+            cumplimiento = cumplimiento > 100 ? 100.00: cumplimiento;
+            $('#cumplimiento_'+data_id).text(cumplimiento.toFixed(2));
+        }
+        function funcionAntesDeGuardar() {
+            lista_items1 = []
+            $('table#table_evidencia > tbody tr').each(function (index, elementTr) {
+                let id_record = $(elementTr).attr('data-id');
+                if (id_record){
+                    lista_items1.push({
+                        'id_record': id_record,
+                        'numero_meta': $(elementTr).find('td > p > input.metaejecutada').val(),
+                        'observacion': $(elementTr).find('td > textarea.observaciones').val(),
+                    });
+                }
+            });
+        }
+    </script>
+{% endblock %}
+{% block header_info %}
+    {% with contador=matriz.totales %}
+        {% if contador.t_remitidos > 0 or contador.t_por_revisar > 0 %}
+            <div class="alert alert-primary d-flex align-items-center p-2" role="alert">
+                <svg class="bi flex-shrink-0 me-2" width="20" height="20" role="img" aria-label="Info:">
+                    <use xlink:href="#info-fill"/>
+                </svg>
+                <div class="lh-15">
+                    {% if contador.t_remitidos > 0 %}
+                        <p class="ps-2 fs-5">
+                            Existen <b>{{ contador.t_remitidos }}</b> evidencias en estado <b>remitidas</b>, por lo tanto, deben ser
+                            validadas, por el Experto/a o Director/a.
+                            <a  href="{{ request.path }}?action=validarvidencias&id={{ eObjetivo.id|encrypt }}"
+                                class='btn btn-primary-old'>
+                                <i class="bi bi-patch-check fs-5"></i> Validación de evidencias
+                            </a>
+                        </p>
+                    {% endif %}
+                    {% if contador.t_por_revisar > 0 %}
+                        <p class="ps-2 fs-5">
+                            Existen <b>{{ contador.t_por_revisar }}</b> evidencias en estado <b>por revisar,</b> por lo tanto,
+                            deben ser revisadas y posterior pasar a la etapa de validación.
+                        </p>
+                    {% endif %}
+                    <p class="ps-2 fs-5">
+                        <b>No se podrá generar el informe si no se completan las validaciones.</b>
+                    </p>
+                </div>
+            </div>
+        {% endif %}
+        {% if matriz.tiene_informe_firmado %}
+            <div class="alert alert-warning d-flex align-items-center p-2" role="alert">
+                <svg class="bi flex-shrink-0 me-2" width="20" height="20" role="img" aria-label="Info:">
+                    <use xlink:href="#exclamation-triangle-fill"/>
+                </svg>
+                <div class="lh-15">
+                    <p class="ps-2 fs-5">
+                       <b>El informe que está a punto de generar ya tiene una versión existente con al menos una firma.</b>
+                        <br>Si crea un nuevo informe, se restablecerán los estados de las firmas, lo que requerirá que todos
+                        los participantes vuelvan a firmar.
+                        <br>Por favor, revise el informe actual antes de generar uno nuevo.
+                    </p>
+                </div>
+            </div>
+        {% endif %}
+        <div class="mt-2 border-start border-3 border-warning">
+            <h4 class="ms-2 mb-0">
+            <span class="">
+                {{ matriz.seleccion|title2 }} |
+                {{ matriz.evaluacionperiodo|title2 }}
+                <span class="fs-6">({{ matriz.evaluacionperiodo.fechainicio|date:"d-m-Y" }} a {{ matriz.evaluacionperiodo.fechafin|date:"d-m-Y" }})</span>
+            </span>
+            </h4>
+            <h6 class="ms-2">
+                <i class="bi bi-check2-circle"></i> Validación de Evidencias:
+                <span class="text-success">Validados: {{ contador.t_validados }}</span> |
+                <span class="text-primary">Remitidos: {{ contador.t_remitidos }}</span> |
+                <span class="text-default">Pendientes: {{ contador.t_pendientes }}</span> |
+                <span class="text-warning">Por revisar: {{ contador.t_por_revisar }}</span> |
+                <span class="text-black">Total: {{ contador.total }} </span> |
+            </h6>
+        </div>
+    {% endwith %}
+{% endblock %}
+{% block block_form %}
+
+    <div class="table-responsive">
+
+        <table class="table table_primary table-bordered" id="table_evidencia">
+            <thead class="table-light">
+            <tr>
+                <th>Objetivo Operativo</th>
+                <th class="w-20">Indicador/Actividad</th>
+                <th class="w-20">Logros</th>
+                <th class="w-20">Nudos</th>
+                <th class="w-15">Detalle</th>
+                <th class="w-25">Observación/Recomendación</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for l in listado %}
+                <tr data-id="{{ l.id }}">
+                    <td>
+                        <div class="card-text lh-15 mb-1 d-flex">
+                            <div class="w-auto text-nowrap">
+                                <i class="bi bi-caret-right-fill"></i>
+                                <b>Obj. Estratégico - {{ l.get_objetivoestrategico.programa.nombre|title2 }}:</b>
+                            </div>
+                            <div class="ms-1 text-wrap">
+                                <p>{{ l.get_objetivoestrategico }}</p>
+                            </div>
+                        </div>
+                        <div class="card-text lh-15 ms-3 d-flex">
+                            <div class="w-auto text-nowrap">
+                                <i class="bi bi-caret-right-fill"></i>
+                                <b>Obj. Operativo:</b>
+                            </div>
+                            <div class="ms-1 text-wrap">
+                                <p>{{ l.get_objetivotactico }}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <p class="mb-1 lh-15 texto-blue">{{ l.acciondocumentodetalle.acciondocumento.indicadorpoa }}</p>
+                        <h6 class="lh-15 mb-1 ms-2">
+                            <i class="bi bi-caret-right-fill"></i> {{ l.acciondocumentodetalle.acciondocumento }}
+                        </h6></td>
+                    <td class="lh-15 text-justify">{{ l.logros }}</td>
+                    <td class="lh-15 text-justify">{{ l.nudos }}</td>
+                    <td class="text-nowrap">
+                        <p><b><i class="bi bi-filter"></i> Estado: </b><span class="{{ l.color_estadorevision }}">{{ l.get_estadorevision_display }}</span></p>
+                        <p><b><i class="bi bi-cursor"></i> Indicador: </b><span class="text-orange">{{ l.get_objetivooperativo.get_tipo_display|title }}</span></p>
+                        <p><b>{{ l.icon_indicador|safe }} Planificada: </b>{{ l.meta.numero }}</p>
+                        <p><b>{{ l.icon_indicador|safe }} Ejecutada: </b>
+                            {% if l.aplica_calculo and l.estadorevision != 7 %}
+                            <input type="text" value="{{ l.numero }}"
+                                   data-planificada="{{ l.meta.numero }}"
+                                   data-id="{{ l.id }}"
+                                   class="w-40 metaejecutada input_money">
+                            {% else %}
+                                {{ l.numero }}
+                            {% endif %}
+                        </p>
+                        <p><b>{{ l.icon_indicador|safe }} Cumplimiento:</b>
+                            {% if l.aplica_calculo and not l.estadorevision == 7 %}
+                                <span id="cumplimiento_{{ l.id }}">{{ l.calculo_cumplimiento }}</span> %
+                            {% else %}
+                                No aplica
+                            {% endif %}
+                        </p>
+                    </td>
+                    <td>
+                        <textarea id="id_observacion{{ l.id }}" name="observaciones" class="observaciones" rows=5>{{ l.observacion_informe }}</textarea>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
+{% block replace_button %}
+    <div class="row modal-footer px-0 border-0 pt-3">
+        <div class="col-12 {% block button_align %}text-end{% endblock %} m-0">
+            {% block extra_button %}{% endblock %}
+            {% if matriz.puede_generar_informe %}
+                <button type="submit" id="submit" class="btn btn-orange fs-5 px-5">
+                    <i class="bi bi-file-break"></i> Generar
+                </button>
+            {% endif %}
+            <a href="javascript:void(0)" class="btn btn-cian-secondary fs-5 px-5" data-bs-dismiss="modal"> <i
+                    class="bi bi-door-open-fill"></i> Salir</a>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,614 @@
+{% extends "ajaxformbs.html" %}
+{% block atras %}/adm_liquidacion_compras{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_liquidacion_compras{% endblock %}
+{% block formdestination %}/adm_liquidacion_compras{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formback %}/adm_liquidacion_compras{% endblock %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/elfinder/js/jquery-ui-1.11.1/jquery-ui.min.css">
+    <script src="/static/elfinder/js/jquery-ui-1.11.1/jquery-ui.min.js"></script>
+    <script>
+        $.extend(true, $.fn.dataTable.defaults, {
+                oLanguage: {
+                    sSearch: "<span>Filtro:</span> _INPUT_",
+                    sLengthMenu: "<span>Mostrar Entradas:</span> _MENU_",
+                    sZeroRecords: "No se encontraron resultados",
+                    sProcessing: "Procesando...",
+                    sEmptyTable: "Ningún dato disponible para visualizar",
+                    sInfo: "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+                    sInfoEmpty: "Mostrando registros del 0 al 0 de un total de 0 registros",
+                    sLoadingRecords: "Cargando...",
+                    oPaginate: {
+                        sFirst: "<i title='Inicio' class='fa fa-step-backward'></i>",
+                        sLast: "<i title='Último' class='fa fa-step-forward'></i>",
+                        sNext: "<i title='Siguiente' class='fa fa-fast-forward'></i>",
+                        sPrevious: "<i title='Anterior' class='fa fa-fast-backward'></i>"
+                    },
+                }
+            });
+    </script>
+    <style>
+        .qty-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .qty-container .input-qty {
+            text-align: center;
+            padding: 6px 10px;
+            border: 1px solid #d4d4d4;
+            max-width: 80px;
+        }
+
+        .qty-container .qty-btn-minus,
+        .qty-container .qty-btn-plus {
+            border: 1px solid #d4d4d4;
+            padding: 10px 13px;
+            font-size: 10px;
+            height: 38px;
+            width: 38px;
+            transition: 0.3s;
+        }
+
+        .qty-container .qty-btn-plus {
+            margin-left: -1px;
+        }
+
+        .qty-container .qty-btn-minus {
+            margin-right: -1px;
+        }
+
+
+        /*---------------------------*/
+        .btn-cornered,
+        .input-cornered {
+            border-radius: 4px;
+        }
+
+        .btn-rounded {
+            border-radius: 50%;
+        }
+
+        .input-rounded {
+            border-radius: 50px;
+        }
+        .datatable-header{
+            padding-bottom: 4px !important;
+        }
+    </style>
+    <script>
+        $(function () {
+             uiTableServices.init();
+             uiModalSeachTableServices.init();
+            /*
+            * acción change de Select impuesto
+            * */
+            $("#id_impuesto").change(function () {
+                var id = $(this).val();
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "{{ request.path }}",
+                        data: {"action": "get_impuesto", "id": id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === 'ok') {
+                                $("#porcentaje").val(data.porcentaje / 100);
+                            } else {
+                                $("#porcentaje").val(0);
+                            }
+                            /*calculartotal();
+                            if(lista_items1.length >0){
+                                llenar_detalle();
+                            }*/
+                            uiTableServices.UpdateValuesItems();
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                } else {
+                    $("#porcentaje").val(0);
+                    //calculartotal();
+                }
+            });
+            /*
+            *  acción select 2 de proveedor
+            * */
+            $("#id_proveedor").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=Proveedor&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        console.log(data)
+                        listing = [];
+
+                        $.each(data.results, function (i, item) {
+                            //console.log(item)
+                            listing.push({'id': item.id, 'text': item.name});
+                        });
+                        return {
+                            results: listing,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+            });
+
+            /*
+             * Select cuenta contable
+             * */
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '---------';
+                }
+            };
+            $("#id_cuentacontable").attr({"value": "0"});
+            $("#id_cuentacontable_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CuentaContable&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_cuentacontable").attr({"value": (evt.params.data.id)});
+            });
+            /*
+            * Autocomplete servicio
+            * **/
+            $("#id_busqueda_servicio").autocomplete({
+                source: function (request, response) {
+                    $.get('{{ request.path }}',{
+                        action: 'autocompleteServicio',
+                        excl: JSON.stringify(uiTableServices.getIdItems()),
+                        term: request.term,
+                    }).done((data)=>{
+                        console.log(data);
+                        response(data);
+                    }).fail((error)=>{
+                        console.log(error)
+                    }, 'json')
+                },
+                delay:500,
+                minlength:1,
+                select: function (event, ui) {
+                    let eService = ui.item;
+                    console.log('select',eService);
+                    eService.cantidad = 1;
+                    uiTableServices.addItem(eService);
+                },
+                close:function () {
+                    $(this).val("");
+                }
+            });
+            /*
+            Minímo y maxímo botones
+            * */
+            $(document).on('click', ".qty-btn-plus", function () {
+                var $n = $(this)
+              .parent(".qty-container")
+              .find(".input-qty");
+              $n.val(Number($n.val())+1 ).trigger('change');
+            });
+            $(document).on('click', ".qty-btn-minus", function () {
+                var $n = $(this)
+              .parent(".qty-container")
+              .find(".input-qty");
+              var amount = Number($n.val());
+              if (amount > 1) {
+                $n.val(amount-1).trigger('change');
+              }
+            });
+        });
+        var uiTableServices = {
+            init: function () {
+                var self = this;
+                self.$table = $('#table-services');
+            },
+            addItem:function (objService) {
+                if (isNaN(objService.cantidad)){
+                    console.log('Error en cantidad')
+                }
+                var self = this;
+                if(objService.id == 0){
+                    objService.id = (new Date()).getTime();
+                }
+                var tr = null;
+                $('tbody tr.service', self.$table).each(function (index, value) {
+                    var $_tr = $(this);
+                    var data = $_tr.data();
+                    if( data.objService.id == objService.id ) {
+                        tr = $_tr;
+                    }
+                });
+                var isNew = (tr == null);
+
+                if( isNew ) {
+                    tr = $('#el-templates [element="table-row-services"] tr.service').clone();
+                }
+
+                var $tr = $(tr);
+                $tr.data({objService:objService});
+                $('td:nth-child(1) .action_remove_service', $tr).off('click').on('click', function(){
+                    self.removeItem(objService);
+                });
+                $('td:nth-child(2)', $tr).text(`${objService.tipo_model.descripcion} ${objService.descripcion}`);
+                $(document).on('change', $('td:nth-child(3) > .qty-container > input.action_change_service', $tr),function(){
+                    let cantidad = $('td:nth-child(3) > .qty-container > input.action_change_service', $tr).val();
+                    if(cantidad){
+                        objService.cantidad = parseInt(cantidad);
+                        self.changeItem(objService);
+                    }
+                });
+                $('td:nth-child(4)', $tr).text(`${objService.valor}`);
+                $('td:nth-child(5)', $tr).text(`${objService.total}`);
+                $('tbody', self.$table).append($tr);
+                self.UpdateValuesItems();
+            },
+            removeItem: function(objService){
+                var self = this;
+                Confirm.question('Desea eliminar el item seleccionado?', function () {
+                    console.log($('tbody tr.service', self.$table))
+                    $('tbody tr.service', self.$table).each(function(index, value){
+                        var $_tr = $(this);
+                        var data = $_tr.data();
+                        if( data.objService.id == objService.id ) {
+                            $_tr.remove();
+                            NotificationJG.success("Se elimino correctamente.");
+                            self.UpdateValuesItems();
+                        }
+                    });
+                });
+            },
+            getIdItems:function () {
+                var self = this;
+                let lista = [];
+                $('tbody tr.service', self.$table).each(function(index, value){
+                    var $_tr = $(this);
+                    var data = $_tr.data();
+                    lista.push(data.objService.id);
+                });
+                return lista;
+            },
+            changeItem: function (objService) {
+                var self = this;
+                console.log('dio click');
+                $('tbody tr.service', self.$table).each(function(index, value){
+                        var $_tr = $(this);
+                        var data = $_tr.data();
+                        if( data.objService.id == objService.id ) {
+                            let total =  (parseFloat(objService.valor)*objService.cantidad).toFixed(2);
+                            objService.total = total;
+                            $_tr.data({objService:objService});
+                        }
+                });
+                self.UpdateValuesItems();
+            },
+            UpdateValuesItems: function () {
+                var self = this;
+                let subtotal = 0.0;
+                let iva = 0.0;
+                let total = 0.0;
+                let porcentaje = parseFloat($('#porcentaje').val());
+                console.log('Actualizar cantidades');
+                let eServices = {
+                    subtotal:0.0,
+                    total:0.0,
+                    iva:0.0,
+                    items:[]
+                }
+                $('tbody tr.service', self.$table).each(function(index, value){
+                    var $_tr = $(this);
+                    var data = $_tr.data();
+                    data.objService.subtotal =  parseFloat(data.objService.valor)*data.objService.cantidad;
+                    data.objService.iva = parseFloat(data.objService.subtotal)*porcentaje;
+                    data.objService.total = data.objService.subtotal+data.objService.iva;
+                    $_tr.data({objService:data.objService});
+                    $('td:nth-child(5)', $_tr).text(data.objService.subtotal.toFixed(2));
+                    subtotal += data.objService.subtotal ;
+                    eServices.items.push(data.objService);
+                });
+                eServices.subtotal = parseFloat(subtotal.toFixed(2));
+                iva = eServices.subtotal*porcentaje;
+                eServices.iva = parseFloat(iva.toFixed(2));
+                total = eServices.subtotal + eServices.iva;
+                eServices.total = parseFloat(total.toFixed(2));
+                console.log(eServices);
+
+                $('#subtotal').text(eServices.subtotal.toFixed(2));
+                $('#totaliva').text(eServices.iva.toFixed(2));
+                $('#totalserv').text(eServices.total.toFixed(2));
+                self.$table.data({eServices:eServices});
+                let items = self.getIdItems();
+                console.log('long', items.length)
+                $('#table-services tbody tr.table-blank').attr('style', (items.length > 0) ?'display:none;':'display:');
+                //$('#table-services tbody tr.info').css('display', (items.length > 0) ?'display:none;':'block')
+            }
+        }
+        var uiModalSeachTableServices = {
+            init: function () {
+                var self = this;
+                self.$modalSearch = $('#modalSeachTableServices');
+                self.$table = $('.table-search-servicices', )
+                $('.action-close', self.$modal).click(function () {
+                   self.close();
+                });
+            },
+            open:function () {
+                bloqueointerface();
+                var self = this;
+                console.log("entra");
+                self.loadDataTable();
+            },
+            loadDataTable: function () {
+              var self = this;
+              self.$table.dataTable({
+                  responsive: true,
+                  searchDelay: 1000,
+                  bJQueryUI: false,
+                  bAutoWidth: false,
+                  //bProcessing: true,
+                  bServerSide: true,
+                  bSort: false,
+                  sPaginationType: "full_numbers",
+                  iDisplayLength: 25,
+                  sDom: '<"datatable-header"fl><"datatable-scroll"tr><"datatable-footer"ip>',
+                  sAjaxSource: "{{request.path}}",
+                  sServerMethod: "POST",
+                  fnServerParams: function (aoData) {
+                      bloqueointerface();
+                        aoData.push(
+                            {"name": "action", "value": 'loadDataTableServices'},
+                            {"name": "excl", "value": JSON.stringify(uiTableServices.getIdItems())},
+                        );
+                  },
+                  fnDrawCallback: function (oSettingst, oData) {
+                        $.unblockUI();
+                        self.$modalSearch.modal({backdrop:'static', width: '60%', height: '90%', keyboard: false}).modal('show');
+                  },
+                  fnDraw: function (params) {
+                      console.log(params)
+                  },
+                  fnRowCallback: function( nRow, aData, iDisplayIndex ) {
+                      console.log(nRow, aData);
+                      $(nRow).data({eService: aData })
+                      $('.action-add-searh-service', nRow).on('click', function () {
+                          console.log('Hola', aData);
+                          uiTableServices.addItem(aData);
+                          self.$table.dataTable().fnDraw();
+                      })
+                    },
+                  aoColumnDefs:
+                        [
+                            {
+                                aTargets: [0],
+                                width: "60%",
+                                fnCreatedCell: function(nTd, sData, oData, iRow, iCol)
+                                {
+                                    if(sData != 'NULL') {
+                                        $(nTd).css('text-align', 'left');
+                                        $(nTd).css('vertical-align', 'middle');
+                                        $(nTd).css('padding', '8px');
+                                        $(nTd).attr('data-title', '#');
+                                    }
+                                },
+                                mRender: function (data, type, row)
+                                {
+                                    console.log(data, row)
+                                    return row.nombre;
+                                }
+                            },
+                            {
+                                aTargets: [1],
+                                width: "20%",
+                                fnCreatedCell: function(nTd, sData, oData, iRow, iCol)
+                                {
+                                    if(sData != 'NULL') {
+                                        $(nTd).css('text-align', 'left');
+                                        $(nTd).css('vertical-align', 'middle');
+                                        $(nTd).css('padding', '8px');
+                                        $(nTd).attr('data-title', '#');
+                                    }
+                                },
+                                mRender: function (data, type, row)
+                                {
+                                    return row.valor;
+                                }
+                            },
+                            {
+                                aTargets: [2],
+                                width: "20%",
+                                fnCreatedCell: function(nTd, sData, oData, iRow, iCol)
+                                {
+                                    if(sData != 'NULL') {
+                                        $(nTd).css('text-align', 'center');
+                                        $(nTd).css('vertical-align', 'middle');
+                                        $(nTd).css('padding', '8px');
+                                        $(nTd).attr('data-title', '#');
+                                    }
+                                },
+                                mRender: function (data, type, row)
+                                {
+                                    let html = `<button type="button" class="btn btn-primary action-add-searh-service">
+                                                    <i class="fa fa-plus"></i>
+                                                </button>`;
+                                    return html;
+                                }
+                            }
+                        ],
+              });
+              console.log(self.$table)
+            },
+            close: function () {
+                var self = this;
+                self.$table.fnDestroy();
+                self.$modalSearch.modal('hide');
+            }
+        }
+    </script>
+
+{% endblock %}
+{% block antesguardar %}
+    let dt = $('#table-services').data();
+    $('#table-data-services').val(JSON.stringify(dt?dt.eServices:''));
+    envioformulario();
+{% endblock %}
+
+{% block formextra %}
+    <input type='hidden' name='action' value='{{ action }}'/>
+    <input type='hidden' name='porcentaje' id="porcentaje" value='{% if impuesto %}{{ impuesto.porcentaje }}{% else %}0.00{% endif %} '/>
+    <input type="hidden" name="table-data-services" id="table-data-services">
+{% endblock %}
+{% block formsuffix %}
+    <fieldset id="fieldset_busquedaservicio" class="control-group nomargins" style="min-height:45px; float: left; width: 70%;margin-bottom: 25px;">
+        <div class="control-label label-text" style="display: table; height: 45px; float: left; text-align: right; width: 160px;">
+            <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                <label for="id_busqueda_servicio" style="padding-right: 20px">Buscar Servicio</label>
+            </div>
+        </div>
+        <div class="control" style="float: left; width: 450px;">
+            <div class="input-prepend">
+                <input type="text" class="form-control" name="busqueda_servicio" style="height: 38px; font-size: 12px;" value="" id="id_busqueda_servicio" placeholder="Ingrese el nombre de un Servicio">
+                <button type="button" class="btn btn-large btn-info" style="margin-left:5px; " onclick="uiModalSeachTableServices.open()"><i class="fa fa-list"></i></button>
+            </div>
+        </div>
+    </fieldset>
+    <table class="table table-bordered" id="table-services" style="margin-top: 30px;margin-bottom: 0px;">
+        <thead>
+        <tr>
+            <th style="width: 10%;text-align: center">Remover</th>
+            <th style="width: 50%">Descripci&oacute;n</th>
+            <th style="width: 20%; text-align: center">Cantidad</th>
+            <th style="width: 10%; text-align: center">Costo</th>
+            <th style="width: 10%; text-align: center">Total</th>
+        </tr>
+        </thead>
+        <tbody id="itemsbody" class="datatable">
+            <tr class="table-blank">
+                <td colspan="15" style="text-align: center">NO EXISTEN SERVICIOS INGRESADOS</td>
+            </tr>
+        </tbody>
+        <tfoot>
+        </tfoot>
+    </table>
+    <div id="totales">
+        <table class="table table-bordered" style="float: right; width: 253px">
+            <tr>
+                <th style="text-align: right; width: 50%;">SUBTOTAL</th>
+                <td id="subtotal" style="text-align: right; width: 50%;">0.00</td>
+            </tr>
+            <tr>
+                <th style="text-align: right">IVA</th>
+                <td id="totaliva" style="text-align: right">0.00</td>
+            </tr>
+            <tr>
+                <th style="text-align: right">TOTAL</th>
+                <td id="totalserv" style="text-align: right">0.00</td>
+            </tr>
+        </table>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div id="el-templates" style="display:none;">
+        <div element="table-row-services">
+            <table>
+                <tbody>
+                <tr class="service">
+                    <td class="table-controls" style="text-align: center; vertical-align: middle;">
+                        <button type="button" class="btn btn-danger tu action_remove_service" title="Eliminar">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                    <td style="vertical-align: middle;">Hoas</td>
+                    <td style="text-align: center;">
+                        <div class="qty-container">
+                            <button class="qty-btn-minus btn-light" type="button"><i class="fa fa-minus"></i></button>
+                            <input type="text" name="qty" value="1" readonly class="input-qty action_change_service"/>
+                            <button class="qty-btn-plus btn-light" type="button"><i class="fa fa-plus"></i></button>
+                        </div>
+                    </td>
+                    <td style="text-align: right;vertical-align: middle;">$5</td>
+                    <td style="text-align: right;vertical-align: middle;">$10</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalSeachTableServices" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Listado de Servicios</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <table class="table-search-servicices">
+                <thead>
+                    <tr>
+                        <th style="text-align: center">Servicio</th>
+                        <th>Valor</th>
+                        <th>
+                            Acciones
+                        </th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+        <div class="modal-footer">
+            <div class="pull-right">
+                <button class="btn btn-info action-close">
+                    <i class="fa fa-close"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,261 @@
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+    const _url = window.location.toString().split(window.location.host.toString())[1];
+    const cargando = '<i class="fa fa-cog fa-spin" role="status" aria-hidden="true"></i>';
+    const error_btn2 = '<i class="fa fa-check-circle" role="status" aria-hidden="true"></i> Guardar';
+    const method_req = "POST";
+    const _enc = $('*[data-datoseguro=true]').toArray();
+    const headerId = '#header';
+    var __enc = [];
+    for (var i = 0; i < _enc.length; i++) {
+    __enc.push($(_enc[i]).attr('name'));
+    }
+    const inputsEncrypted = __enc.join('|');
+    $(function () {
+
+        $(".informacionrol").click(function(){
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_rolespagoexterno",
+                    data: {'action':'detallerol', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detallerolmodal_body").html(data.html);
+                            $("#detallerolmodal").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+
+        $('form:not([method=GET], [method=get])').submit(function (e) {
+        e.preventDefault();
+        const formulario = $(this);
+        const btnSubmit = $('#submit,#submit2,#submit3');
+        const error_btn = btnSubmit.html();
+        $('input, textarea, select').removeClass('is-invalid');
+        const pk = formulario.find('input[name=pk]').length ? parseInt(formulario.find('input[name=pk]').val()) : 0;
+        const action = formulario.find('input[name=action]').length ? formulario.find('input[name=action]').val() : false;
+        const _url = formulario.find('input[name=urlsubmit]').length ? formulario.find('input[name=urlsubmit]').val() : window.location.toString().split(window.location.host.toString())[1];
+        var _form = new FormData(formulario[0]);
+        if (pk !== 0) {
+            if (_form.has('pk')) {
+                _form.set('pk', pk.toString());
+            } else {
+                _form.append('pk', pk.toString());
+            }
+
+        }
+        if (action !== false) {
+            if (_form.has('action')) {
+                _form.set('action', action);
+            } else {
+                _form.append('action', action);
+            }
+        }
+        const listInputsEnc = inputsEncrypted.split('|');
+        for (var i = 0; i < listInputsEnc.length; i++) {
+            if (_form.has(listInputsEnc[i])) {
+                _form.set(listInputsEnc[i], doRSA(_form.get(listInputsEnc[i])));
+            }
+        }
+        try {
+            _form.append("lista_items1", JSON.stringify(lista_items1));
+        } catch (err) {
+            console.log(err.message);
+        }
+
+        $.ajax({
+            type: method_req,
+            url: _url,
+            data: _form,
+            dataType: "json",
+            enctype: formulario.attr('enctype'),
+            cache: false,
+            contentType: false,
+            processData: false,
+            beforeSend: function () {
+                btnSubmit.html(cargando);
+                btnSubmit.attr("disabled", true);
+                bloqueointerface();
+            }
+        }).done(function (data) {
+            if (!data.result) {
+                if(data.modalname){
+                    $('#'+data.modalname).modal('hide');
+                } else {
+                    $(".modal").modal('hide');
+                }
+                if (data.to) {
+                    if (data.modalsuccess) {
+                        $.unblockUI();
+                        $('#textpanelmensaje').html(data.mensaje);
+                        $('#returnpanelmensaje').attr("href", data.to);
+                        $('#waitpanelmensaje').modal({keyboard: false, backdrop: 'static'});
+                    } else {
+                        location = data.to;
+                    }
+                } else if(data.cerrar){
+                    $.unblockUI();
+                    Swal.fire(data.mensaje, '', 'success')
+                } else {
+                    if (data.modalsuccess) {
+                        $.unblockUI();
+                        $('#textpanelmensaje').html(data.mensaje);
+                        $('#returnpanelmensaje').attr('onClick','location.reload()');
+                        $('#waitpanelmensaje').modal({keyboard: false, backdrop: 'static'});
+                    } else {
+                        if (data.info){
+                            consultacedula(data.info)
+                        }else{
+                           location.reload();
+                        }
+                    }
+                }
+            } else {
+
+                if (data.form) {
+                    data.form.forEach(function (val, indx) {
+                        var keys = Object.keys(val);
+                        keys.forEach(function (val1, indx1) {
+                            $("#id_" + val1).addClass("is-invalid");
+                            $("#errorMessage" + val1).html(val[val1]);
+                        });
+                    });
+                }
+
+                smoke.alert(data.mensaje);
+                btnSubmit.html(error_btn2);
+                btnSubmit.attr("disabled", false);
+                $.unblockUI();
+            }
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+            btnSubmit.html(error_btn2);
+            btnSubmit.attr("disabled", false);
+            $.unblockUI();
+        }).always(function () {
+
+        });
+    });
+    });
+    </script>
+{% endblock %}
+{% block canvas %}
+<div class="col-md-12">
+    <div class="card card-warning card-outline">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fa fa-user"> </i> <b>Datos del Usuario</b></h3>
+        </div>
+        <dvi class="card-body">
+            <table class="table table-bordered table-sm table-responsive-sm">
+                <tbody>
+                    <tr>
+                        <td style="width: 10%">
+                            <b>Cédula: </b> {{ persona.cedula }}
+                            <br>
+                            <b>Nombres: </b>{{ persona }}
+                            <br>
+                            <b>Email: </b>{{ persona.email }}
+                            <br>
+                            <b>Teléfono: </b>{{ persona.telefono }}
+                            <br>
+                            <b>Nacionalidad: </b>{{ persona.nacionalidad }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </dvi>
+    </div>
+</div>
+<div class="col-md-12 mb-5 pb-1">
+    <div class="card card-warning card-outline">
+        <div class="card-header">
+            <h3 class="card-title" style="vertical-align: middle"><i class="fa fa-inbox"> </i> <b>Roles de pago</b></h3>
+
+        </div>
+        <div class="card-body">
+            <table class="table table-sm table-bordered table-responsive-sm">
+                <thead>
+                    <tr>
+                        <th class="text-center">Año</th>
+                        <th>Mes</th>
+                        <th class="text-center">Tipo de rol</th>
+                        <th class="text-center">Total de ingreso</th>
+                        <th class="text-center">Total de egreso</th>
+                        <th class="text-center">Total informativo</th>
+                        <th class="text-center">Total saldo</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rol in roles %}
+                    <tr>
+                        <td class="text-center"><span class="label label-success" style="font-size: 12px">{{ rol.periodo.anio }}</span></td>
+                        <td class="text-center">
+                            <span style="font-size: 12px">{{ rol.periodo.mes_letra }} </span>
+                        </td>
+                        <td>
+                            {{ rol.periodo.tiporol }}
+                        </td>
+                        <td style="text-align: right">
+                            {{ rol.valoringreso|floatformat:2 }}
+                        </td>
+                        <td style="text-align: right">
+                            {{ rol.valoregreso|floatformat:2 }}
+                        </td>
+                        <td style="text-align: right">
+                            {{ rol.valorinformativo|floatformat:2 }}
+                        </td>
+                        <td style="text-align: right">
+                            {{ rol.valortotal|floatformat:2 }}
+                        </td>
+                        <td style="text-align: center">
+                            <a href='javascript:;' idr="{{ rol.id }}" class='btn btn-mini btn-warning informacionrol tu' title="Detalle Rol" ><i class='fa fa-list'></i></a>
+
+                            <a href='/adm_rolespagoexterno?action=reportepdf&id={{ rol.id }}' target="_blank"
+                                class="btn btn-success btn-mini reporte tu"><i class="fa fa-file-pdf-o "></i></a>
+
+
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade static" id="detallerolmodal" style="display: none;">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="paneltitle">Detalle del Rol</h3>
+            </div>
+            <div class="modal-body" id="detallerolmodal_body"></div>
+            <div class="modal-footer">
+                <div style="float: right">
+                    <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times-circle"></i> Cerrar</button>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}

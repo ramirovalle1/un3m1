@@ -1,0 +1,2811 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/widget_ppp.css" rel="stylesheet"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        var intentos = 0;
+        var materias;
+        var nivel = {{ nivel.id }};
+
+        const swalWithBootstrapButtons = Swal.mixin({
+            customClass: {
+                confirmButton: 'btn btn-success',
+                cancelButton: 'btn btn-danger'
+            },
+            buttonsStyling: false
+        });
+
+        const postAjax = (data, url) => new Promise((resolve, reject) => {
+            $.ajax({
+                type: "POST",
+                url: url,
+                data: data,
+                success: function (response) {
+                    resolve({
+                        error: false,
+                        value: response
+                    });
+                },
+                error: function () {
+                    reject({
+                        error: true,
+                        message: "Error al enviar los datos."
+                    });
+                },
+                dataType: "json"
+            });
+
+        });
+
+        function verificarmoodle(materia,idnumber) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/niveles",
+                    data: {'action': 'verificarmoodle', 'id': materia, 'idnumber':idnumber},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            if ((data.resultado).length > 0){
+                                Swal.fire({
+                                        title: 'Número ID del curso coincide con Posgrado!',
+                                        text: '',
+                                        type: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    })
+                            }else{
+                                Swal.fire({
+                                        title: 'Número ID del curso no coincide con Posgrado!',
+                                        text: '',
+                                        type: 'error',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Ok'
+                                    })
+                            }
+
+
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+            }
+
+        function actualizarAlumno(id_matricula, id_materia) {
+
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    type: "POST",
+                    url: '/niveles',
+                    data: {
+                        'action': 'actualizar_un_estudiante_moodle',
+                        'matricula': id_matricula,
+                        'materia': id_materia,
+                    },
+                    success: function (response) {
+                        resolve(response);
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        let mensaje = "";
+                        if (textStatus === "timeout") {
+                            mensaje = "Solicitud cancelada por tiempo de espera";
+                        } else {
+                            mensaje = "Error al enviar los datos.";
+                        }
+
+                        reject(mensaje);
+                    },
+                    dataType: "json",
+                    //timeout: 30,
+                });
+
+            });
+            /*return postAjax({
+                'action': 'actualizar_un_estudiante_moodle',
+                'matricula': id_matricula,
+                'materia': id_materia,
+            }, '/niveles')
+                .then(response => {
+                    //$.unblockUI();
+                    $(`#${id_matricula} > span`, $('#modalViewProccessUpdateMoodle')).html(response.value.mensaje);
+                    return {"value": true, "data": response.value}
+
+                })
+                .catch(error => {
+                    //$(".modal-body", $('#modalViewProccessUpdateMoodle')).html(`<b>Alumno</b>: ${value['alumno']} (${count}/${total})`);
+                    $(`#${id_matricula} > span`, $('#modalViewProccessUpdateMoodle')).html(error);
+                    return {"value": false, "error": error}
+                });*/
+        }
+
+        function fallocierre() {
+            $.unblockUI();
+            $("#cerrarpanel").modal("hide");
+            smoke.alert("Fallo al intentar cerrar el nivel");
+        }
+
+        function terminarcierre() {
+            $("#cerrarpanelprogresshint").html("Finalizando Cierre de Nivel");
+            $("#progressbar").css({'width': '100%'});
+            $.ajax({
+                type: "POST",
+                url: "/niveles",
+                data: {"action": "cierren", "nid": {{ nivel.id }}},
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        intentos = 0;
+                        $("#cerrarpanel").modal("hide");
+                        bloqueointerface();
+                        location.href = "/niveles?action=materias&id={{ nivel.id }}";
+                    } else {
+                        intentos += 1;
+                        if (intentos >= 100) {
+                            fallocierre();
+                        } else {
+                            terminarcierre();
+                        }
+                    }
+                },
+                error: function () {
+                    intentos += 1;
+                    if (intentos >= 100) {
+                        fallocierre();
+                    } else {
+                        terminarcierre();
+                    }
+                },
+                dataType: "json"
+            });
+        }
+
+        function cierremateria(lista, elemento, cantidad) {
+            var matricula = lista[elemento];
+            var cp = (100 / (cantidad + 1)) * elemento + '%';
+            if (elemento > cantidad) {
+                terminarcierre();
+            } else {
+                $("#cerrarpanelprogresshint").html(matricula.nombre);
+                $("#progressbar").css({'width': cp});
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {"action": "cierremag", "maid": matricula.id},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            intentos = 0;
+                            cierremateria(lista, elemento + 1, cantidad);
+                        } else {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallocierre();
+                            } else {
+                                cierremateria(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function () {
+                        intentos += 1;
+                        if (intentos >= 100) {
+                            fallocierre();
+                        } else {
+                            cierremateria(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+        abrir_reportepar = function () {
+            if ($("#paralelo").val() == 0 || $("#nivelmalla").val() == 0) {
+                smoke.alert("Seleccione nivel y paralelo");
+                return false;
+            } else {
+                actualizar_reporte();
+            }
+            var href = $(this).attr('nhref');
+            var tipos = $(this).attr('tipos');
+            if (!tipos) {
+                tipos = "pdf, xls, csv, doc";
+            }
+            if (tipos.contains("pdf")) {
+                $("#formatopdf").removeAttr("hidden");
+            } else {
+                $("#formatopdf").attr({"hidden": "hidden"});
+            }
+            if (tipos.contains("doc")) {
+                $("#formatodoc").removeAttr("hidden");
+            } else {
+                $("#formatodoc").attr({"hidden": "hidden"});
+            }
+            if (tipos.contains("xls")) {
+                $("#formatoxls").removeAttr("hidden");
+            } else {
+                $("#formatoxls").attr({"hidden": "hidden"});
+            }
+            if (tipos.contains("csv")) {
+                $("#formatocsv").removeAttr("hidden");
+            } else {
+                $("#formatocsv").attr({"hidden": "hidden"});
+            }
+            if (tipos.length > 4) {
+                primero = $("#formatoreporte_formato").find("option:first").val();
+                $("#formatoreporte_formato").val(primero);
+                $('#formatoreporte').modal({'width': '400'}).modal('show');
+                $('#formatoreporte_run').attr('nhref', href);
+            } else {
+                primero = $("#formatoreporte_formato").find("option:first").val();
+                $("#formatoreporte_formato").val(primero);
+                ejecutar_reporte_directo(href);
+
+            }
+
+        };
+        $(function () {
+
+            $(".recalculazoom").click(function () {
+                var id = $(this).attr('idcmat');
+
+                smoke.confirm("¿Está seguro de recalcular asistencia.?", function (e) {
+                    if (e) {
+                        $.blockUI({message: null});
+                        $.post("/niveles", {"action": 'recalcula_asistenciazoom', "id": id}, function (data) {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+
+                        }, "json");
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+
+            $(".reportedirectoparalelo").bind("click.conectar_reportepar", abrir_reportepar);
+            conectar_reportepar = function () {
+                $(".reportedirectoparalelo").unbind("click.conectar_reportepar");
+                $(".reportedirectoparalelo").bind("click.conectar_reportepar", abrir_reportepar);
+            };
+
+            $('.downloadreportedirecto').click(function () {
+                var href = $(this).attr('nhref');
+                console.log(href)
+                var tipos = 'xls';
+
+                var formato_final = '&rt=' + tipos;
+
+                bloqueointerface();
+                var report_url = href + formato_final;
+                $.ajax({
+                    type: "POST",
+                    url: report_url,
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            location.href = location.origin + data.reportfile;
+                        } else {
+                            smoke.alert("Error al generar el reporte");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al generar el reporte");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            $("select").select2({minimumResultsForSearch: 4});
+
+            $("#mclose").click(function () {
+                $(".modal-footer").show();
+                if (self.href != "#") {
+                    $(location).attr('href', self.href);
+                }
+            });
+
+            $("#afinidad_cerrar").click(function () {
+                $("#afinidad").modal("hide");
+                return false;
+            });
+
+
+            {#$(".silabovirtual").click(function () {#}
+            {#    var id = $(this).attr('idm');#}
+            {#    var idmallavirtual = $(this).attr('idmallavirtual');#}
+            {#    bloqueointerface();#}
+            {#    $.ajax({#}
+            {#        type: "GET",#}
+            {#        url: "/niveles",#}
+            {#        data: {"action": "tiene_programaanaliticovirtual", "id": id},#}
+            {#        success: function (data) {#}
+            {#            $.unblockUI();#}
+            {#            if (data.result == 'ok') {#}
+            {#                location.href = "/niveles?action=silabovirtual&materia="+id+"&idmallavirtual="+idmallavirtual;#}
+            {#            }else{#}
+            {#                smoke.alert(data.mensaje);#}
+            {#            }#}
+            {#        },#}
+            {#        error: function () {#}
+            {#            $.unblockUI();#}
+            {#        },#}
+            {#        dataType: "json"#}
+            {#    });#}
+            {#);#}
+            {##}
+            $(".afin").click(function () {
+                var id = $(this).attr("idprofesor");
+                var ancho = $(window).width() - 200;
+                var alto = '300px';
+                if (id) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {"action": "afinidad", "idprofesor": id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#afinidadbody").html(data.data);
+                                $("#afinidad").modal({backdrop: 'static', width: ancho, height: alto}).modal('show');
+                            } else {
+                                $("#afinidad").modal("hide");
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                            $("#afinidad").hide();
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            fechainicio = $(".selectorfechainicio");
+
+            actualiza_fechainicio = function (elemento) {
+                var mid;
+                var fechaanterior = elemento.attr("va");
+                var fechaactual = elemento.val();
+                $('.datepicker').css({"display": "none"});
+                if (fechaactual != fechaanterior) {
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/niveles", {
+                        'action': 'updatefechainicio',
+                        'mid': mid,
+                        'fecha': fechaactual
+                    }, function (data) {
+                        if (data.result == 'ok') {
+                            fechaanterior = data.fecha;
+                            if (data.profesores > 0) {
+                                location.href = location.href;
+                            } else {
+                                $.unblockUI();
+                                elemento.val(fechaactual);
+                                elemento.attr({'va': fechaactual});
+                                elemento.datepicker("setValue", fechaactual).datepicker("update").datepicker("hide");
+                            }
+                        } else {
+                            $.unblockUI();
+                            elemento.val(fechaanterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(fechaanterior);
+                        smoke.alert("Fallo al cambiar la fecha");
+                    });
+                }
+            };
+
+            fechainicio.datepicker({format: "dd-mm-yyyy"}).on('changeDate', function (ev) {
+                actualiza_fechainicio($(this));
+            });
+
+            fechainicio.change(function () {
+                actualiza_fechainicio($(this));
+            });
+
+            fechafin = $(".selectorfechafin");
+
+            actualiza_fechafin = function (elemento) {
+                var mid;
+                var fechaanterior = elemento.attr("va");
+                var fechaactual = elemento.val();
+                $('.datepicker').css({"display": "none"});
+                if (fechaactual != fechaanterior) {
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/niveles", {'action': 'updatefechafin', 'mid': mid, 'fecha': fechaactual}, function (data) {
+                        if (data.result == 'ok') {
+                            fechaanterior = data.fecha;
+                            if (data.profesores > 0) {
+                                location.href = location.href;
+                            } else {
+                                $.unblockUI();
+                                elemento.attr({'va': fechaactual});
+                                elemento.val(fechaactual);
+                                elemento.datepicker("setValue", fechaactual).datepicker("update").datepicker("hide");
+                            }
+                        } else {
+                            $.unblockUI();
+                            elemento.val(fechaanterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(fechaanterior);
+                        smoke.alert("Fallo al cambiar la fecha");
+                    });
+                }
+            };
+
+            $('.codigosakai').blur(function () {
+                var elemento = $(this);
+                var mid;
+                var valoranterior = elemento.attr("va");
+                var valoractual = elemento.val();
+                if (valoractual != valoranterior) {
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/niveles", {'action': 'updatecodigosakai', 'mid': mid, 'vc': valoractual}, function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            elemento.attr({'va': data.valor});
+                            elemento.val(data.valor);
+                            location.reload();
+                        } else {
+                            elemento.val(valoranterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(valoranterior);
+                        smoke.alert("Fallo al cambiar el codigosakai");
+                    });
+                }
+            });
+
+            $('.cupos').blur(function () {
+                var elemento = $(this);
+                var mid;
+                var valoranterior = elemento.attr("va");
+                var valoractual = elemento.val();
+                if (valoractual != valoranterior) {
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/niveles", {
+                        'action': 'updatecupomateria',
+                        'mid': mid,
+                        'valor': valoractual
+                    }, function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            elemento.attr({'va': data.valor});
+                            elemento.val(data.valor);
+                        } else {
+                            elemento.val(valoranterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(valoranterior);
+                        smoke.alert("Fallo al cambiar el cupo");
+                    });
+                }
+            });
+
+            $('.cuposadicional').blur(function () {
+                var elemento = $(this);
+                var mid;
+                var valoranterior = elemento.attr("va");
+                var valoractual = elemento.val();
+                if (valoractual != valoranterior) {
+                    mid = elemento.attr("mid");
+                    bloqueointerface();
+                    $.post("/niveles", {
+                        'action': 'updatecupoadicionalmateria',
+                        'mid': mid,
+                        'valor': valoractual
+                    }, function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            elemento.attr({'va': data.valor});
+                            elemento.val(data.valor);
+                        } else {
+                            elemento.val(valoranterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(valoranterior);
+                        smoke.alert("Fallo al cambiar el cupo adicional");
+                    });
+                }
+            });
+
+            fechafin.datepicker({format: "dd-mm-yyyy"}).on('changeDate', function (ev) {
+                actualiza_fechafin($(this));
+            });
+
+            fechafin.change(function () {
+                actualiza_fechafin($(this));
+            });
+
+            {% if not nivel.cerrar_disponible %}
+                $("#cerrarnivel").click(function () {
+                    var nid;
+                    bloqueointerface();
+                    nid = $(this).attr("nid");
+                    $.post("/niveles", {'action': 'precierrem', 'nid': nid}, function (data) {
+                        var indice;
+                        var cantidad;
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            $("#cerrarpanel").modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            materias = data.materias;
+                            cantidad = materias.length;
+                            indice = 0;
+                            cierremateria(materias, indice, (cantidad - 1));
+                        }
+                    }, "json");
+                });
+            {% endif %}
+
+            filtros = function () {
+                var mallaid = $("#malla").val();
+                var nivelmallaid = $("#nivelmalla").val();
+                var paralelomateriaid = $("#paralelo").val();
+                var idbuscadorcriterio = $("#idbuscadorcriterio").val();
+                var num_paginacion = $("#num_paginacion").val();
+                bloqueointerface();
+                actualizar_reporte();
+                location.href = '/niveles?action=materias&id=' + nivel + '&num_paginacion=' + num_paginacion + '&s=' + idbuscadorcriterio+ '&mallaid=' + mallaid + '&nivelmallaid=' + nivelmallaid + '&paraleloid=' + paralelomateriaid;
+            };
+
+            $("#malla, #nivelmalla, #paralelo, #idbuscadorcriterio, #num_paginacion").change(filtros);
+
+            $("#paralelo").change(function () {
+                actualizar_reporte();
+            });
+
+            $(".filterable tr:has(td)").each(function () {
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox").keyup(function () {
+                filtrar();
+            });
+
+            filtrar = function () {
+                var s = $("#FilterTextBox").val().toLowerCase().split(" ");
+                $(".filterable tr:hidden").show();
+                $.each(s, function () {
+                    $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+                });
+                $(".filterable3 tr:hidden").show();
+            };
+
+            $(".filterable2 tr:has(td)").each(function () {
+                var t = $(this).text().toLowerCase();
+                $("<td class='indexColumn2'></td>").hide().text(t).appendTo(this);
+            });
+
+            $("#FilterTextBox2").keyup(function () {
+                var s = $(this).val().toLowerCase().split(" ");
+                $(".filterable2 tr:hidden").show();
+                $.each(s, function () {
+                    $(".filterable2 tr:visible .indexColumn2:not(:contains('" + this + "'))").parent().hide();
+                });
+            });
+
+            actualizar_reporte = function () {
+                var elemento = $("#reporte_horario");
+                var nombre = elemento.attr('nombre');
+                var nivel = elemento.attr('nivel');
+                var carrera = elemento.attr('carrera');
+                var nivelmalla = elemento.attr('nivelmalla');
+                var tipos = elemento.attr('tipos');
+                var paralelo = $('#paralelo').val();
+                $("#reporte_horario").attr({"nhref": "/reportes?action=run&n=" + nombre + "&nivel=" + nivel + "&carrera=" + carrera + "&nivelmalla=" + nivelmalla + "&paralelo=" + paralelo + "&rt=" + tipos});
+                {#                location.href = '/reportes?action=run&n='+name+'&nivel='+nivel+'&carrera='+carrera+'&nivelmalla='+nivelmalla+'&paralelo='+paralelo+'&rt='+tipos#}
+            };
+
+            $("#reporte_horario").click(function () {
+                actualizar_reporte();
+            });
+
+            $("#asignarhorarioprofe").click(function () {
+                var paralelo = $(this).attr('parale');
+                smoke.confirm("¿Está seguro que desea asignar horarios a profesor de teoria y principal.?", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.post("/niveles", {
+                            'action': 'asignarhorarioprofe',
+                            'paraleloid': paralelo,
+                            'id': {{ nivel.id }} {% if mallaid %},
+                            'mallaid':{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                            'nivelmallaid':{{ nivelmallaid }}{% endif %}
+                        }, function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                if (data.existeconflicto) {
+                                    $("#conflicto_body").html(data.segmento);
+                                    $("#conflicto").modal({backdrop: 'static', width: 1000}).modal('show');
+                                } else {
+                                    smoke.alert("Se asigno horario a profesor con exito y sin conflicto.\nClases asignadas con exitos: " + data.clasesafectadas);
+                                    location.reload();
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        }).error(function () {
+                            $.unblockUI();
+                            smoke.alert("Error al asignar horario profesor teoria/principal");
+                        });
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+            $("#asignargrupoprofe").click(function () {
+                var paralelo = $(this).attr('parale');
+                smoke.confirm("¿Está seguro que desea asignar grupos a profesor de prácticas.?", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.post("/niveles", {
+                            'action': 'asignargrupoprofe',
+                            'paraleloid': paralelo,
+                            'id': {{ nivel.id }} {% if mallaid %},
+                            'mallaid':{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                            'nivelmallaid':{{ nivelmallaid }}{% endif %}
+                        }, function (data) {
+                            if (data.result == 'ok') {
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }).error(function () {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos");
+                        });
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+
+            actualizar_reporte();
+
+            $("#conflicto_cerrar").click(function () {
+                $("#conflicto").modal("hide");
+            });
+
+            $(".eliminarprofesor").click(function () {
+                var idpm = $(this).attr('idpm');
+                $("#eliminarprofe").modal('show');
+                $("#eliminarprofe_run").attr({"idpm": idpm});
+            });
+
+            $("#eliminarprofe_run").click(function () {
+                var id = $(this).attr("idpm");
+                var motivo = $("#motivo").val();
+                if (motivo.trim().length > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {'action': 'delprofesor', 'id': id, 'motivo': motivo},
+                        error: function () {
+                            $.unblockUI();
+                        },
+                        success: function (data) {
+                            if (data.result == "ok") {
+                                $("#eliminarprofe").modal('hide');
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#eliminarprofe_close").click(function () {
+                $("#eliminarprofe").modal('hide');
+            });
+
+            $(".auditoriaprofesor").click(function () {
+                var mid = $(this).attr('idm');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'auditoriaprofe', 'id': mid},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#selectauditoria-body").html(data.data);
+                            $('#auditoriaprofe').modal({'width': 800}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".auditoriaprofe_cerrar").click(function () {
+                $("#auditoriaprofe").modal('hide');
+            });
+
+            $(".grupospracticas").click(function () {
+                var pid = $(this).attr('idpm');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'grupospracticas', 'id': pid},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".modal-body-grupos").html(data.data);
+                            $('#grupospracticas').modal({'width': 600}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#grupo_close").click(function () {
+                $("#grupospracticas").modal('hide');
+            });
+
+            $('.informeestudiantepractica').click(function () {
+                var idn = $(this).attr('idn');
+                var idp = $(this).attr('parale');
+                openwindow('POST', '/niveles', {
+                    action: 'informeestudiantepractica',
+                    idn: idn,
+                    pid: idp {% if mallaid %},
+                    mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                    nmid: {{ nivelmallaid }}{% endif %}
+                }, '_blank');
+            });
+
+            $('.reporte_horario_pdf').click(function () {
+                var idn = $(this).attr('idn');
+                var idp = $(this).attr('parale');
+                openwindow('POST', '/niveles', {
+                    action: 'reporte_horario_pdf',
+                    idn: idn,
+                    pid: idp {% if mallaid %},
+                    mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                    nmid: {{ nivelmallaid }}{% endif %}
+                }, '_blank');
+            });
+
+            $(".reporte_horario_examen_pdf").click(function () {
+                bloqueointerface();
+                var examenparcial = $('#examenparcial');
+                var idn = $(this).attr('idn');
+                var idp = $(this).attr('parale');
+                $(".generarhorarioexamen").attr('idn', idn);
+                $(".generarhorarioexamen").attr('parale', idp);
+                examenparcial.empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {
+                        'action': 'listamodeloevaluativoexamen',
+                        idn: idn,
+                        pid: idp {% if mallaid %},
+                        mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                        nmid: {{ nivelmallaid }}{% endif %}
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            for (elemento in data.lista) {
+                                examenparcial.append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                $("#itemspanel").modal({backdrop: 'static', width: '300px'}).modal('show');
+                            }
+                        } else {
+                            examenparcial.val(0).trigger("change");
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        examenparcial.val(0).trigger("change");
+                        smoke.alert("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".generarhorarioexamen").click(function () {
+                var idn = $(this).attr('idn');
+                var idp = $(this).attr('parale');
+                var idde = $('#examenparcial').val();
+                openwindow('POST', '/niveles', {
+                    action: 'reporte_horario_examen_pdf',
+                    idn: idn,
+                    pid: idp,
+                    idde: idde {% if mallaid %},
+                    mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                    nmid: {{ nivelmallaid }}{% endif %}
+                }, '_blank');
+            });
+
+            $(".cancelarhorarioexamen").click(function () {
+                $("#itemspanel").modal('hide');
+            });
+
+            $("#id_fechainiindi, #id_fechafinindi, #id_fechainiindiauto, #id_fechafinindiauto").addClass("validate[required]").datepicker({format: "yyyy-mm-dd"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            })
+            $(".modal_fechaevalindi").click(function () {
+                $("#id_fechainiindi").val('');
+                $("#id_fechafinindi").val('');
+                $("#idcodmateria").val($(this).attr('idcmat'));
+                $("#alertaingresoaddindicadorindi").hide();
+                $("#itemspaneladdaciones .incompletoaddindicadorindi").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicadorindi").hide();
+                $("#modaladdindicadoresindi").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+
+            $("#cerrarindicadoresaddindi").click(function () {
+                $("#modaladdindicadoresindi .incompletoaddindicadoresindi").hide();
+                $("#modaladdindicadoresindi .incompletovaloindicadoresindi").hide();
+                $("#modaladdindicadoresindi").modal("hide");
+            });
+            $(".duplicar_silabovirtual").click(function () {
+                $("#id_codigomateria").val($(this).attr('idcod'));
+                $("#itemspaneladicionar_silabo").modal({backdrop: 'static', width: '710px'}).modal('show');
+            });
+            $(".duplicar_silabovirtualtodas").click(function () {
+                $("#id_codigomateriatodas").val($(this).attr('idcodtodas'));
+                $("#itemspaneladicionar_silabotodas").modal({backdrop: 'static', width: '710px'}).modal('show');
+            });
+            $("#itemspaneladicionar_silabotodas .btn-cerrar").click(function () {
+                $("#itemspaneladicionar_silabotodas").modal("hide");
+            });
+            $("#itemspaneladicionar_silabo .btn-cerrar").click(function () {
+                $("#itemspaneladicionar_silabo").modal("hide");
+            });
+            $("#itemspaneladicionar_silabotodas .btn-duplicarsilabotodas").click(function () {
+                var codigomateriatodas = $("#id_codigomateriatodas").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'duplicarsilabotodas', 'codigomateriatodas': codigomateriatodas},
+                    error: function () {
+                        $.unblockUI();
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            alert('ff')
+                            $("#itemspaneladicionar_silabotodas").modal("hide");
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    dataType: "json"
+                });
+
+            });
+            $("#itemspaneladicionar_silabo .btn-duplicarsilabo").click(function () {
+                var codigomateria = $("#id_codigomateria").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'duplicarsilabo', 'codigomateria': codigomateria},
+                    error: function () {
+                        $.unblockUI();
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            alert('ff')
+                            $("#itemspaneladicionar_silabo").modal("hide");
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    dataType: "json"
+                });
+
+            });
+            $("#generar_reporteindi").click(function () {
+                var id_fini = $("#id_fechainiindi").val();
+                var id_ffin = $("#id_fechafinindi").val();
+                if (id_fini == '' || id_ffin == '') {
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = $("#idcodmateria").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {
+                        'action': 'ingresofechaevaluacion',
+                        'listascodigos': listascodigos,
+                        'id_fini': id_fini,
+                        'id_ffin': id_ffin
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        {#$.unblockUI();#}
+                        if (data.result == "ok") {
+                            $("#modaladdindicadoresindi .incompletoaddindicadoresindi").hide();
+                            $("#modaladdindicadoresindi .incompletovaloindicadoresindi").hide();
+                            $("#modaladdindicadoresindi").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $(".generarinformeevaluacionipec").click(function () {
+                var id = $(this).attr('idmat');
+                openwindow('POST', '/niveles', {action: 'informeevaluacionipecotro', 'idmat': id}, '_blank');
+            });
+            $(".duplicar_silabovirtual_carrera").click(function () {
+                var id = $(this).attr('idm');
+                $("#id_selecionado").val(id);
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'lista_amterias', 'id': id}, success: function (data) {
+                        if (data.result == "ok") {
+                            $("#tablamaterias tbody").empty();
+                            $.each(data.lista, function (i, dato) {
+                                $("#idcabecera").html(data.materia);
+                                var secuencial = i + 1;
+                                var newRow = '<tr class="odd" id="materiad_' + dato.id + '">'
+                                    + "<td style='text-align: center'><input  idmat=" + dato.id + " class='actividad' type='checkbox'></td>"
+                                    {#+"<td style='text-align: left'>"+dato.descripcion+" - "+dato.nivel+"</td>"#}
+                                    + "<td style='text-align: left'>" + dato.carrera + "</td>"
+                                    + "</tr>";
+                                $(newRow).appendTo("#tablamaterias #tbodylista");
+                            });
+                            $("#listacarreras").modal({backdrop: 'static', width: '900px'}).modal('show');
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#guardarlistado").click(function () {
+                var listacarreras = '';
+                var id_selecionado = $("#id_selecionado").val();
+                $('.actividad').each(function () {
+                    if ($(this).is(":checked")) {
+                        var idmat = $(this).attr('idmat');
+                        listacarreras += idmat + ":";
+                    }
+                });
+                if (listacarreras == '') {
+                    smoke.alert('Favor seleccionar una carrera');
+                    return false;
+                }
+                listacarreras = listacarreras.substring(0, listacarreras.length - 1);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {
+                        'action': 'duplicarsilabo_completo',
+                        'listacarreras': listacarreras,
+                        'idmat': id_selecionado
+                    },
+                    success: function (data) {
+                        {#$.unblockUI();#}
+                        if (data.result == 'ok') {
+                            bloqueointerface();
+                            location.reload(true);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $("#add_cancelpre").click(function () {
+                $('#listacarreras').modal('hide');
+            });
+
+            $('.silabovirtual').click(function (e) {
+                var idm = $(this).attr('idm');
+                var idp = $(this).attr('parale');
+                if (e.ctrlKey) {
+                    openwindow('GET', '/niveles', {
+                        action: 'silabovirtual',
+                        idm: idm,
+                        pid: idp,
+                        {% if s %}
+                        s:'{{ s }}'{% if mallaid %},
+                        mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                        nmid: {{ nivelmallaid }}{% endif %}
+                        {% endif %}
+                    }, '_blank');
+                } else {
+                    openwindow('GET', '/niveles', {
+                        action: 'silabovirtual',
+                        idm: idm,
+                        pid: idp,
+                         {% if s %}
+                        s:'{{ s }}'{% if mallaid %},
+                        mid:{{ mallaid }}{% endif %}{% if nivelmallaid %},
+                        nmid: {{ nivelmallaid }}{% endif %}
+                         {% endif %}
+                    });
+                }
+            });
+
+
+
+            $(".modal_fechaevalindiauto").click(function () {
+                $("#id_fechainiindiauto").val('');
+                $("#id_fechafinindiauto").val('');
+                $("#idcodmateriaauto").val($(this).attr('idcmat'));
+                $("#alertamodalauto").hide();
+                $("#modalconffechaevalauto").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+            $("#cerrarfechaauto").click(function () {
+                $("#modalconffechaevalauto").modal("hide");
+            });
+
+            $("#guardarfechaauto").click(function () {
+                var id_fini = $("#id_fechainiindiauto").val();
+                var id_ffin = $("#id_fechafinindiauto").val();
+                if (id_fini == '' || id_ffin == '') {
+                    alert('Debe ingresar fecha inicio y fin')
+                    return false
+                }
+                var listascodigos = $("#idcodmateriaauto").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {
+                        'action': 'ingresofechaevaluacionauto',
+                        'listascodigos': listascodigos,
+                        'id_fini': id_fini,
+                        'id_ffin': id_ffin
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        {#$.unblockUI();#}
+                        if (data.result == "ok") {
+                            $("#modalconffechaevalauto").modal("hide");
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $(".deletelistamateria").click(function () {
+                lista_items1 = [];
+                materias = "<br>";
+                $(".seleccionado").each(function () {
+                    if ($(this).is(":checked")) {
+                        var item = {id: $(this).attr("idp")};
+                        var namemate = $(this).attr("namemate");
+                        lista_items1.push(item);
+                        materias = materias + "<li>" + namemate + "</li>"
+                    }
+                });
+
+                smoke.confirm("Por favor confirme si desea eliminar las siguientes materias seleccionadas:.? " + materias, function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/niveles",
+                            data: {'action': 'deletemateriamasivo', 'lista': JSON.stringify(lista_items1)},
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al obtener los datos.");
+                            },
+                            success: function (data) {
+                                if (data.result == "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI, SEGURO",
+                    cancel: "NO, CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+
+            });
+
+            $("#todos").click(function () {
+                if ($(this).is(":checked")) {
+                    $(".seleccionado").prop('checked', true);
+                    $(".deletelistamateria").show()
+                } else {
+                    $(".seleccionado").prop('checked', false);
+                    $(".deletelistamateria").hide();
+                }
+
+            });
+
+            $(".seleccionado").click(function () {
+                if ($(this).is(":checked")) {
+                    $(".deletelistamateria").show()
+                } else {
+                    $(".deletelistamateria").hide();
+                }
+            });
+
+            function terminarecalculo() {
+                $("#recalcularmodal").modal("hide");
+                bloqueointerface();
+                location.reload();
+            }
+
+            function recalculoexportar(lista, elemento, cantidad, codigomateria, numcantidad) {
+                if (numcantidad == 0) {
+                    $("#recalcularexportarmodalprogresshint").html('fgrggr');
+                    $("#progressbarexportar").css({'width': 6});
+                    $("#idtotales").html("0 alumnos matriculados");
+                    $("#progressbarexportar").html('100%');
+                    $.ajax({
+                        type: "POST",
+                        url: "/niveles",
+                        data: {"action": "exportar_matriculados_moodle_posgrado", "inscritoexamen": 0, "contador": 0, "codigomateria": codigomateria, "numcantidad": '0'},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                intentos = 0;
+                                terminarecalculo();
+                            } else {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallorecalculo();
+                                } else {
+                                    terminarecalculo();
+                                }
+                            }
+                        },
+                        error: function () {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallorecalculo();
+                            } else {
+                                recalculoexportar(lista, elemento, cantidad, codigomateria, numcantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                } else {
+                    var inscritoexamen = lista[elemento];
+                    var cp = (100 / (cantidad)) * elemento + '%';
+                    if (elemento > cantidad) {
+                        terminarecalculo();
+                    } else {
+                        $("#recalcularexportarmodalprogresshint").html(inscritoexamen.matricula__inscripcion__persona__apellido1 + ' ' + inscritoexamen.matricula__inscripcion__persona__apellido2 + ' ' + inscritoexamen.matricula__inscripcion__persona__nombres);
+                        $("#progressbarexportar").css({'width': cp});
+                        $("#idtotales").html(elemento + " de " + (cantidad + 1) + " alumnos matriculados");
+                        $("#progressbarexportar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                        $.ajax({
+                            type: "POST",
+                            url: "/niveles",
+                            data: {"action": "exportar_matriculados_moodle_posgrado", "inscritoexamen": inscritoexamen.id, "contador": elemento, "codigomateria": codigomateria, "numcantidad": numcantidad},
+                            success: function (data) {
+                                if (data.result == 'ok') {
+                                    intentos = 0;
+                                    recalculoexportar(lista, elemento + 1, cantidad, codigomateria, numcantidad);
+                                } else {
+                                    intentos += 1;
+                                    if (intentos >= 100) {
+                                        fallorecalculo();
+                                    } else {
+                                        recalculoexportar(lista, elemento, cantidad, codigomateria, numcantidad);
+                                    }
+                                }
+                            },
+                            error: function () {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallorecalculo();
+                                } else {
+                                    recalculoexportar(lista, elemento, cantidad, codigomateria, numcantidad);
+                                }
+                            },
+                            dataType: "json"
+                        });
+                    }
+                }
+
+
+            }
+
+            $("#boton_exportarmoodle").click(function () {
+                bloqueointerface();
+                var idmateria = $('#idmateria').val();
+                var nombremateriaseleccionada = $('#idnommateria').html();
+                $('#materiaexportar').html(nombremateriaseleccionada);
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {'action': 'listadoalumnosexportarmateriamoodlepos', 'idmateria': idmateria},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#recalcularexportarmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            var indice = 0;
+                            var cantidad = parseInt(data.cantidad);
+                            var numcantidad = parseInt(data.cantidad);
+                            var listagrupoexamenes = data.listagrupoexamenes;
+                            {#alert(idmateria)#}
+                            recalculoexportar(listagrupoexamenes, indice, (cantidad - 1), idmateria, numcantidad);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+
+            });
+            $("#cancel_importarcancela").click(function () {
+                $('#modalexportarmoodle').modal('hide');
+            });
+            $(".viewcronograma").click(function () {
+                var idmate = $(this).attr('idmate');
+                var idredirect = $(this).attr('idredirect');
+                var nombremate = $(this).attr('nombremate');
+                $("#nombremateria").html(nombremate)
+                $("#idurl").val(idredirect)
+                bloqueointerface();
+                $.get("/niveles", {'action': 'vistafechascronogramas', 'idmate': idmate}, function (data) {
+                    if (data.results) {
+                        $("#modalcronogramaposgrado").modal({backdrop: 'static', width: '600px'}).modal('show');
+                        $(".elementosubtema").remove();
+                        indice = 0
+                        $("#contenidoparticipantes").empty();
+                        for (elemento in data.listadorangofechas) {
+                            indice = indice + 1
+                            $("#contenidoparticipantes").append('<tr>' +
+                                '<td style="text-align: center;" class="idtema" width="20%">' + indice + ' </td>' +
+                                '<td style="text-align: center;" class="idtema" width="40%">' + data.listadorangofechas[elemento][0] + ' </td>' +
+                                '<td style="text-align:center;" width="40%">' + data.listadorangofechas[elemento][1] + '</td></tr>');
+                        }
+                        $.unblockUI();
+                    }
+                }, 'json');
+            });
+            $("#boton_crearcronograma").click(function () {
+                bloqueointerface();
+                var idurl = $("#idurl").val()
+                location.href = idurl;
+            });
+            $("#cancelacrearcronograma").click(function () {
+                $('#modalcronogramaposgrado').modal('hide');
+            });
+
+            $(".action-close", $('#modalViewProccessUpdateMoodle')).click(function () {
+                $("#modalViewProccessUpdateMoodle").modal('hide');
+            });
+
+            $(".confirmarUpdateEstudiante").click(function () {
+                $(".action-close", $('#modalViewProccessUpdateMoodle')).hide();
+                $(".modal-body", $('#modalViewProccessUpdateMoodle')).html(`<ul></ul>`);
+                var text = $(this).attr("text");
+                var idm = $(this).attr("idm");
+                //console.log(idm);
+                var alumnos = [];
+                var total = 0;
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/niveles",
+                    data: {"action": "listAlumnos_x_Materia", "idm": idm},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            alumnos = data.aData;
+                            total = data.Total;
+                            swalWithBootstrapButtons.fire({
+                                title: `${text}`,
+                                text: `¿Esta seguro de actualizar ${data.Total} estudiantes?`,
+                                confirmButtonText: 'Confirmar',
+                                cancelButtonText: 'Cancelar',
+                                allowOutsideClick: false,
+                                showCancelButton: true,
+                                showLoaderOnConfirm: true,
+                            }).then((result) => {
+                                //console.log(result);
+                                if (result.value) {
+                                    var h = $(window).height() - 250;
+                                    $("#paneltitle > span", $('#modalViewProccessUpdateMoodle')).html(text);
+                                    $('#modalViewProccessUpdateMoodle').modal({keyboard: false, backdrop: 'static', width: '60%', height: h}).modal("show");
+
+                                    async function delayedIterator(x) {
+                                        var count = 0
+                                        for (const item of x) {
+                                            count += 1;
+                                            $(".modal-body > ul", $('#modalViewProccessUpdateMoodle')).append(`<li id="${item.id}">(${count}/${total}) -> <b>Alumno</b>: ${item.alumno} -- <span class="label label-warning">Enviando...</span></li>`);
+                                            try {
+                                                const d = await actualizarAlumno(item.id, idm);
+                                                console.log(d);
+                                                if (d.result == 'ok' || d.result == 'bad') {
+                                                    $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).html(d.mensaje);
+                                                    $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).removeClass("label label-warning");
+                                                    if (d.result == 'ok') {
+                                                        $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).addClass("label label-success");
+                                                    } else {
+                                                        $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).addClass("label label-important");
+                                                    }
+
+                                                } else {
+                                                    $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).html("Ocurrio un error.!");
+                                                }
+                                            } catch (err) {
+                                                $(`#${item.id} > span`, $('#modalViewProccessUpdateMoodle')).html("Ocurrio un error.!");
+                                            }
+                                        }
+                                    }
+
+                                    delayedIterator(alumnos)
+                                        .catch(() => {
+                                            console.error();
+                                            $(".action-close", $('#modalViewProccessUpdateMoodle')).show();
+                                        })
+                                        .then(() => {
+                                            $(".action-close", $('#modalViewProccessUpdateMoodle')).show();
+                                            console.log('We do cleanup here');
+                                        });
+                                }
+                            })
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                            $.unblockUI();
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                    },
+                    dataType: "json",
+                });
+
+            });
+            //.reportegenerico cuando se da click sirve para reporte de acta de calificaciones de forma generica
+            /*
+            * data_report recibe un json con data- de html5  que es data-reporte
+            * Ex:'{"clave":"valor"}'
+            * */
+            $('.reportegenerico').click(function () {
+                bloqueointerface();
+                let data_report = $(this).data('reporte');
+                $.get(data_report.url, data_report).done(function (data) {
+                    if (data.result == 'ok') {
+                        window.open(data.reportfile, '_blank');
+                        $.unblockUI()
+                    } else {
+                        NotificationJG.error(data.mensaje)
+                        $.unblockUI()
+                    }
+                }).fail(function (error) {
+                    NotificationJG.error(error)
+                    $.unblockUI()
+                })
+            });
+
+
+
+            $('.btn-accion').click(function () {
+                let data_json = $(this).data('json');
+                let data_question = $(this).data('question');
+                console.log(data_question)
+                console.log(data_json)
+                Confirm.question(`¿${data_question.title}<span class="label label-${data_question.color_context}">${data_question.text_context}</span>?`, function () {
+                        bloqueointerface();
+                        $.post(data_json.url, data_json)
+                            .done(function (data) {
+                                if (data.result == 'ok') {
+                                    $.unblockUI()
+                                    Swal.fire({
+                                        title: `NOTIFICACIÓN`,
+                                        text: data.mensaje,
+                                        type: 'success',
+                                        icon: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        cancelButtonColor: '#d33',
+                                        confirmButtonText: 'Aceptar',
+                                        cancelButtonText: 'Cancelar'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                        }
+                                    }).catch(error => {
+                                        Swal.fire({
+                                            toast: true,
+                                            position: 'top-end',
+                                            type: 'error',
+                                            title: 'Ocurrio un error inesperado',
+                                            showConfirmButton: false,
+                                            timer: 6000
+                                        });
+                                    });
+                                } else {
+                                    NotificationJG.error(data.mensaje)
+                                    $.unblockUI()
+                                }
+                            }).fail(function (error) {
+                            NotificationJG.error(error)
+                            $.unblockUI()
+                        });
+                    }, function () {
+                        NotificationJG.info("Enhorabuena el registro esta salvado.!");
+
+                    }
+                );
+
+            });
+
+
+        });
+
+        function exportarmoodle(idmateria, nomateria) {
+            $('#idnommateria').html(nomateria);
+            $('#idmateria').val(idmateria);
+            bloqueointerface();
+            $("#modalexportarmoodle").modal({backdrop: 'static', width: '600px'}).modal('show');
+            $.unblockUI();
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/niveles{% endblock %}
+{% block canvas %}
+{# #}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            {% if nivel.nivelmalla %}
+                <h5>Nivel: {{ nivel.nivelmalla }}</h5>
+            {% endif %}
+            <h5>{{ nivel.coordinacion }} </h5>
+            <h5>{{ nivel.paralelo }} </h5>
+            <h5>Fechas: {{ nivel.inicio|date:"d-m-Y" }} - {{ nivel.fin|date:"d-m-Y" }}</h5>
+            {% if nivel.distributivoaprobado %}
+                <h5>Aprobado por: {{ nivel.responsableaprobacion }} - {{ nivel.fechaprobacion|date:"d-m-Y" }}</h5>
+            {% endif %}
+            {% if nivel.cerrado %}
+                <br><label class='label label-important'>CERRADO</label>
+            {% endif %}
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <div class="btn-group">
+                <a class="btn dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones <span
+                        class="caret"></span></a>
+                <ul class="dropdown-menu pull-left">
+                    {% if not bloqueado and perms.sga.puede_modificar_materias %}
+                        <li><a href="/niveles?action=addmateria&id={{ nivel.id }}&idcordinacion=
+                                {{ nivel.coordinacion_id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}"><span
+                                class="fa fa-plus "></span> Adicionar asignatura</a></li>
+                        {% if matriculacion_libre %}
+                            <li><a href="/niveles?action=addmateriamalla&id={{ nivel.id }}&idcordinacion=
+                                    {{ nivel.coordinacion_id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}"><span
+                                    class="fa fa-plus "></span> Todas</a></li>
+                        {% endif %}
+                    {% endif %}
+                    {% if perms.sga.puede_modificar_materias %}
+                        <li>
+                            <a href="/matriculas?action=matricula&id={{ nivel.id }}&ret={{ request.get_full_path }}"><span
+                                    class="fa fa-group"></span> Matr&iacute;culas - {{ nivel.mat_nivel }}</a></li>
+                        <li><a href="/niveles?action=pagos&id=
+                                {{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}"><span
+                                class="fa fa-money"></span> Pagos</a></li>
+                    {% endif %}
+                    {% if not matriculacion_libre %}
+                        <li><a href="/adm_horarios/clases?action=horario&id={{ nivel.id }}{% if mallaid %}&carreraid={{ malla.carrera_id }}{% endif %}&ret={{ request.get_full_path }}"><span
+                                class="fa fa-time"></span> Horario</a></li>
+                    {% endif %}
+                    {% if mallaid %}
+                        {% if reporte_8 %}
+                            <li><a href="javascript:;" tipos="{{ reporte_8.tiporeporte }}"
+                                   nhref="/reportes?action=run&n={{ reporte_8 }}&nivel={{ nivel.id }}&carrera={{ malla.carrera_id }}"
+                                   class='reportedirecto'><span class="fa fa-print"></span> Imprimir</a></li>
+                        {% endif %}
+                    {% else %}
+                        {% if reporte_0 %}
+                            <li><a href="javascript:;" tipos="{{ reporte_0.tiporeporte }}"
+                                   nhref="/reportes?action=run&n={{ reporte_0.nombre }}&nivel={{ nivel.id }}"
+                                   class=' reportedirecto'><span class="fa fa-print"></span> Imprimir</a></li>
+                        {% endif %}
+                    {% endif %}
+                    {% if perms.sga.puede_modificar_horarios %}
+                        <li><a href='/adm_horarios/clases?action=horariototal&paraleloid={{ paraleloid }}&nivel={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class='bloqueo_pantalla'><span class="fa fa-edit"></span> Horario paralelo</a></li>
+                    {% endif %}
+                    <li><a href='/niveles?action=horarioexamen&paraleloid={{ paraleloid }}&nivel={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class='bloqueo_pantalla'><span class="fa fa-calendar-times-o"></span> Horario exámenes</a>
+                    </li>
+                    {% if not nivel.cerrado %}
+                        {% if not nivel.cerrar_disponible %}
+                            {% if perms.sga.puede_cerrar_nivel %}
+                                <li><a href="javascript:;" nid="{{ nivel.id }}" id="cerrarnivel"><span
+                                        class="fa fa-folder-o"></span> Cerrar nivel</a></li>
+                            {% endif %}
+                        {% endif %}
+                    {% else %}
+                        {% if perms.sga.puede_abrir_nivel %}
+                            <li><a href="/niveles?action=abrirn&nid={{ nivel.id }}"><span
+                                    class="fa fa-folder-open-o"></span> Abrir nivel</a></li>
+                        {% endif %}
+                    {% endif %}
+                    {% if perms.sga.puede_modificar_horarios %}
+                        <li><a href="javascript:;" id="asignarhorarioprofe" parale="{{ paraleloid }}"><span
+                                class="fa fa-check"></span> Asignar horario a profesor de teoría principal</a></li>
+                        {% if periodo.id >= 76 %}
+                            <li><a href="javascript:;" id="asignargrupoprofe" parale="{{ paraleloid }}"><span
+                                    class="fa fa-check"></span> Asignar grupo a profesores prácticas (sin grupos)</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                    {#        and perms.sga.puede_elimnar_materias #}
+                    {% if nivel.puede_eliminarse_materia and materias %}
+                        {% if perms.sga.puede_modificar_materias %}
+                            <li><a href="javascript:;" nhref="/niveles?action=delallmateria&id={{ nivel.id }}"
+                                   title="Eliminar todas las materias." class='confirmacionmodal tu'><span
+                                    class="fa fa-trash "></span> Eliminar Asignaturas</a></li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+            </div>
+            <div class="btn-group">
+                <a class="btn dropdown-toggle" data-toggle="dropdown" href="javascript:;">Reportes <span
+                        class="caret"></span></a>
+                <ul class="dropdown-menu pull-left">
+                    <li><a href="/niveles?action=reporteprematriculados&id={{ malla.carrera_id }}"><i
+                            class="fa fa-table"></i> Total pre-matrícula de asignaturas </a></li>
+                    <li><a href="javascript:;" tipos="{{ reporte_11.tiporeporte }}"
+                           nhref="/reportes?action=run&n={{ reporte_11.nombre }}&carrera={{ malla.carrera_id }}&periodo={{ nivel.periodo_id }}"
+                           class="reportedirecto"><span class="fa fa-print "></span> Total de matriculados por
+                        asignatura</a></li>
+                    {% if periodo.id >= 76 %}
+                        <li><a href="javascript:;" class="informeestudiantepractica" idn="{{ nivel.id|encrypt }}"
+                               parale="{{ paraleloid }}"><i class="fa fa-file-pdf-o"></i> Listado de estudiante de
+                            prácticas</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+            <a href="javascript:;" style="display: none" class="btn btn-large btn-mini btn-danger deletelistamateria tl"
+               title="Eliminar materias"><i class="fa fa-remove"></i> Eliminar Materias seleccionadas</a>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            {% if matriculacion_libre %}
+                <form class="form-search">
+                    <select id='malla' nid="{{ nivel.id }}" style="width: 100%">
+                        {% for malla in mallas %}
+                            {% with totalmateriasmalla=malla|args:nivel.id|call:"contar_materias_malla" %}
+                                <option value="{{ malla.id }}"
+                                        {% if mallaid == malla.id %}selected="selected"{% endif %}>
+                                    {% if persona.usuario.is_superuser %}[ID: {{ malla.carrera.id }}]
+                                        - {% endif %}{{ malla }} - Total materias: {{ totalmateriasmalla }}</option>
+                            {% endwith %}
+                        {% endfor %}
+                    </select>
+                </form>
+            {% endif %}
+        </div>
+        <div class='span2'>
+            {% if matriculacion_libre %}
+                <form class="form-search">
+                    <select id='nivelmalla' nid="{{ nivel.id }}">
+                        <option value="0" selected="selected">TODOS</option>
+                        {% for ni in nivelesmalla %}
+                            <option value="{{ ni.id }}" {% if nivelmallaid == ni.id %}
+                                    selected="selected" {% endif %}>{{ ni }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            {% endif %}
+        </div>
+        <div class='span2'>
+            <form class="form-search">
+                <select id='paralelo'>
+                    <option value="0" selected="selected">TODOS</option>
+                    {% for paralelo in paralelos %}
+                        <option value="{{ paralelo.nombre }}" {% if paraleloid == paralelo.nombre %}
+                                selected="selected" {% endif %}>{{ paralelo.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>&nbsp;
+        <a href="javascript:;" class="reporte_horario_pdf btn btn-warning" idn="{{ nivel.id|encrypt }}"
+           parale="{{ paraleloid }}"><i class="fa fa-file-pdf-o"></i> Horario</a>
+        <a href="javascript:;" class="reporte_horario_examen_pdf btn btn-warning" idn="{{ nivel.id|encrypt }}"
+           parale="{{ paraleloid }}"><i class="fa fa-file-pdf-o"></i> Horario examen</a>
+
+    </div>
+    <div class='row-fluid'>
+        <div class='span8'>
+{#            <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level"#}
+{#                   id="FilterTextBox" name="FilterTextBox" {% if s %}value='{{ s }}'{% endif %}>#}
+            <input type="text" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" placeholder="Buscar por Asignatura, Docente"
+                   id="idbuscadorcriterio" name="buscadorcriterio" {% if s %}value='{{ s }}'{% endif %}>
+        </div>
+        <div class='span4'>
+            <b>Paginación:</b>
+            <select name="num_paginacion" id="num_paginacion">
+                <option value="20" {% if num_paginacion == '20' %}selected{% endif %}>20</option>
+                <option value="50" {% if num_paginacion == '50' %}selected{% endif %}>50</option>
+                <option value="100" {% if num_paginacion == '100' %}selected{% endif %}>100</option>
+                <option value="200" {% if num_paginacion == '200' %}selected{% endif %}>200</option>
+                <option value="300" {% if num_paginacion == '300' %}selected{% endif %}>300</option>
+            </select>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+{#            <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level"#}
+{#                   id="FilterTextBox" name="FilterTextBox" {% if s %}value='{{ s }}'{% endif %}>#}
+            <table class='table table-bordered table-striped filterable' style="margin-top:20px">
+                <thead>
+                <tr>
+                    <th style="text-align: center; vertical-align: middle"><input type="checkbox" id="todos" title="Seleccionar Todos" class="tr">
+                    </th>
+                    <th style="text-align: center; vertical-align: middle">Asignatura</th>
+                    <th style="width: 25px;text-align: center; vertical-align: middle">Insc.</th>
+                    <th style="width: 25px;text-align: center; vertical-align: middle">Mat.</th>
+                    <th style="width: 25px;text-align: center; vertical-align: middle">Cap.</th>
+                    <th style="width: 200px; text-align: center; vertical-align: middle">Aula</th>
+                    <th style="width: 30px;text-align: center; vertical-align: middle">Hrs. Sem.</th>
+                    <th style="width: 30px;text-align: center; vertical-align: middle">Hrs. Tot.</th>
+                    <th style="width: 30px;text-align: center; vertical-align: middle">Crd.</th>
+                    <th style="width: 80px;text-align: center; vertical-align: middle">Inicio/Fin<br>Fin Asis.</th>
+                    <th style="width: 400px; text-align: center; vertical-align: middle">Profesor(es)</th>
+                    <th style="width: 80px; text-align: center; vertical-align: middle"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for materia in materias %}
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if not materia.cerrado and not materia.tiene_clases and not materia.tiene_matriculas and perms.sga.puede_modificar_materias %}
+                                <input type='checkbox' idp='{{ materia.id }}' namemate="{{ materia.nombre_completo }}"
+                                       class='seleccionado'>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: left; vertical-align: middle">
+                            {{ materia.nombre_completo }} {{ materia.id }}<br/>
+                            {% if materia.asignaturamalla.nivelmalla %}
+                                <span class="smaller">{{ materia.asignaturamalla.nivelmalla }}</span>
+                                <br/>
+                            {% endif %}
+                            <span class="smaller">M.E.: {{ materia.modeloevaluativo.nombre|default_if_none:"" }}</span>
+                            <br>
+                            {% if materia.cerrado %}
+                                <span class="label label-important">CERRADA {{ materia.fechacierre|date:"d-m-Y" }}</span>
+                            {% else %}
+                                <span class="label label-success">ABIERTA</span>
+                            {% endif %}
+                            {% if materia.asignaturamalla.practicas %}
+                                <span class="label label-warning tu" title="Teórico-Práctica">TP</span>
+                            {% endif %}
+                            {% if materia.asignaturamalla.asignaturapracticas %}
+								<span class="label label-warning tu" title="Asignatura de practicas pre-profesionales">APPP</span>
+							{% endif %}
+                            {% if materia.rectora %}
+                                <span class="label label-info tu" title="Materia general">MG</span>
+                            {% endif %}
+                            {% if materia.tutoria %}
+                                <span class="label label-warning tu" title="Tutoria">TR</span>
+                            {% endif %}
+                            {% if materia.practicas %}
+                                <span class="label label-warning tu" title="Prácticas pre-profesionales">PP</span>
+                            {% endif %}
+                            {% if not materia.validacreditos %}
+                                <span class="label label-warning tu" title="No valida para créditos">NVC</span>
+                            {% endif %}
+                            {% if not materia.validapromedio %}
+                                <span class="label label-warning tu" title="No valida para promedio">NVP</span>
+                            {% endif %}
+                            {% if materia.parcial > 0 %}
+                                <span class="label label-info tu"
+                                      title="Parcial">{{ materia.get_parcial_display }}</span>
+                            {% endif %}
+                            {% if materia.tipomateria == 1 %}
+                                <span class="label tu" style="" title="Presencial">PR</span>
+                            {% elif materia.tipomateria == 2 %}
+                                <span class="label label-inverse tu" title="Virtual">VR</span>
+                            {% endif %}
+                            {% if materia.seevalua %}
+                                <span class="label tu" style="" title="Se Evalua">EV</span>
+                            {% else %}
+                                <span class="label label-inverse tu" style="" title="No se Evalua">NEV</span>
+                            {% endif %}
+                            {% if nivel.coordinacion.id == 7 and materia.fechainiciomatriculacionposgrado and materia.fechafinmatriculacionposgrado %}
+                                <span class="label label-inverse tu" title="Fecha Matriculación: {{ materia.fechainiciomatriculacionposgrado|date:'d-m-Y' }} / {{ materia.fechafinmatriculacionposgrado|date:'d-m-Y' }}">FM</span>
+                            {% endif %}
+                            {% if materia.contar_horario_en_blanco > 0 and perms.sga.puede_modificar_horarios and periodo.id >= 76 %}
+                                <span class="label label-important tu"
+                                      title="Horarios datos en blanco">{{ materia.contar_horario_en_blanco }} HB</span>
+                            {% endif %}
+                            {% if materia.tiene_silabo %}
+                                <span class="label label-warning tu" title="Tiene sílabo activo">S</span>
+                            {% endif %}
+                            {% if materia.idcursomoodle %}
+                                <span class="label label-success">AULA VIRTUAL: SI</span>
+                            {% else %}
+                                <span class="label label-important">AULA VIRTUAL: NO </span>
+                            {% endif %}
+                            {% if materia.modelotarjeta %}
+                                <span class="label label-success">TARJETA: SI</span>
+                            {% else %}
+                                <span class="label label-info">TARJETA: NO </span>
+                            {% endif %}
+                            {% if materia.idcursomoodle %}
+                                    <span class="label label-success">{{ materia.definir_idnumber }}</span>
+                                    <a href="javascript:void(0);" class="label label-info" onclick="verificarmoodle('{{ materia.id }}','{{ materia.definir_idnumber }}')"
+                                    ><i class="fa fa-check" ></i>Verificar ID del curso</a>
+                            {% endif %}
+                            {% if materia.inglesepunemi %}
+                                <span class="label label-warning">INGLÉS CONTRATO</span>
+                            {% endif %}
+                            <br>
+                            {% if malla.carrera.modalidad == 1 %}
+                                {% if materia.asignaturamalla.modalidad %}
+                                    <span class='label label-darkgreen tu' title="Modalidad Imparticion Clase">Mod. Imp. Clase: Presencial</span>
+                                {% else %}
+                                    <span class='label label-purple tu' title="Modalidad Imparticion Clase">Mod. Imp. Clase: Virtual</span>
+                                {% endif %}
+                            {% endif %}
+
+                            <br><strong>Cron. Calif:</strong> {% if materia.inicioeval %}SI{% else %}No
+                            </strong> {% endif %}
+                            {% if materia.inicioeval %}
+                                <br>
+                                <b>Fechas de evaluación hétero</b>
+                                <b>Inicio: </b>{{ materia.inicioeval|date:"d-m-Y" }} <b>Fin: </b>
+                                {{ materia.fineval|date:"d-m-Y" }}
+                            {% endif %}
+                            {% if materia.inicioevalauto %}
+                                <br>
+                                <b>Fechas de evaluación auto</b>
+                                <b>Inicio: </b>{{ materia.inicioevalauto|date:"d-m-Y" }} <b>Fin: </b>
+                                {{ materia.finevalauto|date:"d-m-Y" }}
+                            {% endif %}
+                            {#                            <br><strong>Cron. Calif:</strong> {% if materia.usaperiodocalificaciones %}SI{% else %}No <strong> DÍas:</strong> {{ materia.diasactivacioncalificaciones }}{% endif %}#}
+                            {#                            <br><strong>Cron. Eval:</strong> {% if materia.usaperiodoevaluacion %}SI{% else %}No <strong> DÍas:</strong> {{ materia.diasactivacion }}{% endif %}#}
+
+                        </td>
+                        <td style="text-align: center; vertical-align: middle">{{ materia.cantidad_asignados_a_esta_materia_sinretirados_inscritos }}</td>
+                        <td style="text-align: center; vertical-align: middle">{{ materia.cantidad_asignados_a_esta_materia_sinretirados }}</td>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if cupo_por_materia %}
+                                {% if nobloqueadocupos and not materia.cerrado and perms.sga.puede_modificar_cupo_materias %}
+                                    <input class="form-imput input-mini cupos" mid="{{ materia.id }}"
+                                           style="text-align: center" type="text" va="{{ materia.cupos_sin_adicional }}"
+                                           value="{{ materia.cupos_sin_adicional }}">
+                                {% else %}
+                                    {{ materia.cupo }}
+                                {% endif %}
+                            {% else %}
+                                {{ materia.capcidad_total }}
+                            {% endif %}
+                            {#                           CUPO ADICIONAL - SECRETARIA #}
+                            Sec.
+                            {% if cupo_por_materia %}
+                                {% if nobloqueadocupos and not materia.cerrado and perms.sga.puede_modificar_cupo_materias %}
+                                    <input class="form-imput input-mini cuposadicional" mid="{{ materia.id }}"
+                                           style="text-align: center" type="text" va="{{ materia.cupoadicional }}"
+                                           value="{{ materia.cupoadicional }}">
+                                {% else %}
+                                    {{ materia.cupoadicional }}
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: left; vertical-align: top">
+                            {% if perms.sga.puede_modificar_horarios or materia.nivel.periodo.visiblehorario %}
+                                {% if materia.tiene_horario %}
+                                    <span class="label label-default">
+                                         {% for aula in materia.aulas %}
+                                             {{ aula.nombre }}
+                                             {% if not forloop.last %},
+                                             {% endif %}
+                                         {% endfor %}-({{ materia.cantidad_clases }})
+                                    </span>
+                                    {% with total_discapacitados=materia|call:"total_discapacitados_materia" %}
+                                        {% if total_discapacitados > 0 %}
+                                            <strong><span class="label label-warning tu"
+                                                          title="Dis. Física"> {{ total_discapacitados }} <span
+                                                    class="fa fa-wheelchair"></span></span></strong>
+                                        {% endif %}
+                                    {% endwith %}
+                                    <ul style="text-align: justify;font-size: 9px;margin: 0 0 0px 0px;">
+                                        {% for turnos in materia.horarios_asignados %}
+                                            <li class="list-group-item list-group-item-success" style="padding: 2px 4px;">
+                                                <i class="fa fa-clock-o"></i> {{ turnos.turno }}
+                                                {% if persona.usuario.is_superuser %}
+                                                    ({{ turnos.turno.sesion.nombre }})-[{{ turnos.id }}]
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                    <span class="label label-warning">{{ materia.dias_programados }}</span>
+                                {% endif %}
+                                {% if materia.laboratorio %}
+                                    <br><span class="fa fa-wrench" style="font-size: 20px; color: #3a87ad" ;></span>
+                                    <strong style="margin-left: 5px">Laboratorio: </strong> {{ materia.laboratorio }}
+                                {% endif %}
+                            {% endif %}
+                            {#                            {% if materia.modeloevaluativo.nombre == "ADMISION VIRTUAL" %}#}
+                            {#                                <input class="form-imput input-large codigosakai" mid="{{ materia.id }}"#}
+                            {#                                       style="text-align: center" type="text"#}
+                            {#                                       va="{{ materia.codigosakai|default_if_none:'' }}"#}
+                            {#                                       value="{{ materia.codigosakai|default_if_none:'' }}">#}
+                            {#                            {% endif %}#}
+
+                        </td>
+                        <td style="text-align: center; vertical-align: middle">{{ materia.horassemanales|floatformat:0 }}</td>
+                        <td style="text-align: center; vertical-align: middle">{{ materia.horas|floatformat:0 }}</td>
+                        <td style="text-align: center; vertical-align: middle">{{ materia.creditos|floatformat:4 }}</td>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if not bloqueado and not materia.cerrado and perms.sga.puede_modificar_materias %}
+                                <input mid='{{ materia.id }}' type="text" id="fechainicio_{{ materia.id }}"
+                                       class='selectorfechainicio selectorfecha input-small '
+                                       va="{{ materia.inicio|date:'d-m-Y' }}"
+                                       value='{{ materia.inicio|date:'d-m-Y' }}'/>
+                            {% else %}
+                                {{ materia.inicio|date:'d-m-Y' }}
+                            {% endif %}
+                            <br>
+                            {% if not bloqueado and not materia.cerrado and perms.sga.puede_modificar_materias %}
+                                <input mid='{{ materia.id }}' type="text" id="fechafin_{{ materia.id }}"
+                                       class='selectorfechafin selectorfecha input-small'
+                                       va="{{ materia.fin|date:'d-m-Y' }}" value='{{ materia.fin|date:'d-m-Y' }}'/>
+                            {% else %}
+                                {{ materia.fin|date:'d-m-Y' }}
+                            {% endif %}
+                            <br>
+                            {{ materia.fechafinasistencias|date:'d-m-Y' }}
+
+                        </td>
+                        <td style="text-align: left; vertical-align: middle">
+                            <table class="table table-bordered table-condensed filterable3">
+                                {% for profesormateria in materia.profesores_materia %}
+                                    <tr>
+                                        <td>
+                                            <div style="float: left;width: 100%;">
+                                                {% if perms.sga.puede_modificar_profesor_materia %}
+                                                    {#                                                        {% if not nivel.cerrado and not materia.cerrado and nobloqueadodocente %}#}
+                                                    {#                                                    {% if not nivel.cerrado and not materia.cerrado %}#}
+                                                    {% if not nivel.cerrado and not bloqueado %}
+                                                        {#                                                        <a href="javascript:;" nhref="/niveles?action=delprofesor&id={{ profesormateria.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}&idtipoprofesor={{ profesormateria.tipoprofesor.id }}{% endif %}" class='btn eliminacionmodal btn-tini btn-danger tu' title="Eliminar"><span class="fa fa-remove" ></span> </a>#}
+                                                        <a href="javascript:;" idpm="{{ profesormateria.id|encrypt }}"
+                                                           class='btn eliminarprofesor btn-tini btn-danger tu'
+                                                           title="Eliminar"><span class="fa fa-remove"></span> </a>
+                                                        <a href="/niveles?action=editprofesor&id=
+                                                                {{ profesormateria.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}"
+                                                           class='btn btn-tini btn-success tu' title="Modificar"><span
+                                                                class="fa fa-edit"></span> </a>
+                                                    {% endif %}
+
+                                                {% endif %}
+                                                {% if profesormateria.evalua %}
+                                                    <a href="#" class='btn btn-tini btn-success tu' title="Evalua"><span
+                                                            class="fa fa-check"></span> </a>
+                                                {% else %}
+                                                    <a href="#" class='btn btn-tini btn-danger tu'
+                                                       title="No evalua"><span class="fa fa-minus"></span> </a>
+                                                {% endif %}
+                                                {#                                                {% if not profesormateria.profesor_auxiliar_firma %}#}
+                                                {% if profesormateria.materia.practicas and not materia.cerrado and profesormateria.tipoprofesor_id == TIPO_DOCENTE_PRACTICA %}
+                                                    <a href="/niveles?action=alumnospractica&id=
+                                                            {{ profesormateria.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}"
+                                                       class='btn btn-tini btn-warning tu'
+                                                       title="Alumnos de practica"><span class="fa fa-list"></span> </a>
+                                                {% endif %}
+                                                {#                                                {% endif %}#}
+                                                {% if profesormateria.afinidad %}
+                                                    <a href="javascript:;" idprofesor="{{ profesormateria.id }}"
+                                                       class='btn btn-tini btn-warning afin tu' title="Afinidad">A</a>
+                                                    {#                                                        <label class="label label-success tu" style="background: #5bb75b" title="Afín a la formación">A</label>#}
+                                                {% else %}
+                                                    <a href="javascript:;" idprofesor="{{ profesormateria.id }}"
+                                                       class='btn btn-tini btn-warning afin tu' title="Afinidad">A</a>
+                                                    {#                                                        <label class="label label-warning tu" style="background: #da4f49" title="No es afín a la formación">N</label>#}
+                                                {% endif %}
+                                                {% if profesormateria.principal %}
+                                                    <label class="label label-info tu" title="Principal">P</label>
+                                                {% endif %}
+                                                <span class="btn-mini btn-info tu"
+                                                      title="Tiempo de Dedicación">{{ materia.abreviatura_dedicacion }}</span>
+                                                {% if profesormateria.novalidahorario %}
+                                                    <label class="label label-warning tu"
+                                                           title="No valida Hor.">NVH</label>
+                                                {% endif %}
+                                                {% if profesormateria.utilizawebex %}
+                                                    <label class="label label-info tu"
+                                                           title="Utiliza cisco webex">W</label>
+                                                {% endif %}
+                                                {% if perms.sga.puede_modificar_profesor_materia and profesormateria.tipoprofesor_id == 2 and periodo.id >= 76 %}
+                                                    <a href="javascript:;" idpm="{{ profesormateria.id|encrypt }}"
+                                                       class='btn btn-tini btn-success grupospracticas'
+                                                       title="Grupos">{{ profesormateria.contargrupoprofesormateria }}
+                                                        GRUP.</a>
+                                                {% endif %}
+                                                {% if not profesormateria.horario_profesor_materia and not profesormateria.tipoprofesor_id == 3 and periodo.id >= 76 %}
+                                                    <span class="label label-important tu"
+                                                          title="No tiene horario">NH</span>{% endif %}
+                                                {% if periodo.id >= 82 %}
+                                                    {% if profesormateria.aceptarmateriaobs == None or profesormateria.aceptarmateriaobs == '' %}
+                                                        <span class="label label-warning">PENDIENTE</span>
+                                                    {% else %}
+                                                        {% if profesormateria.aceptarmateria %}
+                                                            <span class="label label-success tu"
+                                                                  title="{{ profesormateria.aceptarmateriaobs }}">ACEPTADO</span>
+                                                        {% else %}
+                                                            <span class="label label-important tu"
+                                                                  title="{{ profesormateria.aceptarmateriaobs }}">RECHAZADO</span>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endif %}
+                                                <br>
+                                                {{ profesormateria.tipoprofesor }} - <span
+                                                    style="font-weight: bold;">{{ profesormateria.profesor.persona.nombre_completo_inverso }}</span>
+                                                <br>
+                                                <span class="fechas{{ materia.id }}">[{{ profesormateria.desde|date:'d-m-Y' }} al {{ profesormateria.hasta|date:'d-m-Y' }}] Total Horas: {{ profesormateria.hora }} Tot.Cup:{{ profesormateria.totalcupoprofesormateria_grupos }} Tot.Ins:{{ profesormateria.totalinscritosprofesormateria_grupos }}</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                {% if not materia.nivel.cerrado and not materia.cerrado and not bloqueado %}
+                                    {% if nobloqueadodocente and perms.sga.puede_modificar_profesor_materia %}
+                                        <tr>
+                                            <td>
+                                                <a href="/niveles?action=addprofesor&mid=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}"
+                                                   class="btn btn-mini"><span class="fa fa-plus"></span> Profesor</a>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endif %}
+
+
+                            </table>
+                        </td>
+                        <td data-title='Acción' style="text-align: center; vertical-align: middle">
+                            <div class="btn-group" style="text-align: left">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span
+                                        class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right">
+                                    {% if perms.sga.puede_modificar_materias %}
+                                        {#                                        {%  if materia.tipomateria == 2 %}#}
+                                        <li><a href="javascript:;" class="silabovirtual" idm="{{ materia.id|encrypt }}"
+                                               parale="{{ paraleloid }}"><span class="fa fa-book"></span> Sílabo virtual</a>
+                                        </li>
+                                        {#                                        {% endif %}#}
+                                    {% endif %}
+                                    {% if not materia.cerrado and not bloqueado and perms.sga.puede_modificar_materias %}
+                                        <li><a class="bloqueo_pantalla" href='/niveles?action=editmateria&id=
+                                                {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><i
+                                                class="fa fa-edit"></i> Editar</a></li>
+                                        {#                                        {% if materia.asignaturamalla.malla.modalidad.id == 3 %}#}
+                                        {#                                            <li><a href="javascript:;" idm="{{ materia.id|encrypt }}" {% if mallaid %}idmallavirtual="{{ mallaid|encrypt }}"{% else %}idmallavirtual="0"{% endif %} idcod="{{ materia.id }}"  class="duplicar_silabovirtual"><span class="fa fa-reply"></span> Duplicar Sílabo virtual</a> </li>#}
+
+                                        {#                                        {% endif %}#}
+
+                                    {% endif %}
+                                    {% if not materia.cerrado and posgrado %}
+                                        {% if materia.tiene_cronograma %}
+                                            <li><a class="bloqueo_pantalla" href='/niveles?action=cronogramaacademico&nivelid={{ nivel.id }}&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><i class="fa fa-clock-o"></i> Cronograma Académico</a></li>
+                                        {% else %}
+                                            <li><a href='javascript:;' class="viewcronograma" nombremate="{{ materia.asignaturamalla.asignatura.nombre }}" idmate="{{ materia.id }}" idredirect="/niveles?action=cronogramaacademico&nivelid={{ nivel.id }}&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}"><span class="fa fa-plus"></span> Cronograma
+                                                Académico</a></li>
+                                        {% endif %}
+
+                                        {% if  perms.sga.puede_gestionar_postulacion_docente %}
+                                            <li>
+{#                                                <a class="bloqueo_pantalla docentesafinidad"#}
+{#                                                   href="/niveles?action=docentesafinidad#}
+{#                                                   &mid={{ materia.id }}#}
+{#                                                   {% if mallaid %}&mallaid={{ mallaid }}{% endif %}#}
+{#                                                   {% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}">#}
+{#                                                    <i class="fa fa-group"></i> Aspirantes a docentes#}
+{#                                                </a>#}
+                                                {% with convocatorias=materia.asignaturamalla|args:materia.nivel.periodo|call:"totalconvocatorias" %}
+                                                    <a class="bloqueo_pantalla" href="/niveles?action=convocatorias&mid={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}">
+                                                        <i class="fa fa-group"></i> Convocatorias (<span>{{ convocatorias }}</span>)
+                                                    </a>
+                                                {% endwith %}
+                                            </li>
+                                        {% endif %}
+                                    {% endif %}
+                                    <li><a href="javascript:;" idm="{{ materia.id|encrypt }}"
+                                           {% if mallaid %}idmallavirtual="{{ mallaid|encrypt }}"
+                                           {% else %}idmallavirtual="0"{% endif %}
+                                           class="duplicar_silabovirtual_carrera"><span class="fa fa-clone"></span>
+                                        Duplicar Sílabo virtual carreras</a></li>
+                                    {#                                            <li><a href="javascript:;" idm="{{ materia.id|encrypt }}" {% if mallaid %}idmallavirtual="{{ mallaid|encrypt }}"{% else %}idmallavirtual="0"{% endif %} idcod="{{ materia.id }}"  class="duplicar_silabovirtual"><span class="fa fa-reply"></span> Duplicar Sílabo virtual en carrera</a> </li>#}
+                                    {#                                            <li><a href="javascript:;" idm="{{ materia.id|encrypt }}" {% if mallaid %}idmallavirtual="{{ mallaid|encrypt }}"{% else %}idmallavirtual="0"{% endif %} idcodtodas="{{ materia.id }}"  class="duplicar_silabovirtualtodas"><span class="fa fa-reply"></span> Duplicar Sílabo virtual todas las carrera</a> </li>#}
+                                    {% if nivel.sesion.id == 13 %}
+                                        {#                                            <li><a href="http://virtual.unemi.edu.ec/sakaiunemi/index.php?codisakai={{ materia.id }}" target="_blank"><span class="fa fa-link"></span> Ver contenido virtual</a> </li>#}
+                                        <li><a href="/contenidosonline?codimat={{ materia.id }}" target="_blank"><span
+                                                class="fa fa-link"></span> Ver contenido virtual</a></li>
+                                    {% endif %}
+                                    <li><a href='/niveles?action=tomandom&id=
+                                            {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                            class="fa fa-user"></span> Tomaron la Materia</a></li>
+                                    {% if not materia.tiene_horario and perms.sga.puede_modificar_materias %}
+                                        <li><a href='/niveles?action=copyhorario&materiaid=
+                                                {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                class="fa fa-copy"></span> Copiar Horario de la Materia</a></li>
+                                    {% endif %}
+                                    {#                                    {% if perms.sga.puede_modificar_materias  %}#}
+                                    <li><a href='/adm_horarios/clases?action=horario&materiaid={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                            class="fa fa-clock-o"></span> Horario de la Materia</a></li>
+                                    {#                                    {% endif %}#}
+                                    {% if not materia.cerrado and perms.sga.puede_modificar_aula_horario and perms.sga.puede_modificar_materias %}
+                                        <li><a href='/niveles?action=cambiaraula&id=
+                                                {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                class="fa fa-home "></span> Cambiar Aula</a></li>
+                                    {% endif %}
+
+
+                                    <li class="dropdown-submenu pull-left"><a href="javascript:;"><i
+                                            class="fa fa-folder-open"></i> Gestión de Actas de Notas</a>
+                                        <ul class="dropdown-menu" style="width: 100%;">
+                                            {% if reporte_22 and not materia.cerrado %}
+                                                <li><a href="javascript:;" tipos="{{ reporte_22.tiporeporte }}"
+                                                       nhref="/reportes?action=run&n={{ reporte_22.nombre }}&materia_id={{ materia.id }}"
+                                                       class="downloadreportedirecto"><span class="fa fa-print"></span>
+                                                    Módelo de Subida de Acta de Notas</a></li>
+                                            {% endif %}
+                                            {% if not materia.cerrado %}
+                                                <li>
+                                                    <a href='/niveles?action=subirnotas&nivel_id={{ nivel.id }}&materia_id=
+                                                            {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><i
+                                                            class="fa fa-file-archive-o"></i> Subir Notas</a></li>
+                                            {% endif %}
+                                            {% if not materia.cerrado and reporte_7 and reporte_15 %}
+                                                {% if materia.tipomateria == 1 %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_7.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_7.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print "></span>
+                                                        Acta notas parcial</a></li>
+                                                {% else %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_15.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_15.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print "></span>
+                                                        Acta notas parcial</a></li>
+                                                {% endif %}
+                                            {% endif %}
+                                            {% if materia.cerrado and reporte_2 or reporte_14 or reporte_16 %}
+{#                                                {% if materia.tipomateria == 1 %}#}
+                                                <li><a href="javascript:;" tipos="{{ reporte_2.tiporeporte }}"
+                                                       nhref="/reportes?action=run&n={{ reporte_2.nombre }}&materia={{ materia.id }}"
+                                                       class="reportedirecto"><span class="fa fa-print"></span> Acta
+                                                    de notas</a></li>
+                                                {% if nivel.coordinacion.id == 7 %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_16.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_16.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print"></span>
+                                                        Acta de notas Recuperación</a></li>
+
+                                                {% endif %}
+{#                                                {% endif %}#}
+                                                {% if materia.asignaturamalla.malla.carrera.modalidad == 3 %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_17.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_17.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print"></span>
+                                                        Acta de notas modalidad en línea</a></li>
+                                                {% endif %}
+
+                                            {% endif %}
+                                        </ul>
+                                    </li>
+                                    {% if not posgrado %}
+                                        {% if materia.idcursomoodle %}
+                                            <li class="dropdown-submenu pull-left">
+                                                <a href="javascript:;"><i class="fa fa-refresh"></i> Actualizaciones moodle</a>
+                                                <ul class="dropdown-menu" style="width: 100%;">
+                                                    {% if perms.sga.puede_modificar_materias and persona.usuario.is_superuser and  not materia.cerrado %}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_modelo&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-retweet"></span> Actualizar modelo</a></li>
+                                                    {% endif %}
+                                                    {% if  nivel.coordinacion_id == 9 %}
+                                                        <li>
+                                                            <a href="{{ periodo.urlmoodle2 }}/course/view.php?id={{ materia.idcursomoodle }}"
+                                                               target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                                al curso de moodle</a></li>
+                                                    {% else %}
+                                                        <li>
+                                                            <a href="{{ periodo.urlmoodle }}/course/view.php?id={{ materia.idcursomoodle }}"
+                                                               target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                                al curso de moodle</a></li>
+                                                    {% endif %}
+                                                    {% if not materia.cerrado %}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_docentes&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-users "></span> Actualizar docentes</a>
+                                                        </li>
+                                                        {#                                                        <li><a class="confirmacionmodal" href="javascript:;"#}
+                                                        {#                                                               nhref='/niveles?action=confirmar_actualizacion_estudiantes&id=#}
+                                                        {#                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span#}
+                                                        {#                                                                class="fa fa-graduation-cap "></span> Actualizar#}
+                                                        {#                                                            estudiantes</a></li>#}
+                                                        <li><a class="confirmarUpdateEstudiante" href="javascript:;" idm="{{ materia.id }}" text="{{ materia.nombre_mostrar }}"><span class="fa fa-graduation-cap "></span> Actualizar estudiantes</a></li>
+                                                    {% endif %}
+                                                    {% if not materia.modelotarjeta and not materia.cerrado %}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_silabos&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-server"></span> Actualizar silabos</a></li>
+                                                    {% endif %}
+                                                    {% if  nivel.coordinacion_id == 9 and not materia.cerrado %}
+                                                        {% if perms.sga.puede_modificar_materias %}
+                                                            <li><a class="confirmacionmodal" href="javascript:;"
+                                                                   nhref='/niveles?action=migrar_actividades_sakai&id=
+                                                                           {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                    class="fa fa-refresh"></span> Migrar actividades
+                                                                gestión</a></li>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </ul>
+                                            </li>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if posgrado %}
+                                        <li class="dropdown-submenu pull-left">
+                                            <a href="javascript:;"><i class="fa fa-refresh"></i> Actualizaciones moodle
+                                                posgrado</a>
+                                            <ul class="dropdown-menu" style="width: 100%;">
+                                                {% if perms.sga.puede_modificar_materias %}
+                                                    {% if materia.idcursomoodle %}
+                                                        <li><a href="{{ periodo.urlmoodle }}/course/view.php?id={{ materia.idcursomoodle }}"
+                                                           target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                            al curso de moodle</a></li>
+                                                    {% endif %}
+                                                    <li><a href='#' onclick="exportarmoodle({{ materia.id }},'{{ materia }}')"><span class="fa fa-retweet"></span> Crear curso moodle</a></li>
+                                                    {#                                                    <li><a class="confirmacionmodal" href="javascript:;" nhref='/niveles?action=confirmar_actualizacion_modelo_posgrado&clave=todo&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span class="fa fa-retweet"></span> Crear curso moodle</a></li>#}
+                                                    {% if materia.idcursomoodle and not materia.cerrado %}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_modelo_posgrado&clave=modelo&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-retweet"></span> Actualizar modelo</a></li>
+                                                        {#                                                <li><a href="{{ periodo.urlmoodle }}/course/view.php?id={{ materia.idcursomoodle }}" target="_blank"><span class="fa fa-file-pdf-o"></span> Ir al curso de moodle</a> </li>#}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_modelo_posgrado&clave=estudiante&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-graduation-cap "></span> Actualizar
+                                                            estudiantes</a></li>
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=confirmar_actualizacion_modelo_posgrado&clave=docente&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-users "></span> Actualizar docentes</a>
+                                                        </li>
+                                                        {% if not materia.modelotarjeta %}
+                                                            <li><a class="confirmacionmodal" href="javascript:;"
+                                                                   nhref='/niveles?action=confirmar_actualizacion_modelo_posgrado&clave=silabo&id=
+                                                                           {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                    class="fa fa-server"></span> Actualizar silabos</a>
+                                                            </li>
+                                                        {% endif %}
+
+                                                    {% endif %}
+
+                                                {% endif %}
+                                            </ul>
+                                        </li>
+                                    {% endif %}
+                                    {% if posgrado %}
+                                        <li><a href='/niveles?action=matricularmodulo&id=
+                                                {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                class="fa fa-retweet"></span> Matricular otro Módulo</a></li>
+                                    {% endif %}
+                                    {% if perms.sga.puede_modificar_materias %}
+                                        <li class="dropdown-submenu pull-left"><a href="javascript:;"><i
+                                                class="fa fa-calendar"></i> Planificar fecha evaluación</a>
+                                            <ul class="dropdown-menu" style="width: 100%;">
+                                                <li><a href="#" class="modal_fechaevalindi" idcmat="{{ materia.id }}"><i
+                                                        class="fa fa-calendar"></i> Evaluación (Hétero)</a></li>
+                                                <li><a href="#" class="modal_fechaevalindiauto"
+                                                       idcmat="{{ materia.id }}"><i class="fa fa-calendar"></i>
+                                                    Evaluación (Auto)</a></li>
+                                            </ul>
+                                        </li>
+                                    {% endif %}
+
+                                    {% if not materia.cerrado %}
+                                        {% if persona.usuario.is_superuser %}
+                                            <li><a href="javascript:;" class="recalculazoom" idcmat="{{ materia.id }}"><i
+                                                    class="fa fa-refresh"></i> Recalcula asistencias zoom</a></li>
+
+                                        {% endif %}
+
+                                        {% if not bloqueado and perms.sga.puede_modificar_modelo_evaluativo_materia %}
+                                            <li><a href='/niveles?action=cambiarmodelo&id=
+                                                    {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                    class="fa fa-retweet "></span> Cambiar modelo</a></li>
+                                        {% endif %}
+                                        {% if perms.sga.puede_eliminar_calificaciones_materia %}
+                                            <li><a class="confirmacionmodal" href="javascript:;"
+                                                   nhref='/niveles?action=vaciarcalificaciones&id=
+                                                           {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                    class="fa fa-filter "></span> Eliminar calificaciones</a></li>
+                                        {% endif %}
+                                        {% if not bloqueado %}
+                                            {% if perms.sga.puede_modificar_matriculas %}
+                                                <li><a href='/niveles?action=dividir&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                        class="fa fa-resistance"></span> Dividir matriculados</a></li>
+                                                <li><a href='/niveles?action=dividirparalelo&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                        class="fa fa-resistance "></span> Dividir Paralelo Completo</a>
+                                                </li>
+                                                <li><a href='/niveles?action=dividirparalelomateria&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                        class="fa fa-resistance "></span> Dividir Paralelo por
+                                                    Materia</a></li>
+
+                                                <li><a href='/niveles?action=asignar_estudiante_materias_otro_paralelo&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                        class="fa fa-resistance "></span> Dividir Paralelo Parcial</a></li>
+                                            {% endif %}
+                                        {% endif %}
+                                        {% if perms.sga.puede_modificar_materias %}
+                                            {#                                            <li><a href='/niveles?action=diasacalificar&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span class="fa fa-calendar" ></span> D&iacute;as a calificar </a></li>#}
+                                            <li><a href='/niveles?action=fechaasistencias&id=
+                                                    {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                    class="fa fa-calendar"></span> Fecha fin asistencias</a></li>
+                                        {% endif %}
+                                        {#                                        {% if usa_evaluacion_integral and perms.sga.puede_modificar_autorizacion_evaluacion and perms.sga.puede_modificar_materias %}#}
+                                        {#                                            <li><a href='/niveles?action=diasaevaluar&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span class="fa fa-calendar" ></span> Dias a evaluar</a></li>#}
+                                        {#                                        {% endif %}#}
+                                    {% endif %}
+                                    {% if not nivel.cerrado %}
+                                        {% if materia.cerrado %}
+                                            {% if perms.sga.puede_abrir_materia_posgrado %}
+                                                <li><a href='/niveles?action=abrirm&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'
+                                                       class="btn-form"><span class="fa fa-folder-open "></span> Abrir
+                                                    la Materia</a></li>
+                                            {% endif %}
+                                        {% else %}
+                                            {% if perms.sga.puede_cerrar_materia %}
+                                                {#                                                {%  if materia.tipomateria == 2 %}#}
+                                                {##}
+                                                {#                                                    {% if materia.cumple_porcentaje_cumplimiento_tutor_virtual %}#}
+                                                {#                                                        <li><a href='/niveles?action=cerrarmadmisionvirtual&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class="btn-form"><span class="fa fa-folder-o" ></span> Cerrar la Materia Virtual</a></li>#}
+                                                {#                                                    {% endif %}#}
+                                                {#                                                {% else %}#}
+
+                                                {% if periodo.periodo_academia %}
+                                                    {% if periodo.periodo_academia.cierra_materia %}
+                                                        <li><a href='/niveles?action=cerrarm&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'
+                                                               class="btn-form"><span class="fa fa-folder-o"></span> Cerrar la Materia</a></li>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <li><a href='/niveles?action=cerrarm&id={{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'
+                                                           class="btn-form"><span class="fa fa-folder-o"></span> Cerrar la Materia</a></li>
+                                                {% endif %}
+                                                {#                                                {% endif %}#}
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if materia.asignaturamalla.practicas %}
+                                        {% if materia.laboratorio %}
+                                            {% if not materia.laboratorio_uso %}
+                                                <li><a href='/niveles?action=laboratorios&id=
+                                                        {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                        class="fa fa-wrench"></span> Asignar Laboratorio</a></li>
+                                            {% endif %}
+                                        {% else %}
+                                            <li><a href='/niveles?action=laboratorios&id=
+                                                    {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                    class="fa fa-wrench"></span> Asignar Laboratorio</a></li>
+                                        {% endif %}
+                                    {% endif %}
+                                    <li class="dropdown-submenu pull-left"><a href="javascript:;"><i
+                                            class="fa fa-file-pdf-o"></i> Reportes tomaron la materia</a>
+                                        <ul class="dropdown-menu" style="width: 100%;">
+                                            {% if materia.nivel.paralelo == "EN LÍNEA - INGLES" %}
+                                                {% if reporte_20 %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_20.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_20.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print"></span>
+                                                        Tomaron la materia ingles</a></li>
+                                                    <li><a href="javascript:;" tipos="{{ reporte_21.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_21.nombre }}&materia={{ materia.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print"></span>
+                                                        Tomaron la materia ingles(excel)</a></li>
+                                                {% endif %}
+                                            {% else %}
+                                                {% if reporte_3 %}
+                                                    <li><a href="javascript:;" tipos="{{ reporte_3.tiporeporte }}"
+                                                           nhref="/reportes?action=run&n={{ reporte_3.nombre }}&profesormateria={{ materia.profesor_principal_pm.id }}"
+                                                           class="reportedirecto"><span class="fa fa-print"></span>
+                                                        Tomaron la materia</a></li>
+                                                {% endif %}
+                                            {% endif %}
+                                        </ul>
+                                    </li>
+                                    {% if reporte_4 %}
+                                        <li><a href="javascript:;" tipos="{{ reporte_4.tiporeporte }}"
+                                               nhref="/reportes?action=run&n={{ reporte_4.nombre }}&materia={{ materia.id }}"
+                                               class="reportedirecto"><span class="fa fa-print"></span> Asistencia
+                                            manual</a></li>
+                                    {% endif %}
+                                    {% if reporte_5 %}
+                                        <li><a href="javascript:;" tipos="{{ reporte_5.tiporeporte }}"
+                                               nhref="/reportes?action=run&n={{ reporte_5.nombre }}&materia={{ materia.id }}"
+                                               class="reportedirecto"><span class="fa fa-print "></span> Control
+                                            calificaciones</a></li>
+                                    {% endif %}
+                                    {% if reporte_6 %}
+                                        <li><a href="javascript:;" tipos="{{ reporte_6.tiporeporte }}"
+                                               nhref="/reportes?action=run&n={{ reporte_6.nombre }}&materia={{ materia.id }}"
+                                               class="reportedirecto"><span class="fa fa-print "></span> Control
+                                            académico</a></li>
+                                    {% endif %}
+                                    {% if reporte_1 %}
+                                        <li><a href="javascript:;" tipos="{{ reporte_1.tiporeporte }}"
+                                               nhref="/reportes?action=run&n={{ reporte_1.nombre }}&materia={{ materia.id }}"
+                                               class="reportedirecto"><span class="fa fa-print"></span> Asistencias</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if materia.asignaturamalla.practicas %}
+                                        {% if reporte_12 %}
+                                            <li><a href="javascript:;" tipos="{{ reporte_12.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_12.nombre }}&materia={{ materia.id }}"
+                                                   class="reportedirecto"><span class="fa fa-print"></span> Listado
+                                                alumnos en asignaturas TP</a></li>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if materia.existe_motivos_eliminar_profesor and perms.sga.puede_modificar_materias %}
+                                        <li><a href="javascript:;" idm="{{ materia.id|encrypt }}"
+                                               class="auditoriaprofesor"><span class="fa fa-user"></span> Motivos
+                                            eliminar profesor</a></li>
+                                    {% endif %}
+                                    {% if not materia.cerrado and not materia.tiene_clases and not materia.tiene_matriculas and perms.sga.puede_modificar_materias %}
+                                        <li><a class="eliminacionmodal" href="javascript:;"
+                                               nhref='/niveles?action=deletemateria&id=
+                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}'><span
+                                                class="fa fa-remove "></span> Eliminar Materia</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if periodo.usa_sakai %}
+                                        {% if materia.codigosakai and not materia.cerrado and nivel.coordinacion_id == 9 %}
+                                            <li class="dropdown-submenu pull-left">
+                                                <a href="javascript:;"><i class="fa fa-refresh"></i> Actualizaciones
+                                                    sakai</a>
+                                                <ul class="dropdown-menu" style="width: 100%;">
+                                                    {% if perms.sga.puede_modificar_materias %}
+                                                        <li><a class="confirmacionmodal" href="javascript:;"
+                                                               nhref='/niveles?action=migrar_actividades_sakai&id=
+                                                                       {{ materia.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}'><span
+                                                                class="fa fa-refresh"></span> Migrar Actividades
+                                                            sakai</a></li>
+                                                    {% endif %}
+                                                </ul>
+                                            </li>
+                                        {% endif %}
+                                    {% endif %}
+
+                                    {% if not bloqueado and perms.sga.puede_actualizar__asistencia_estudiante %}
+                                        <li>
+                                            <a class="btn-accion"
+                                               href="javascript:;"
+                                               data-json='{"url":"{{ request.path }}","action":"actualizar_asistencia", "id":"{{ materia.id|encrypt }}"}'
+                                               data-question='{"title":"Está seguro de Actualizar la Asistencias de la materia :","text_context":"{{ materia.nombre_completo }} - {% if materia.asignaturamalla.nivelmalla %}{{ materia.asignaturamalla.nivelmalla }}{% endif %}","color_context":"info"}'>
+                                                <i class="fa fa-refresh"></i> Actualizar Asistencia
+                                            </a>
+                                        </li>
+                                    {% endif %}
+                                    {% with tienerepuesta=materia|args:periodo|call:"tienerespuestasevaluacion" %}
+                                        {% if tienerepuesta %}
+                                            <li><a href="javascript:;"
+                                                   class="generarinformeevaluacionipec"
+                                                   idmat="{{ materia.id }}"><span
+                                                    class="fa fa-print"></span> Resultados
+                                                Evaluación IPEC</a>
+                                            </li>
+                                        {% endif %}
+                                    {% endwith %}
+                                    <li ><a href='/niveles?action=condicionesevaluardocente&matid={{ materia.id }}&id={{ nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}'>
+                                        <span class="fa fa-warning"></span>Previsualizar evaluación docente</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="100" style="text-align: center"><i class="fa fa-question-circle"></i> Sin Datos</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% include 'paginacion.html' %}
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal static" id="cerrarpanel" style="display: none;">
+        <div class="modal-header">
+            <h3 id="cerrarpanelpaneltitle">Cerrando el Nivel</h3>
+        </div>
+        <div class="modal-body" id="cerrarpanelpanelbody">
+            <div class="progress progress-striped active">
+                <div class="bar" style="width: 0;" id="progressbar"></div>
+            </div>
+            <div id="cerrarpanelprogresshint">
+            </div>
+        </div>
+    </div>
+    <div class="modal static" id="afinidad" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle Título</h3>
+        </div>
+        <div class="modal-body" id="afinidadbody">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="afinidad_cerrar"> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal static" id="conflicto" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Conflicto del docente</h3>
+        </div>
+        <div class="modal-body" id="conflicto_body">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="conflicto_cerrar"> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="eliminarprofe" style="display: none;">
+        <div class="modal-header">
+            <h4 id="justificacionpaneltitle">Motivo de eliminar profesor</h4>
+        </div>
+        <div class="modal-body">
+            <input type="text" style="text-transform: uppercase" class="input-block-level" id="motivo">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" id="eliminarprofe_run" class="btn btn-success">Eliminar</a>
+            <a href="javascript:;" id="eliminarprofe_close" class="btn">Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="grupospracticas" style="display: none;">
+        <div class="modal-header">
+            <h4>Grupos de prácticas</h4>
+        </div>
+        <div class="modal-body-grupos">
+        </div>
+        <div class="modal-footer">
+            {#            <a  href="javascript:;" id="grupo_run" class="btn btn-success">Guardar</a>#}
+            <a href="javascript:;" id="grupo_close" class="btn">Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="auditoriaprofe" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Motivos de eliminación de profesores</h4>
+        </div>
+        <div class="modal-body" id="selectauditoria-body">
+        </div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a class="btn btn-info auditoriaprofe_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Seleccione el parcial del exámen</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div style="text-align: center">
+                <select id='examenparcial'>
+                </select>
+            </div>
+            <br>
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: center; margin-bottom: 0">
+                <a href="javascript:;" class="btn btn-danger generarhorarioexamen"><i class="fa fa-plus"></i>
+                    Procesar</a>
+                <a href="javascript:;" class="cancelarhorarioexamen btn btn-info"> Cancelar</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modaladdindicadoresindi" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleindi">Fecha evaluación Hétero</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbodyindi">
+            <div class="alert alert-danger" id="alertaingresoaddindicadoresindi" style="display: none;"> FECHAS YA
+                FUERON INGRESADAS
+            </div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-vertical' action="" method="POST">
+                    <input type="hidden" id="idcodmateria" name="idcodmateria">
+                    Fecha Inicio.:<br><input type="text" name="id_fechainiindi" id="id_fechainiindi"
+                                             placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinindi" id="id_fechafinindi"
+                                              placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="generar_reporteindi"><i class="fa fa-save"></i>
+                Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarindicadoresaddindi"><i
+                    class="fa fa-trash"></i> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspaneladicionar_silabo" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Duplicar Silabo</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <input id="id_codigomateria" name="id_codigomateria" type="hidden">
+
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-duplicarsilabo btn-success">Duplicar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspaneladicionar_silabotodas" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Duplicar Silabo en todas las carreras</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <input id="id_codigomateriatodas" name="id_codigomateriatodas" type="hidden">
+
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-duplicarsilabotodas btn-success">Duplicar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrartodas btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="listacarreras" style="display: none;">
+        <div class="modal-header">
+            <div style="text-align: right"></div>
+            <h4 id="paneltitle"></h4>
+            <table style="background-color: transparent" width="100%" border="0">
+                <tbody>
+                <tr class="">
+                    <td style="width: 80%">
+                        <h3 class="paneltitle">
+                            <div id="idcabecera"></div>
+                        </h3>
+                    </td>
+                    <td><a href="javascript:;" id="add_cancelpre" class="btn btn-danger btn-mini pull-right"><i
+                            class="fa fa-remove"></i></a></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-body panelbodylista">
+            <div style="overflow:scroll; height:350px;">
+                {#                <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">#}
+                <table class='table table-bordered' cellpadding="0" cellspacing="0" id="tablamaterias">
+                    <thead>
+                    <tr>
+                        <th width="80px" style="text-align: center; font-weight: bold;"></th>
+                        <th width="550px" style="text-align: center; font-weight: bold;">Carrera</th>
+                        {#                        <th width="550px" style="text-align: center; font-weight: bold;">Malla</th>#}
+                    </tr>
+                    </thead>
+                    <tbody id="tbodylista">
+                    </tbody>
+                </table>
+                <input type="hidden" id="id_selecionado" name="id_selecionado" value="0">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="guardarlistado" class="btn btn-success"> Guardar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalconffechaevalauto" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleindi">Fecha evaluación auto</h3>
+        </div>
+        <div class="alert alert-info">
+            <i class="fa fa-info-sign"></i> Al guardar fechas de evaluación, no considerará la fecha del cronograma
+        </div>
+        <div class="modal-body panelbodyindi">
+            <div class="alert alert-danger" id="alertamodalauto" style="display: none;"> FECHAS YA FUERON INGRESADAS
+            </div>
+            <div class="row-fluid">
+                <form id="formularioauto" class='form-vertical' action="" method="POST">
+                    <input type="hidden" id="idcodmateriaauto" name="idcodmateriaauto">
+                    Fecha Inicio.:<br><input type="text" name="id_fechainiindiauto" id="id_fechainiindiauto"
+                                             placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinindiauto" id="id_fechafinindiauto"
+                                              placeholder="Fecha Fin">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="guardarfechaauto"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarfechaauto"><i class="fa fa-trash"></i>
+                Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalexportarmoodle" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Crear o actualizar Asignatura en moodle</h4>
+        </div>
+        <div class="modal-body importarbody">
+            <p style="margin-top: 16px;">Esta seguro(a) de realizar acción a la asignatura <br><strong><span id="idnommateria"></span></strong>?</p>
+            <input type="hidden" id="idmateria" name="idmateria">
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="boton_exportarmoodle" class='btn btn-success'> Exportar</a>
+                <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a>
+            </p>
+        </div>
+    </div>
+    <div class="modal static" id="recalcularexportarmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Exportando moodle asignatura </h3>
+        </div>
+        <div style="font-size: 10px" id="materiaexportar"></div>
+        <div class="modal-body">
+            <div style="text-align: center" id="idtotales"></div>
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)' class="progress progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbarexportar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularexportarmodalprogresshint">
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalcronogramaposgrado" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Rango de fechas que creará el cronograma académico</h4>
+        </div>
+        <div class="modal-body" style="overflow: scroll;">
+            <div class="alert alert-danger">
+                En caso de no ser las semanas que son, cambie la fecha inicio y fin de la asignatura.<br>
+                Se le recuerda que las semanas se crean a partir de la fecha inicio y fin que usted configure.
+            </div>
+            <span id="nombremateria"></span>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" id="tablecronograma">
+                <thead>
+                <tr>
+                    <th style="text-align: center" width="20%">
+                        SEMANA
+                    </th>
+                    <th style="text-align: center" width="40%">
+                        FECHA INICIO
+                    </th>
+                    <th style="text-align: center" width="40%">
+                        FECHA FIN
+                    </th>
+                </tr>
+                </thead>
+                <tbody id="contenidoparticipantes">
+                </tbody>
+            </table>
+            <input type="hidden" id="idurl" name="idurl" value="">
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="boton_crearcronograma" class='btn btn-success'> Crear cronograma académico</a>
+                <a href="javascript:;" id="cancelacrearcronograma" class='btn btn-default'> Cancelar</a>
+            </p>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalViewProccessUpdateMoodle" style="display: none;">
+        <div class="modal-header">
+            <h3 id="paneltitle">Estudiantes de la materia - <span class="text-info"></span></h3>
+        </div>
+        <div class="modal-body">
+            <ul></ul>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-inverse action-close"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

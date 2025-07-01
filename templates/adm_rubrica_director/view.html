@@ -1,0 +1,277 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function() {
+            busqueda = function(){
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var estado = $("#id_estado_seleccionado").val().trim().toUpperCase();
+                if (term.length>0){
+                    location.href = "/adm_rubrica_director?estado_seleccionado="+estado+"&s="+term;
+                }
+                else
+                {
+                    location.href = "/adm_rubrica_director?estado_seleccionado="+estado;
+                }
+                return false;
+            };
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $(".estado_seleccionado").change(function () {
+                busqueda();
+            });
+
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $(".add_revista").click(function() {
+                var id = $(this).attr('id');
+                if (id>0)
+                {
+                    $.post("/adm_rubrica_director", {'action':'detalle_rubrica', 'id': id }, function(data) {
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            $(".paneltitldetalle").html(data.title);
+                            $(".panelbodydetalle").html(data.data);
+                            $("#itemspanelagregarrevista").modal({backdrop:'static', width: '1000px', height: 'auto'}).modal('show');
+                        }
+                        else{
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json');
+                }
+                {#$("#itemspanelagregarrevista").modal({keyboard: false, backdrop:'static', width: '500px'}).modal('show');#}
+            });
+
+            $(".cerrarrevista").click(function () {
+                $('#itemspanelagregarrevista').modal('hide');
+            });
+
+            $(".aprobrasilabo").click(function () {
+                $(".itemspanelaprobarsilabos").modal({backdrop:'static', width: '800px'}).modal('show');
+                var id = $(this).attr('id');
+                ids=id;
+            });
+            $(".itemspanelaprobarsilabos .btn-cerrar").click(function() {
+                document.getElementById("observacion").value="";
+                $(".itemspanelaprobarsilabos").modal("hide");
+                $("#mensaje").hide();
+                ids=0;
+            });
+
+            $(".btn-adicionar").click(function() {
+                var observacion = $(".observacion").val();
+                var estado = $(".estado").val();
+                if(observacion.length<1){
+                    smoke.alert("Ingrese una observación.");
+                    $("#id_observaciones").focus();
+                    return false;
+                }
+                if(estado == "0"){
+                    smoke.alert("Selecione el estado de la aprobación.");
+                    $("#cb_estado_solicitud").focus();
+                    return false;
+                }
+                bloqueointerface();
+                var _data = new FormData();
+                _data.append('id', ids);
+                _data.append('st', estado);
+                _data.append('obs', observacion);
+                _data.append('action', 'aprobar_rubrica');
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_rubrica_director",
+                    contentType: false,
+                    cache: false,
+                    processData: false,
+                    data:  _data,
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            $.unblockUI();
+                            $(".itemspanelaprobarsilabos").modal("hide");
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        desbloqueoUi();
+                        smoke.alert("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+
+            });
+
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_rubrica{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span6'>
+            <select id="id_estado_seleccionado" class="imp-75 estado_seleccionado" name="id_estado_seleccionado">
+                <option value="1" {% if estado_seleccionado == 1 %} selected {% endif %}>SOLICITADO</option>
+                <option value="2" {% if estado_seleccionado == 2 %} selected {% endif %}>APROBADO</option>
+                <option value="3" {% if estado_seleccionado == 3 %} selected {% endif %}>RECHAZADO</option>
+            </select>
+        </div>
+        <div class='span6'>
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids %}
+                    <a href="/adm_rubrica_director" id='allresults' class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered table-striped'>
+                <thead>
+                <tr>
+                    <th style="width: 70px;">Código</th>
+                    <th>Rúbrica</th>
+                    <th style="width: 300px;">Profesor</th>
+                    <th style="width: 70px;">Estado</th>
+                    <th style="width: 80px;">Detalle</th>
+                    {#                    <th style="width: 120px;">Carreras</th>#}
+                    <th style="width: 70px;">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for r in rubricas %}
+                    {% with estado=r|call:'que_estado' %}
+                        {% if estado == estado_seleccionado %}
+                            <tr>
+                                <td>{{ r.id }}</td>
+                                <td>{{ r.nombre }}<br>
+                                    <strong>Tipo: </strong> {{ r.get_tipotarea_display }}
+                                </td>
+                                <td>{{ r.profesor }}
+                                </td>
+                                <td style="text-align: center">
+                                    {% if estado == 2 %}
+                                        <span class="label label-success tu" data-original-title="Aprobado">APROBADO</span>
+                                    {% else %}
+                                        {% if estado == 3 %}
+                                            <span class="label label-important tu" data-original-title="Rechazado">RECHAZADO</span>
+                                        {% else %}
+                                            <span class="label label-warning tu" data-original-title="Solicitado">SOLICITADO</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    <a class="btn btn-mini btn-warning add_revista tu" title="Ver Detalle" href="javascript:;" id="{{ r.id }}"><i class="fa fa-list"></i></a>
+                                </td>
+                                <td>
+                                    {% if estado != 2 %}
+                                        <div class="btn-group">
+                                            <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                            <ul class="dropdown-menu pull-right">
+                                                <li><a class="aprobrasilabo tu" href="javascript:;" id="{{ r.id|encrypt }}"><i class="fa fa-check"></i> Aprobar/Recahazar</a></li>
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endwith %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 20 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page=1">1</a></li>
+                            <li><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                            <li><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/adm_rubrica?action=aprobar_rubricas&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelagregarrevista" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitldetalle"></h3>
+        </div>
+        <div class="modal-body panelbodydetalle">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-danger cerrarrevista">Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static itemspanelaprobarsilabos" id="itemspanelaprobarsilabos"  style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Aprobar Rúbrica</h3>
+        </div>
+        <div style="width: 80%; border: 5px; background-color: #f2dede; margin-left: 10%"><h5 id="mensaje" style="text-align: center; color: #CC3434"></h5></div>
+        <div class="modal-body panelbody">
+            {#        <strong>Asignatura: </strong>{{ materia.asignaturamalla }}<br>#}
+            {#        <strong>Profesor/a: </strong>{{ profesor}}#}
+        </div>
+        <div class="modal-footer">
+            <table class=" table table-condensed" border="0px" style="border: none;">
+                <tr>
+                    <td><span>Observación</span><br>
+                        <textarea id="observacion" class="observacion" rows="5" style="text-align: justify; width: 100%;"></textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span>Aprobar/Rechazar </span>
+                        <select id="estado" class="imp-50 estado" name="estado">
+                            <option value="0">--------</option>
+                            <option value="2">APROBADO</option>
+                            <option value="3">RECHAZADO</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr></tr>
+                <tr>
+                    <td style="text-align: right">
+                        <a href="javascript:;" class="btn btn-adicionar btn-success">Guardar</a>
+                        <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+
+{% endblock %}

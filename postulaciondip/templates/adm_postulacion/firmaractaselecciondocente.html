@@ -1,0 +1,541 @@
+{% extends 'comiteacademico/base.html' %}
+{% load sga_extras %}
+{% block extraJSHead %}
+<script type="text/javascript">
+        let pk_convocatorias = []
+
+        function busqueda() {
+            var term = $("#searchinput").val();
+            var id_estado_acta = $("#id_estado_acta").val()
+            if (id_estado_acta === '0') {
+                location.href = `/adm_postulacion?action=firmaractaselecciondocente&searchinput=${term}`
+            } else {
+                location.href = `/adm_postulacion?action=firmaractaselecciondocente&id_estado_acta=${id_estado_acta}&searchinput=${term}`;
+            }
+        }
+
+        $(function (e) {
+            $('.select2').select2();
+
+            $('#id_seleccionmasivo').click(function (e) {
+                if (this.checked) {
+                    $('.seleccionindividual').prop('checked', true);
+                    $('.seleccionindividual:checked').each(function () {
+                        let pk = this.attributes.id_acta.value;
+                        if (this.checked && !pk_convocatorias.includes(pk)) {
+                            pk_convocatorias.push(pk);
+                        }
+                    });
+                } else {
+                    $('.seleccionindividual').prop('checked', false);
+                    pk_convocatorias = [];
+                }
+
+                show_hide_generar_acta();
+            });
+
+            $('.seleccionindividual').change(function () {
+                if (this.attributes.fecha_legalizacion.value) {
+                    pk_convocatorias = [];
+                    $('.seleccionindividual:checked').each(function () {
+                        let pk = this.attributes.id_acta.value;
+                        if (this.checked && !pk_convocatorias.includes(pk)) {
+                            pk_convocatorias.push(pk);
+                        }
+                    });
+                } else {
+                    this.checked = false;
+                    mensajeDanger("Esta acta no se encuentra legalizada.")
+                }
+                show_hide_generar_acta();
+            });
+
+            $(".fancybox").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                width: '80%',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("#id_estado_acta").change(function () {
+                busqueda();
+            });
+        });
+
+        show_hide_generar_acta = () => {
+            if (pk_convocatorias.length > 0) {
+                $('#btn_actaseleccion').show('slow');
+            } else {
+                $('#btn_actaseleccion').hide('slow');
+            }
+
+        }
+
+        function formModal(id, text, action, footer = false, id_cv = 0) {
+            bloqueointerface();
+            footer && $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'id_cv': id_cv,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result === 'ok') {
+                        if (data.data) {
+                            $('#itemspanel .panelbody').html(data.data);
+                            $('#itemspanel .paneltitle').html(text.toUpperCase());
+                            $("#itemspanel").modal({
+                                backdrop: 'static',
+                                width: '90%'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $(".panelbody").empty();
+                            });
+                        } else {
+                            location.reload();
+                        }
+                    } else {
+                        mensajeDanger(data.message + ' ' + data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const generaracta = (pk) => {
+            $.get('/adm_postulacion', {'action': 'generaractaseleccion', 'id': pk}, function (data) {
+                $.unblockUI();
+                if (data.result) {
+                    mensajeSuccess('Se actualizó el acta exitosamente.');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 3000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    })
+
+                    Toast.fire({
+                        icon: 'error',
+                        title: `Problemas al generar el acta. ${data.mensaje}`
+                    })
+                }
+            })
+        }
+
+        const show_docs_modal = (obj) => {
+            if (pk_convocatorias.length > 0) {
+                $('#itemspanelcertificacion #id_url').val(obj.attributes.xhref.value);
+                $("#itemspanelcertificacion").modal({
+                    backdrop: 'static',
+                    width: '90%'
+                }).modal('show').on('hidden.bs.modal', function (e) {
+                    $(".panelbody").empty();
+                });
+            } else {
+                mensajeDanger('Debe seleccionar al menos 1 acta.')
+            }
+        }
+
+        const generar_documentos = () => {
+            bloqueointerface();
+            let formdata = new FormData($("#formulariocertificacion")[0]);
+            formdata.append('lista_items1', pk_convocatorias);
+            var params = new URLSearchParams(formdata.get('url'));
+
+            for (var [param, value] of params) {
+                formdata.append(param, value);
+            }
+            debugger;
+
+            $.ajax({
+                type: "POST",
+                url: '/adm_postulacion',
+                data: formdata,
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        data.url && window.open(data.url, '_blank');
+                    } else {
+                        mensajeDanger('Error al generar el documento.')
+                    }
+                },
+
+                error: function (jqXHR, textStatus, errorThrown) {
+                    $.unblockUI();
+                    {#smoke.alert("Error de conexión.");#}
+                    var msg = '';
+                    if (jqXHR.status === 0) {
+                        msg = 'Not connect: Verify Network.';
+                    } else if (jqXHR.status == 404) {
+                        msg = 'Requested page not found [404]';
+                    } else if (jqXHR.status == 500) {
+                        msg = 'Internal Server Error [500].';
+                    } else if (textStatus === 'parsererror') {
+                        msg = 'Requested JSON parse failed.';
+                    } else if (textStatus === 'timeout') {
+                        msg = 'Time out error.';
+                    } else if (textStatus === 'abort') {
+                        msg = 'Ajax request aborted.';
+                    } else {
+                        msg = 'Uncaught Error: ' + jqXHR.responseText;
+                    }
+                    NotificationJG.error("Error al enviar los datos: " + msg);
+                },
+
+                dataType: "json",
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        }
+
+        function metodo_firma(id, text, footer = false, id_cv = 0){
+            Swal.fire({
+                title: `<h4></h4>`,
+                text: "¿Seleccione el método para firmar el documento?",
+                type: 'warning',
+                showDenyButton: true,
+                showCloseButton: true,
+                denyButtonText: `Firmar por Token`,
+                confirmButtonText: 'Firmar por archivo',
+                cancelButtonText: 'Cancelar',
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    bloqueointerface();
+                    footer && $('#footermodal').show();
+                    $.ajax({
+                        type: "GET",
+                        url: `{{ request.path }}`,
+                        data: {
+                            'action': 'legalizaracta',
+                            'id': id,
+                            'id_cv': id_cv,
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === true || data.result === 'ok') {
+                                if (data.data) {
+                                    $('#itemspanel .panelbody').html(data.data);
+                                    $('#itemspanel .paneltitle').html(text.toUpperCase());
+                                    $("#itemspanel").modal({
+                                        backdrop: 'static',
+                                        width: '90%'
+                                    }).modal('show').on('hidden.bs.modal', function (e) {
+                                        $(".panelbody").empty();
+                                    });
+                                } else {
+                                    location.reload();
+                                }
+                            } else {
+                                mensajeDanger(data.message + ' ' + data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeDanger("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                } else if (result.isDenied){
+                    bloqueointerface();
+                    footer && $('#footermodal').show();
+                    $.ajax({
+                        type: "GET",
+                        url: `{{ request.path }}`,
+                        data: {
+                            'action': 'firmar_por_token',
+                            'id': id,
+                            'id_cv': id_cv,
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === true || data.result === 'ok') {
+                                if (data.data) {
+                                    $('#itemspanel .panelbody').html(data.data);
+                                    $('#itemspanel .paneltitle').html(text.toUpperCase());
+                                    $("#itemspanel").modal({
+                                        backdrop: 'static',
+                                        width: '90%'
+                                    }).modal('show').on('hidden.bs.modal', function (e) {
+                                        $(".panelbody").empty();
+                                    });
+                                } else {
+                                    location.reload();
+                                }
+                            } else {
+                                mensajeDanger(data.message + ' ' + data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeDanger("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+        }
+    </script>
+{% endblock %}
+{% block contenido %}
+  <div class='row ps-0 d-flex justify-content-between'>
+        <div class='col-sm-6'>
+            <div class="headtitle ps-0 ms-0">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Listado de actás por firmar</h6>
+            </div>
+        </div>
+        <div class="col-sm-6 d-flex justify-content-end">
+            <div class="btn-group">
+
+            </div>
+        </div>
+    </div>
+    {% if listadoactas %}
+        <div class="row">
+            <div class='col-lg-12'>
+                <div class="alert alert-primary d-flex align-items-center mb-2 alert-dismissible fade show"
+                     role="alert">
+                    <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Info:">
+                        <use xlink:href="#info-fill"/>
+                    </svg>
+                    <div>
+                        El plazo para legalizar el acta es de {{ plazo_legalizar|default:"__" }} días antes de empezar
+                        el/los módulos.
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    <div class="row mt-0">
+        <div class="col-6">
+            <div class="btn-group">
+            </div>
+        </div>
+        <div class="col-6">
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-12">
+            <!-- Card -->
+            <div class="card mb-4">
+                <!-- Card Header -->
+                <div class="card-header border-bottom-0">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12">
+                            <form class="form-search" onsubmit="return busqueda()">
+                                <div class="input-group mb-2">
+                                    <span class="position-absolute ps-3 search-icon">
+                                    <i class="fa fa-search fs-6"></i>
+                                </span>
+                                    <input type="search" name="searchinput" id="searchinput" class="form-control ps-5"
+                                           aria-describedby="button-addon2"
+                                           placeholder="Buscar por código de acta..."/>
+                                    <a href="javascript:;" id='search' class='btn btn-info'><span
+                                            class="fa fa-search "></span> Buscar</a>
+                                    <div class="input-group-append">
+                                        <div class="input-group-append">
+                                            <a title="Ver todo"
+                                               href="/adm_postulacion?action=firmaractaselecciondocente"
+                                               class="btn btn-default tr cleartext"><i
+                                                    class="fas fa-sync-alt"></i></a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+
+                        </div>
+                    </div>
+                </div>
+                <!-- Table  -->
+                <div class="border-0">
+                    <table class="table mb-0" style="position: relative!important;z-index: 1!important;">
+                        <thead class="table-light">
+                        <tr>
+
+                            <th style="width: 35%" scope="col" class="border-0">COMITÉ ACADÉMICO</th>
+                            <th style="width: 17%" scope="col" class="border-0">SELECCIONADOS</th>
+                            <th style="width: 15%" scope="col" class="border-0">% CONFIG.</th>
+                            <th style="width: 12%" scope="col" class="border-0">FIRMAS</th>
+                            <th style="width: 16%" scope="col" class="border-0"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for acta in listadoactas %}
+                            {% with total_firmas=acta|call:"total_firmas_por_acta" %}
+                                <tr>
+
+                                    <td>
+                                        <a href="#" class="text-inherit">
+                                            <div class="d-lg-flex align-items-center">
+                                                <div class="ps-2">
+                                                    <a href="{{ acta.archivo_url }}"
+                                                       class="btn p-0 border-0 {% if not acta.archivo %}disabled{% endif %} fancybox position-relative">
+                                                        {% if acta.archivo %}
+                                                            <span id="badge-to-signatures-{{ acta.pk }}"
+                                                                  class="position-absolute top-0 translate-middle p-2 bg-danger border border-light rounded-circle"
+                                                                  style="left: 82% !important">
+                                                                <span class="visually-hidden">New alerts</span>
+                                                            </span>
+                                                        {% endif %}
+                                                        <img src="https://sga.unemi.edu.ec/static/images/iconos/pdf.png"
+                                                             alt="..." class="ms-2 p-1 img-4by3-xs rounded"/>
+                                                    </a>
+                                                </div>
+                                                <div class="ms-lg-3 mt-2 mt-lg-0">
+                                                    {% if acta.get_convocatorias and acta.archivo and not total_firmas %}
+                                                        {% with plazo_legalizar=acta|call:"get_plazo_legalizacion" %}
+                                                            <span title="PLAZO PARA LEGALIZAR EL ACTA"
+                                                                  class="badge bg-light-{% if plazo_legalizar > 0 %}warning text-dark-warning{% else %}danger text-dark-danger{% endif %} fs-6 tr">
+                                                                {% if plazo_legalizar %}Quedan
+                                                                    <b>{{ plazo_legalizar }}</b> días{% else %}Venció el
+                                                                    plazo{% endif %}
+                                                            </span>
+                                                        {% endwith %}
+                                                    {% endif %}
+                                                    <h6 class="my-1 text-primary-hover">{{ acta }}</h6>
+                                                    <span class="fs-5">
+                                                        {% for cv in acta.get_convocatorias %}
+                                                            <details>
+                                                                <summary>
+                                                                    <i class="fa fa-chevron-right text-black-50"
+                                                                       style="font-size: 9px"></i> {{ cv.convocatoria.asignaturamalla.asignatura|lower|capfirst|default:'Por definir' }} - {{ cv.paralelo|default:'' }}
+                                                                </summary>
+                                                                <p class="ps-2 text-black-50" style="font-size: 12px">F. Inicio: {{ cv.inicio|date:"d/m/Y" }} | F. Fín:
+                                                                    {{ cv.fin|date:"d/m/Y" }}</p>
+                                                            </details>
+                                                        {% endfor %}
+                                                        <br>
+
+                                                    <a class="label  {% if  acta.estado == 1 %}label-warning{% endif %} {% if  acta.estado == 2 %}label-info{% endif %} {% if  acta.estado == 3 %}label-success{% endif %}  tu"
+                                                       href="javascript:;"
+                                                       title="Estado del acta"> {{ acta.get_estado_display| upper }} </a>
+                                                        <br>
+                                                        {{ acta.lugar }}
+                                                    </span><br>
+                                                    {% if acta.fecha_generacion %}
+                                                        <span class="text-inherit fs-6">Generado el {{ acta.fecha_generacion.day }} de {{ acta.fecha_generacion|nombremes }} del {{ acta.fecha_generacion.year }}</span>{% endif %}
+                                                    {% if acta.fecha_legalizacion %},
+                                                        <span class="text-inherit fs-6">legalizado el {{ acta.fecha_legalizacion.day }} de {{ acta.fecha_legalizacion|nombremes }} del {{ acta.fecha_legalizacion.year }}</span>{% endif %}
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </td>
+                                    <td class="align-middle">
+                                        <div class="avatar-group">
+                                            {% for ganador in acta.get_ganador %}
+                                                <span class="avatar avatar-md tu"
+                                                      title="{{ ganador.inscripcion|lower|title }} - {{ ganador.actaparalelo.paralelo }}">
+                                                <a data-fancybox
+                                                   data-src="https://sga.unemi.edu.ec{{ ganador.inscripcion.postulante.persona.foto.foto.url }}"
+                                                   title="{{ ganador.inscripcion.postulante.persona }}">
+
+                                                    <img style="width: 40px;" alt="avatar"
+                                                         src="{{ ganador.inscripcion.postulante.persona.get_foto }}"
+                                                         class="rounded-circle imgtooltip" data-template="one">
+                                                </a>
+                                                    <span id="one" class="d-none">
+                                                        <span class="mb-0 h6">{{ ganador.inscripcion|lower|title }}</span>
+                                                    </span>
+                                                </span>
+                                            {% endfor %}
+                                            <span class="avatar avatar-md">
+                                                <span class="avatar-initials rounded-circle bg-light text-dark">{{ acta.get_ganador|length }}+</span>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="align-middle fs-6">
+                                        {% if not acta.cerrada %}
+                                            {% with progress=acta.porcentaje_configuracion %}
+                                                <span class="ps-4">{{ progress|floatformat:0|default:"0" }} %</span><br>
+                                                <div class="d-flex align-items-center" style="width: 40%">
+                                                    <div class="progress flex-auto" style="height: 3px;">
+                                                        <div class="progress-bar bg-{% if progress <= 25 %}danger
+                                                            {% else %}{% if progress <= 50 %}warning
+
+                                                            {% else %}{% if progress <= 75 %}info{% else %}success{% endif %}{% endif %}{% endif %}"
+                                                             role="progressbar" style="width: {{ progress }}%;"
+                                                             aria-valuenow="{{ progress }}" aria-valuemin="0"
+                                                             aria-valuemax="100"></div>
+                                                    </div>
+                                                </div>
+                                            {% endwith %}
+                                        {% else %}
+                                            <span title="PLAZO PARA LEGALIZAR EL ACTA"
+                                                  class="badge bg-light-danger text-dark-danger fs-6">Cerrada</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="align-middle ps-3">
+                                        <span id="id_totalfirmas_{{ acta.pk }}">{{ total_firmas }}</span>/{{ acta.get_integrante_comite|length }}
+                                    </td>
+                                    <td class="align-middle">
+                                        <div class="d-flex justify-content-center">
+                                            <div class="d-flex">
+                                                {% if acta|args:persona|call:"puede_legalizar_acta" and not total_firmas == acta.get_integrante_comite|length and acta.porcentaje_configuracion == 100 %}
+                                                    <div class="me-2" title="LEGALIZAR ACTA">
+                                                        <a class="btn btn-success  btn-sm  "
+                                                           onclick="metodo_firma('{{ acta.id }}', 'LEGALIZAR ACTA DE COMITÉ ACADÉMICO', false, {{ convocatoria.pk }})"
+                                                           role="button" id="courseDropdown7" data-bs-toggle="dropdown"
+                                                           data-bs-offset="-20,20" aria-expanded="false">
+                                                            Firmar Acta
+                                                        </a>
+                                                    </div>
+                                                {% endif %}
+                                                <div class="me-2">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endwith %}
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="ps-2 text-center py-2">
+                                    No se encontraron registros de actas {% if convocatoria %}para el módulo:
+                                    <b>{{ convocatoria|lower|capfirst }}</b>{% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+{% endblock %}

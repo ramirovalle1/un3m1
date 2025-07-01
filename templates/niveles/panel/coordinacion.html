@@ -1,0 +1,441 @@
+{% load sga_extras %}
+{% load humanize %}
+<script type="text/javascript">
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+
+    $(function (){
+        $(".bloqueo_pantalla").click(function () {
+            bloqueointerface();
+        });
+
+        $('.btn-reiniciar-acordeones').click(function () {
+            const bs_target = $(this).data('bs-target');
+			reiniciarAcordeones($(`${bs_target}`));
+		});
+
+
+        $('.changeState').click(function () {
+			const action = $(this).data('action');
+			const nivel = $(this).data('nivel');
+			const queryString = $(this).data('params');
+			let data = {};
+			if (queryString){
+				let params = queryStringToDict(queryString);
+				data = {...params}
+			}
+			data['action'] = action;
+			let valor = 'n';
+			if ($(this).is(':checked')) {
+				valor = 'y';
+			}
+			data['valor'] = valor;
+			bloqueointerface();
+			$.ajax({
+				type: "POST",
+				url: "{{ request.path }}",
+				data: data,
+				success: function (response) {
+					if (response.isSuccess) {
+						$.unblockUI();
+						alertaSuccess(response.message);
+					} else {
+						$.unblockUI();
+						if (valor == 'y') {
+							$(`#${action}_${nivel}`).prop('checked', false);
+						} else {
+							$(`#${action}_${nivel}`).prop('checked', true);
+						}
+						alertaDanger(response.message);
+					}
+				},
+				error: function () {
+					$.unblockUI();
+					if (valor == 'y') {
+						$(`#${action}_${nivel}`).prop('checked', false);
+					} else {
+						$(`#${action}_${nivel}`).prop('checked', true);
+					}
+					alertaDanger("Error al enviar los datos.");
+				},
+				dataType: "json"
+			});
+		});
+
+        $("#accordionNivelesMatriculacion").hide();
+        $("#accordionNivelesProcesos").hide();
+        $(".nivelesFacultad").hide();
+        $(".nivelesPosgrado").hide();
+        $(".nivelesPregrado").hide();
+        $(".NivelesAdmision").hide();
+
+
+		{% if eCoordinacion.es_cagetoria_posgrado  %}
+			$(".nivelesPosgrado").show();
+		{% endif %}
+		{% if eCoordinacion.es_cagetoria_grado and not eCoordinacion.es_admision  %}
+			$(".nivelesPregrado").show();
+			$("#accordionNivelesProcesos").show();
+            $("#accordionNivelesMatriculacion").show();
+            $(".nivelesFacultad").show();
+		{% endif %}
+		{% if eCoordinacion.es_admision  %}
+			$("#accordionNivelesProcesos").show();
+            $("#accordionNivelesMatriculacion").show();
+			$(".NivelesAdmision").show();
+		{% endif %}
+    });
+</script>
+{% with matriculadoscoordperiodo=eCoordinacion|args:periodo|call:"cantidad_matriculados_periodo"  cantidad_matriculas_solo_modulos_coordinacion=periodo|args:eCoordinacion|call:"cantidad_matriculas_solo_modulos_coordinacion" %}
+	<div class="card mb-4">
+		<div class="card-header border-top border-6 rounded-3 border-dark-info">
+			<div class="d-flex align-items-center justify-content-between">
+				<h4 class="mb-0 h5">
+					<b><i class="fa fa-graduation-cap"></i> {{ eCoordinacion.nombre }}</b>
+					<span class="text-info fw-bold fs-5" data-bs-toggle="tooltip" data-bs-placement="top" title="Total de matriculados">({% if eCoordinacion.id == 7 %}{{ matriculadoscoordperiodo }}{% else %}{{ matriculadoscoordperiodo|resta:cantidad_matriculas_solo_modulos_coordinacion }}{% endif %})</span>
+				</h4>
+				<div>
+					<div class="d-flex align-items-center justify-content-start">
+						{% if puede_modificar_niveles %}
+							<a class="btn btn-success btn-sm me-2 bloqueo_pantalla" onclick="openModal('modalForm', 'modal-dialog modal-lg modal-fullscreen-md-down modal-dialog-centered modal-dialog-scrollable', 'Adicionar nivel académico', 'loadFormAdd', 'periodo={{ periodo.id }}&coordinacion={{ eCoordinacion.id }}&id=0')" href="javascript:void(0);">
+								<i class="fa fa-plus"></i>
+							</a>
+						{% endif %}
+						<div class="dropdown dropstart">
+							<a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle btn-reiniciar-acordeones" id="dropdownProject_{{ eCoordinacion.id }}" data-bs-toggle="offcanvas" data-bs-target="#offcanvasRight_{{ eCoordinacion.id }}" aria-controls="offcanvasRight">
+								<i class="fa fa-ellipsis-v"></i>
+							</a>
+						   	<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasRight_{{ eCoordinacion.id }}" aria-labelledby="offcanvasRightLabel_{{ eCoordinacion.id }}">
+								<div class="offcanvas-header">
+							   		<h6 class="text-white" id="offcanvasRightLabel_{{ eCoordinacion.id }}"> <i class="fa fa-graduation-cap"></i> {{ eCoordinacion.nombre }}</h6>
+								   	<button type="button" class="btn-close text-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+							   	</div>
+							   	<div class="offcanvas-body" >
+							   		{% if persona.usuario.is_superuser and eCoordinacion.es_admision %}
+										<a href="javascript:void(0);" onclick="actionConfirmAjax('Notificación', '¿Esta {% if persona.sexo.id == 1 %}segura{% else %}seguro{% endif %} {{ persona }} que desea confirmar la actualizar asistencias de admisión.?', 'POST', 'updateAsistenciaAdmision', undefined, false)" >
+											<h4 class="mb-0"><i class="fa fa-refresh"></i> Actualizar asistencia admisión</h4>
+										</a>
+									{% endif %}
+									<div class="accordion accordion-flush" id="accordionReportes_{{ eCoordinacion.id }}">
+										<div class="accordion-item border-top border-bottom">
+											<div class="accordion-header" id="header-reportes">
+									   			<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-reportes" aria-expanded="false" aria-controls="flush-reportes">
+											    	<h4 class="mb-0"><i class="fa fa-folder-open" aria-hidden="true"></i> Reportes</h4>
+											   </button>
+										  	</div>
+										  	<div id="flush-reportes" class="accordion-collapse collapse" data-bs-parent="#accordionReportes_{{ eCoordinacion.id }}" aria-labelledby="header-reportes">
+												<div class="accordion-body">
+
+													<li class="dropdown-item">
+														<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de situación académica del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateSituacionAcademica', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+															<i class="fa fa-table"></i> Situación académica
+														</a>
+													</li>
+													{% if persona.usuario.is_superuser and eCoordinacion.es_facultad %}
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de estudiantes limpios del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateEstudiantesLimpios', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Estudiantes limpios
+															</a>
+														</li>
+													{% endif %}
+													{% if eCoordinacion.es_admision %}
+														{% if periodo.id == 90 or periodo.id == 95 %}
+															<li class="dropdown-item">
+																<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de resultados finales del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteResultadosNivelacion', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																	<i class="fa fa-table"></i> Resultados finales
+																</a>
+															</li>
+														{% endif %}
+													{% endif %}
+													{% if eCoordinacion.es_facultad %}
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de Estado Estudiantil de {{ eCoordinacion.nombre }}?', 'POST', 'GenerateReporteEstadoCohorte', 'idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Estado Estudiantil Cohorte
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de horas cumplidas prácticas y vinculación del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteHorasCumplidasPracticaVinculacion', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Horas cumplidas prácticas y vinculación
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de horas cumplidas prácticas y vinculación (todos los niveles) del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteHorasCumplidasPracticaVinculacionNiveles', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Horas cumplidas prácticas y vinculación (todos los niveles)
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de estudiantes con prácticas pendientes (Matriculados) del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteEstudiantesPracticasPendientesMatriculados', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Estudiantes con prácticas pendientes (Matriculados)
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de estudiantes con prácticas pendientes (No Matriculados) del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteEstudiantesPracticasPendientesNoMatriculados', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Estudiantes con prácticas pendientes (No Matriculados)
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de porcentaje de asistencias del nivel académico {{ eCoordinacion.nombre }}?', 'GET', 'generateReporteEstudiantesAsistencia', 'idp={{ periodo.id }}&idc={{ eCoordinacion.id }}', false)">
+																<i class="fa fa-table"></i> Porcentaje de asistencias
+															</a>
+														</li>
+													{% endif %}
+												</div>
+											</div>
+										</div>
+									</div>
+
+                                    <div class="accordion accordion-flush" id="accordionConfiguracion_{{ eCoordinacion.id }}">
+										<div class="accordion-item border-top border-bottom">
+											<div class="accordion-header" id="header-configuracion">
+									   			<button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-configuracion" aria-expanded="false" aria-controls="flush-configuracion">
+											    	<h4 class="mb-0"><i class="fa fa-folder-open" aria-hidden="true"></i> Acciones</h4>
+											   </button>
+										  	</div>
+										  	<div id="flush-configuracion" class="accordion-collapse collapse" data-bs-parent="#accordionConfiguracion_{{ eCoordinacion.id }}" aria-labelledby="header-configuracion">
+												<div class="accordion-body">
+													{% if eCoordinacion.es_admision or eCoordinacion.es_facultad %}
+														<li class="dropdown-item">
+															<a href="{{ request.path }}?action=logdeberes&id={{ periodo.id }}" class="text-wrap bloqueo_pantalla">
+																<i class="fa fa-list"></i> Log de deberes
+															</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="{{ request.path }}?action=tutores&id={{ periodo.id }}" class="text-wrap bloqueo_pantalla">
+																<i class="fa fa-users"></i> Configuración de tutores
+															</a>
+														</li>
+														{% if persona.usuario.is_superuser %}
+															<li class="dropdown-item">
+																<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Eliminación de matrículas', '¿Desea eliminar matrículas pendientes de pago de {{ eCoordinacion.nombre }}?', 'POST', 'deleteMatriculas', 'id={{ eCoordinacion.id }}', true)">
+																	<i class="fa fa-close"></i> Eliminar matrículas pendientes de pago
+																</a>
+															</li>
+														{% endif %}
+														{% if puede_modificar_niveles %}
+															<li class="dropdown-item">
+																<a href="javascript:void(0);" class="text-wrap" onclick="actionConfirmAjax('Inactivación de matrículas', '¿Desea inactivar matrículas pendientes de pago de {{ eCoordinacion.nombre }}?', 'POST', 'updateMatriculas', 'id={{ eCoordinacion.id }}', true)">
+																	<i class="fa fa-close"></i> Inactivar matrículas pendientes de pago
+																</a>
+															</li>
+														{% endif %}
+													{% endif %}
+													{% if eCoordinacion.es_admision %}
+														<li class="dropdown-item">
+															<a href="{{ request.path }}?action=importar_matriz_senescyt" class="text-wrap bloqueo_pantalla">
+																<i class="fa fa-gear"></i> Importar matriz de SENESCYT
+															</a>
+														</li>
+                                						<li class="dropdown-item">
+                                							<a href="{{ request.path }}?action=mover_alumnos_masivo_admision" class="text-wrap bloqueo_pantalla">
+                                								<i class="fa fa-gear"></i> Mover alumnos masivo
+                                							</a>
+														</li>
+														<li class="dropdown-item">
+															<a href="javascript:void(0);" onclick="actionConfirmAjax('Procesar estado', '¿Desea actualizar estado admisión de las carreras de presencial y semipresencial?', 'POST', 'procesarEstadoAdmisionPresencial', undefined, false)" class="text-wrap">
+																<i class="fa fa-refresh"></i> Actualizar estado Presencial/Semipresencial
+															</a>
+														</li>
+                        								<li class="dropdown-item">
+                        									<a href="javascript:void(0);" onclick="actionConfirmAjax('Procesar estado', '¿Desea actualizar estado admisión de las carreras en línea?', 'POST', 'procesarEstadoAdmisionVirtual', undefined, false)" class="text-wrap">
+                        										<i class="fa fa-refresh"></i> Actualizar estado Virtual
+															</a>
+														</li>
+
+													{% endif %}
+
+{#													{% if eCoordinacion.es_facultad %}#}
+{#														<li class="dropdown-item">#}
+{#															<a href="javascript:void(0);" onclick="openModal('modalForm', 'modal-dialog modal-md modal-fullscreen-md-down modal-dialog-centered modal-dialog-scrollable', 'Docentes firmantes de acta', 'loadFirmantes', undefined, modalFirmaActa)" >#}
+{#																<i class="fa fa-signature"></i> Configuración de firmas de acta#}
+{#															</a>#}
+{#														</li>#}
+{#													{% endif %}#}
+{#													{% if eCoordinacion.es_admision %}#}
+{#														{% if puede_crear_configuracion_acta_calificacion_admision or puede_editar_configuracion_acta_calificacion_admision %}#}
+{#															<!--FALTA MIGRAR-->#}
+{#															<li class="dropdown-item">#}
+{#																<a href="javascript:void(0);" onclick="openModal('modalForm', 'modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-centered modal-dialog-scrollable', 'Período de actas de admisión', 'action_periodoactaadmision', 'typeform={% if ePeriodo %}edit{% else %}new{% endif %}')" >#}
+{#																	<i class="fa fa-signature"></i> Configuración asignaturas actas firma#}
+{#																</a>#}
+{#															</li>#}
+{#														{% endif %}#}
+{#													{% endif %}#}
+												</div>
+											</div>
+										</div>
+									</div>
+									{% if eCoordinacion.es_admision or eCoordinacion.es_facultad %}
+										<a href="{{ request.path }}?action=resumenevaluar" >
+											<h4 class="mb-0"><i class="fa fa-table"></i> Resumen de modalidad</h4>
+										</a>
+									{% endif %}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="card-body border-top border-2">
+			<div class="row row-cols-1 row-cols-md-2 row-cols-lg-2 row-cols-xl-3 g-4">
+				{% with niveles=persona|args:eCoordinacion|args:periodo|call:"mis_niveles" %}
+					{% for nivel in niveles %}
+						<div class="col">
+							<div class="card h-100">
+								<div class="card-body">
+									<div class="d-flex align-items-center justify-content-between">
+										<!-- text-->
+										<div>
+											<h4 class="mb-0 h5">
+												<a href="javascript:void(0);" class="text-inherit">{{ nivel.paralelo }}</a>
+												<span class="text-warning fw-bold fs-5" data-bs-toggle="tooltip" data-bs-placement="top" title="Total de matriculados">({{ nivel.nummatri }})</span>
+
+											</h4>
+											{% if aprobacion_distributivo and nivel.distributivoaprobado %}
+												<span class='badge bg-success' data-bs-toggle="tooltip" data-bs-placement="top" title="Distributivo aprobado">APROBADO</span>
+											{% endif %}
+											{% if nivel.cerrado %}
+												<span class='badge bg-danger' data-bs-toggle="tooltip" data-bs-placement="top" title="Nivel cerrado">CERRADO</span>
+											{% endif %}
+										</div>
+										<!-- dropdown-->
+										<div class="d-flex align-items-center">
+											<div class="dropdown dropstart">
+												<a href="#" class="btn-icon btn btn-ghost btn-sm rounded-circle" id="dropdownLevel_{{ nivel.id }}" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+													<i class="fas fa-list-ul"></i>
+												</a>
+												<div class="dropdown-menu" aria-labelledby="dropdownLevel_{{ nivel.id }}">
+													<!--<span class="dropdown-header">Settings</span>-->
+													{% if not nivel.cerrado and puede_modificar_niveles %}
+														<a onclick="openModal('modalForm', 'modal-dialog modal-lg modal-fullscreen-md-down modal-dialog-centered modal-dialog-scrollable', 'Adicionar nivel académico', 'loadFormAdd', 'periodo={{ periodo.id }}&coordinacion={{ eCoordinacion.id }}&id={{ nivel.id }}')" href="javascript:void(0);" class='dropdown-item bloqueo_pantalla'>
+															<i class='fa fa-edit dropdown-item-icon'></i> Editar
+														</a>
+														{% if nivel.puede_eliminarse %}
+															<a href="javascript:void(0);" onclick="actionConfirmAjax('Eliminar nivel académico', '¿Desea eliminar el nivel académico {{ nivel.paralelo }}', 'POST', 'deleteNivel', 'id={{ nivel.id }}')" class='dropdown-item '>
+																<i class='fa fa-remove dropdown-item-icon'></i> Eliminar
+															</a>
+														{% endif %}
+													{% endif %}
+													<a href='/niveles?action=materias&id={{ nivel.id }}' class='bloqueo_pantalla dropdown-item'>
+														<i class='fa fa-list dropdown-item-icon'></i> Materias
+													</a>
+													<a href='/matriculas?action=matricula&id={{ nivel.id }}' class='bloqueo_pantalla dropdown-item'>
+														<i class='fa fa-user dropdown-item-icon'></i> Matriculados
+													</a>
+													<!--<div class="dropdown-divider"></div>-->
+													{% if aprobacion_distributivo and puede_autorizar_distributivo%}
+														{% if not nivel.distributivoaprobado %}
+															<a href="javascript:void(0);" onclick="actionConfirmAjax('Aprobar distributivo', '¿Desea aprobar distributivo del nivel académico {{ nivel.paralelo }}', 'POST', 'aprobarDistributivo', 'id={{ nivel.id }}')" class='dropdown-item '>
+																<i class='fa fa-check dropdown-item-icon'></i> Aprobar Distributivo
+															</a>
+														{% else %}
+															<a href="javascript:void(0);" onclick="actionConfirmAjax('Desaprobar distributivo', '¿Desea desaprobar distributivo del nivel académico {{ nivel.paralelo }}', 'POST', 'desaprobarDistributivo', 'id={{ nivel.id }}')" class='dropdown-item '>
+																<i class='fa fa-close dropdown-item-icon'></i> Desaprobar Distributivo
+															</a>
+														{% endif %}
+													{% endif %}
+													<a href="javascript:void(0);" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de conflicto de horario del nivel académico {{ nivel.paralelo }}', 'GET', 'generateConflictoHorario', 'idn={{ nivel.id }}', false)" class='dropdown-item '>
+														<i class='fa fa-table dropdown-item-icon'></i> Conflicto de Horario
+													</a>
+													<a href="javascript:void(0);" onclick="actionConfirmAjax('Generación de reporte', '¿Desea generar reporte de conflicto de horario estudiante del nivel académico {{ nivel.paralelo }}', 'GET', 'generateInformeConflictoEstudiante', 'idn={{ nivel.id }}', false)" class='dropdown-item '>
+														<i class='fa fa-file-pdf-o dropdown-item-icon'></i> Conflicto horario estudiante
+													</a>
+												</div>
+											</div>
+										</div>
+									</div>
+									{% if persona.usuario.is_superuser %}
+										<table class="table table_responsive">
+											<thead class="table-light">
+											<tr>
+												<th width="25%" class="text-center" style="background-color: #abcae6 !important;"><i class='fa fa-lock'></i></th>
+												<th width="25%" class="text-center" style="background-color: #abcae6 !important;"><i class='fa fa-user'></i></th>
+												<th width="25%" class="text-center" style="background-color: #abcae6 !important;"><i class='fa fa-th'></i></th>
+												<th width="25%" class="text-center" style="background-color: #abcae6 !important;"><i class='fa fa-bars'></i></th>
+											</tr>
+											</thead>
+											<tbody>
+											<tr>
+												<td class="text-center">
+													<input class='form-check-input changeState' data-action="bloqueoHorario" id="bloqueoHorario_{{ nivel.id }}" data-params='id={{ nivel.id }}' data-nivel="{{ nivel.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title='Bloqueo' type='checkbox' {% if nivel.extension.visible %}checked='checked'{% endif %}/>
+												</td>
+												<td class="text-center">
+													<input class='form-check-input changeState' data-action="bloqueoProfesor" id="bloqueoProfesor_{{ nivel.id }}" data-params='id={{ nivel.id }}' data-nivel="{{ nivel.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title='Modificar profesores' type='checkbox' {% if nivel.extension.modificardocente %}checked='checked'{% endif %}/>
+												</td>
+												<td class="text-center">
+													<input class='form-check-input changeState' data-action="bloqueoCupos" id="bloqueoCupos_{{ nivel.id }}" data-params='id={{ nivel.id }}' data-nivel="{{ nivel.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title='Modificar cupos' type='checkbox' {% if nivel.extension.puedematricular %}checked='checked'{% endif %}/>
+												</td>
+												<td class="text-center">
+													<input class='form-check-input changeState' data-action="changeVisibleDistributivoMateria" id="changeVisibleDistributivoMateria_{{ nivel.id }}" data-nivel="{{ nivel.id }}" data-params='id={{ nivel.id }}' data-bs-toggle="tooltip" data-bs-placement="top" title='Visible materias docente' type='checkbox' {% if nivel.visibledistributivomateria %}checked='checked'{% endif %}/>
+												</td>
+											</tr>
+											</tbody>
+										</table>
+									{% endif %}
+									<div class="d-flex justify-content-between border-bottom py-2 mt-1 fs-6">
+										<span class="">Fecha Inicio</span>
+										<span class="text-dark ">{{ nivel.inicio|date:'d-m-Y' }}</span>
+									</div>
+									<div class="d-flex justify-content-between border-bottom py-2 fs-6">
+										<span class="">Fecha Fin</span>
+										<span class="text-dark">{{ nivel.fin|date:'d-m-Y' }}</span>
+									</div>
+
+									<div class="d-flex justify-content-between border-bottom py-2 fs-6">
+										<span class="">Matrícula Regular</span>
+										<span class="text-dark">{{ nivel.fechatopematricula|date:'d-m-Y' }}</span>
+									</div>
+									<div class="d-flex justify-content-between border-bottom py-2 fs-6">
+										<span class="">Matrícula Extraordinaria</span>
+										<span class="text-dark">{{ nivel.fechatopematriculaex|date:'d-m-Y' }}</span>
+									</div>
+									<div class="d-flex justify-content-between py-2 fs-6">
+										<span class="">Matrícula Especial</span>
+										<span class="text-dark">{{ nivel.fechatopematriculaes|date:'d-m-Y' }}</span>
+									</div>
+								</div>
+								<div class="card-footer p-0">
+									<div class="d-flex justify-content-between">
+										<div class="w-50 py-3 px-4">
+											<h6 class="mb-0">Sección:</h6>
+											{% if nivel.sesion.es_matutina %}
+												<span class="badge bg-info fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% elif nivel.sesion.es_vespertina %}
+												<span class="badge bg-warning fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% elif nivel.sesion.es_nocturna %}
+												<span class="badge bg-dark fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% elif nivel.sesion.es_enlinea %}
+												<span class="badge bg-success fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% elif nivel.sesion.es_finsemana %}
+												<span class="badge bg-primary fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% else %}
+												<span class="badge bg-info fs-6">{{ nivel.sesion.nombre_display }}</span>
+											{% endif %}
+											<!--<p class="text-dark fs-6 fw-semibold mb-0">{{ nivel.sesion.nombre_display }}</p>-->
+										</div>
+										<div class="border-start w-50 py-3 px-4">
+											<h6 class="mb-0">Modalidad:</h6>
+											{% if nivel.modalidad_id == 1 %}
+												<span class="badge bg-info fs-6">{{ nivel.modalidad }}</span>
+											{% elif nivel.modalidad_id == 2 %}
+												<span class="badge bg-secondary fs-6">{{ nivel.modalidad }}</span>
+											{% elif nivel.modalidad_id == 3 %}
+												<span class="badge bg-primary fs-6">{{ nivel.modalidad }}</span>
+											{% else %}
+												<span class="badge bg-danger fs-6">{{ nivel.modalidad }}</span>
+											{% endif %}
+											<!--<p class="text-dark fs-6 fw-semibold mb-0">{{ nivel.modalidad }}</p>-->
+										</div>
+									</div>
+
+								</div>
+							</div>
+						</div>
+					{% endfor %}
+				{% endwith %}
+			</div>
+		</div>
+	</div>
+{% endwith %}

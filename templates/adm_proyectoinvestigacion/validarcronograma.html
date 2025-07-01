@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $("#estadocronograma").addClass("validate[required]");
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $("#estadocronograma").change(function () {
+                $("#observacion").prop("readOnly", true);
+                $("#observacion").val('');
+                $("#observacion").removeClass("validate[required]");
+
+                if($("#estadocronograma").val() == '4'){
+                    $("#observacion").prop("readOnly", false);
+                    $("#observacion").addClass("validate[required]");
+                }
+            });
+
+            $(".cancelar").click(function () {
+                location.href = "/adm_proyectoinvestigacion?action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}";
+            });
+
+            $(".guardar").click(function () {
+                envioformularioreg("/adm_proyectoinvestigacion", "validarcronograma", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+                if(action == 'validarcronograma'){
+                    $("#frmValidarCronograma").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmValidarCronograma").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'validarcronograma')
+                        formdata = new FormData($("#frmValidarCronograma")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                urlDestino = "/adm_proyectoinvestigacion?action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_proyectoinvestigacion?action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <form name="frmValidarCronograma" id="frmValidarCronograma">{% csrf_token %}
+        <input type="hidden" name="action" value="validarcronograma">
+        <input type="hidden" name="id" value="{{ proyecto.id|encrypt }}">
+        {# TITULO PANTALLA #}
+        <div class='row'>
+            <div class='col-lg-12'>
+                <div class="headtitle">
+                    <h3 class="texto-blue">{{ title }}</h3>
+                    <h6>Propuestas de Docentes (Convocatoria: {{ tituloconvocatoria }})</h6>
+                </div>
+            </div>
+        </div>
+        {# TITULO PANTALLA #}
+        <div class="container-fluid">
+            {# TITULO DEL PROYECTO #}
+            <div class='row'>
+                <div class="col-sm-12">
+                    <div class="alert alert-info" style="text-align: justify">
+                        <strong>{{ proyecto.titulo }}</strong>
+                    </div>
+                </div>
+            </div>
+            {# TITULO DEL PROYECTO #}
+            {# TABLA DE DATOS #}
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info pb-5">
+                    <div class="accordion" id="accordionPanelsStayOpenExample">
+                        {# ACORDIÓN POR OBJETIVO #}
+                        {% for objetivo in objetivos %}
+                            {% with detalles=proyecto|args:objetivo.id|call:"cronograma_detallado_objetivo" totales=proyecto|args:objetivo.id|call:"totales_detalle_objetivo" %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="panelsStayOpen-heading{{ objetivo.id }}">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ objetivo.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ objetivo.id }}">
+                                    <b>{{ forloop.counter }}.</b>&nbsp;{{ objetivo.descripcion }}&nbsp;
+                                    <span class="label label-info" id="totalactividades{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total actividades">{{ totales.totalactividades }}</span>&nbsp;
+                                    <span class="label label-success" id="totalobjetivo{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total ponderación objetivo">{{ totales.totalponderacion|floatformat:2|intcomma }} %</span>
+                                    </button>
+                                </h2>
+                                <div id="panelsStayOpen-collapse{{ objetivo.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ objetivo.id }}">
+                                    <div class="accordion-body">
+                                        <div class="table-responsive-xxl">
+                                            <table class="table table-bordered table-striped" id="tbobjetivo_{{ objetivo.id }}" style="margin-bottom: 1px">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th style="width: 1%; text-align: center">N°</th>
+                                                        <th style="width: 40%; text-align: center">Actividad</th>
+                                                        <th style="width: 8%; text-align: center">Ponderación (%)</th>
+                                                        <th style="width: 8%; text-align: center">Fecha Inicio</th>
+                                                        <th style="width: 8%; text-align: center">Fecha Fin</th>
+                                                        <th style="width: 15%; text-align: center">Entregable</th>
+                                                        <th style="width: 20%; text-align: center">Responsables</th>
+                                                        <th colspan="2" style="width: 3%; text-align: center">
+                                                            {% if puedeeditar %}
+                                                                <a href="javascript:;" id="btnagregaractividad{{ objetivo.id }}" idobj="{{ objetivo.id|encrypt }}" numobj="{{ forloop.counter }}" class="btn btn-success btn-mini agregaractividad" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Actividad para objetivo # {{ forloop.counter }}"><i class="fa fa-plus"></i> </a>
+                                                            {% else %}
+                                                                &nbsp;
+                                                            {% endif %}
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="detalle_objetivo_{{ objetivo.id }}">
+                                                    {% if detalles %}
+                                                        {% for detalle in detalles %}
+                                                            <tr id="filadetalle_{{ objetivo.id }}{{ forloop.counter }}">
+                                                                <td style="text-align: right;"><b>{{ forloop.counter }}</b></td>
+                                                                <td style="text-align: justify">{{ detalle.actividad }}</td>
+                                                                <td style="text-align: right">{{ detalle.ponderacion|floatformat:2 }} %</td>
+                                                                <td style="text-align: center">{{ detalle.fechainicio|date:"d-m-Y" }}</td>
+                                                                <td style="text-align: center">{{ detalle.fechafin|date:"d-m-Y" }}</td>
+                                                                <td style="text-align: justify">
+                                                                    {% if detalle.entregable %}
+                                                                        {{ detalle.entregable }}
+                                                                    {% else %}
+                                                                        {% for entregable in detalle.lista_entregables %}
+                                                                            {{ entregable.entregable }}<br>
+                                                                        {% endfor %}
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="text-align: justify">
+                                                                    {% for responsable in detalle.lista_responsables %}
+                                                                        <span class="label label-info">{{ responsable.persona.nombre_completo_inverso }}</span>
+                                                                    {% endfor %}
+                                                                </td>
+                                                                <td style="text-align: center;">
+                                                                    {% if puedeeditar %}
+                                                                        <a href="javascript:;" class="btn btn-tini btn-info editaractividad" id="{{ detalle.id|encrypt }}" dobj="{{ forloop.parentloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar"><i class="fa fa-edit"></i></a>
+                                                                    {% else %}
+                                                                        &nbsp;
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td style="text-align: center;">
+                                                                    {% if puedeeditar %}
+                                                                        <a href="javascript:;" class="btn btn-tini btn-danger eliminardetalle" id="{{ detalle.id|encrypt }}" titulo="{{ detalle.actividad }}" idobj="{{ objetivo.id }}" dobj="{{ forloop.parentloop.counter }}" idfila="{{ objetivo.id }}{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                                                    {% else %}
+                                                                        &nbsp;
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        <tr id="fila_default_objetivo_{{ objetivo.id }}">
+                                                            <td colspan="9" style="text-align: center">NO EXISTEN DETALLES DE ACTIVIDADES PARA EL OBJETIVO # {{ forloop.counter }}</td>
+                                                        </tr>
+                                                    {% endif %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endwith %}
+                        {% endfor %}
+                        {# ACORDIÓN POR OBJETIVO #}
+                    </div>
+
+                    {# FILA VALIDACIÓN DE CRONOGRAMA #}
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <table class="table table-bordered table-striped" id="tbvalidaciongeneral">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="4">Validación del Cronograma</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 10%;">Estado:</td>
+                                        <td style="width: 90%;">
+                                            <select id="estadocronograma" name="estadocronograma" style="width: 200px">
+                                                <option value="" selected>---------</option>
+                                                <option value="3">VALIDADO</option>
+                                                <option value="4">NOVEDAD</option>
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Observaciones:</td>
+                                        <td>
+                                            <textarea id="observacion" rows="3" name="observacion" value="" style="width: 99%; text-transform: uppercase; resize: none" readonly></textarea>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA VALIDACIÓN DE CRONOGRAMA #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </div>
+            </div>
+            {# TABLA DE DATOS #}
+        </div>
+    </form>
+{% endblock %}

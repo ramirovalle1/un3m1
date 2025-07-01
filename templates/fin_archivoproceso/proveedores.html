@@ -1,0 +1,205 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function() {
+            $("#id_fini, #id_ffin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/fin_archivoproceso?action=proveedores&s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $(".revisiones").click(function() {
+                var id = $(this).attr("iddoc");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_archivoproceso",
+                    data: {'action':'detalle_revisiones', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalleactivomodal_body").html(data.html);
+                            $("#detalleactivomodal").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+
+            $("#detalleactivomodal_aceptar").click(function () {
+                $("#detalleactivomodal").modal("hide");
+            });
+
+            $(".reportearchivo").click(function () {
+                $("#itemspanel_reporte").modal({backdrop:'static', width: '290'}).modal('show');
+            });
+
+            $("#itemspanel_cerrar_reporte").click(function () {
+                $("#itemspanel_reporte").modal('hide');
+                $(".invalidofechas1").hide();
+            });
+
+            $("#itemspanel_guardar_reporte").click(function () {
+                $(".invalidofechas1").hide();
+                var ini = $("#id_fini").val();
+                var fin = $("#id_ffin").val();
+                $("#itemspanel_reporte").modal('hide');
+                if (ini && fin && ini <= fin) {
+                    openwindow('POST', '/fin_archivoproceso', { action: 'reportearchivoexcel','ini': ini,'fin': fin}, '_blank');
+                }
+                else {
+                    $(".invalidofechas1").show();
+                }
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/fin_archivoproceso{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class="span12">
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span6">
+            <a href="/fin_archivoproceso?action=addproveedor&destino=fin_archivoproceso?action=proveedores" class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+        </div>
+        <div class='span6'>
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids %}
+                    <a href="/fin_archivoproceso" class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 120px">Identificaci&oacute;n</th>
+                    <th>Nombre</th>
+                    <th style="width: 130px">Alias</th>
+                    <th style="width: 400px">Pais/Direcci&oacute;n</th>
+                    <th style="width: 230px">Email/Telef&oacute;nos</th>
+                    <th style="width: 80px"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for proveedor in proveedores %}
+                    <tr>
+                        <td>{{ proveedor.identificacion }}</td>
+                        <td>{{ proveedor.nombre }}</td>
+                        <td>{{ proveedor.alias }}</td>
+                        <td>{% if proveedor.pais %}{{ proveedor.pais|default_if_none:'' }}, {% endif %}{{ proveedor.direccion|default_if_none:'' }}</td>
+                        <td>
+                            {% if proveedor.email %}<a href="mailto:{{ proveedor.email }}">{{ proveedor.email }}</a><br>{% endif %}
+                            {% for telefono in proveedor.lista_telefonos %}
+                                {{ telefono }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                    <li><a href='/fin_archivoproceso?action=editproveedor&id={{ proveedor.id }}'><i class="fa fa-edit fa-fw fa fa-edit"></i> Editar </a></li>
+                                    {% if not proveedor.en_uso %}
+                                        <li class="divider"></li>
+                                        <li><a class="eliminacionmodal" href="javascript:;" nhref="/fin_archivoproceso?action=deleteproveedor&id={{ proveedor.id }}"><i class="fa fa-times fa-fw fa fa-remove"></i> Eliminar</a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10">
+                            NO EXISTEN PROVEEDORES EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 20 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page=1">1</a></li>
+                            <li><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                            <li><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/fin_archivoproceso?action=proveedores&{% if search %}&s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="modal fade static" id="detalleactivomodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalles del documento</h3>
+        </div>
+        <div class="modal-body" id="detalleactivomodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalleactivomodal_aceptar" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel_reporte" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte en excel de archivos  </h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas1" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!
+            </div>
+            <div style="text-align: center;">
+                <input placeholder="Fecha desde" type="text" value="" name="id_fini" id="id_fini" style="width: 100px">
+                <input placeholder="Fecha hasta" type="text" value="" name="id_ffin" id="id_ffin" style="width: 100px"><br><br>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: center">
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_guardar_reporte"><i class="fa fa-plus"></i> Procesar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar_reporte"> Cerrar</a>
+        </div>
+    </div>
+
+{% endblock %}

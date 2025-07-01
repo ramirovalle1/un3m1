@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/fontawesomev3.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        function formModal(id, text, action, footer = true, ext) {
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'ext': ext,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminarconfirmacion(pk) {
+            smoke.confirm("¿Está seguro que desea eliminar este registro?", function (e) {
+                if (e) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'del',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        smoke.alert('Error en el servidor');
+                    }).always(function () {
+                    });
+                }
+            }, {
+                ok: "SI, DESEO CONTINUAR",
+                cancel: "NO,CANCELAR",
+                classname: "custom-class",
+                reverseButtons: true
+            });
+
+        }
+
+
+        function generar_qr(id) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/alu_procesoelectoral",
+                data: {
+                    "action": "generarqr",
+                    "id": id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result) {
+                        window.open(data.url_pdf, '_blank');
+                        {#window.open(data.url_pdf, '_blank');#}
+                    } else {
+                        mensajeWarning(`Error acercarse a mesa informativa ${data.msg}`)
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                },
+                dataType: "json"
+            });
+        }
+        $(function () {
+            $(".select2hidden").each(function () {
+                var id = $(this).attr("id");
+                $("#" + id + "_select2").html('<option>' + $(this).attr("descripcion") + '</option>').trigger('change');
+            });
+        });
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times"></i>
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle ps-0">
+                <h3 class="py-1">{{ title }}</h3>
+                <h6>Información sobre su participación en los procesos electorales</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+
+        <div class="row">
+
+            <div class="col-lg-12">
+                <div class="col-lg-12">
+                    <div class="alert alert-primary" role="alert">
+                        <b>Recuerda:</b>
+                        Que, en el artículo 4 del Reglamento de Elecciones de la Universidad Estatal de Milagro
+                        establece:
+                        <span style="font-style: italic;">“El sufragio. - El sufragio es un derecho y un deber del personal académico titular, estudiantes regulares legalmente matriculados a partir del tercer nivel de todas las carreras y modalidades, de los servidores y trabajadores titulares de la institución.”</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-12">
+                <div class="table-responsive">
+                    {% if not listvigente %}
+                        {% if procesoactivo %}
+
+                            {#                            <h3 style="font-size: 19px;"><i class="fa fa-warning text-danger fs-3"></i> ¿Deseas generar un reclamo de conformación del padrón electoral? <a class="btn btn-orange fs-5" href="javascript:void(0);" onclick="formModal('{{ procesoactivo.id|encrypt }}','Generar Reclamo','addsolicitud', true)"><i class="fa fa-plus-circle"></i> Llenar formulario</a></h3>#}
+                            {% if soliprocesoactivos %}
+                                <br>
+                                <table class='table table_danger table_striped'>
+                                    <thead>
+                                    <tr>
+                                        <th class="column-title text-left" style="width: 30%">Solicitud</th>
+                                        <th class="column-title text-left" style="width: 40%">Observación</th>
+                                        <th class="column-title text-center" style="width: 30%">Respuesta</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for p in soliprocesoactivos %}
+                                        <tr>
+                                            <td class="text-left">
+                                                {{ p.cab.nombre }}
+                                            </td>
+                                            <td class="text-left p-lg-5">
+                                                <b>Categoría:</b> {{ p.tipo }} <br>
+                                                {#                                                <b>Asunto:</b> {{ p.titulo }}<br>#}
+                                                <b>Obs.</b> {{ p.observacion }} <br>
+                                                <b>F. Creación:</b> {{ p.fecha_creacion|date:"d-m-Y" }} <br>
+                                                <b>Estado:</b>
+                                                {% if p.estados == 0 %}
+                                                    <span class="text-primary">{{ p.get_estados_display }}</span>
+                                                {% elif p.estados == 1 %}
+                                                    <span class="text-success">{{ p.get_estados_display }}</span>
+                                                {% elif p.estados == 2 %}
+                                                    <span class="text-danger">{{ p.get_estados_display }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-left p-lg-5">
+                                                {% if p.estados == 0 %}
+                                                    <center>
+                                                        <span class="text-danger"><i class="fa fa-history"></i> Pendiente</span>
+                                                    </center>
+                                                {% else %}
+                                                    <b>F. Validación:</b> {{ p.fechavalidacion|date:"d-m-Y" }}<br>
+                                                    <b>Resp.</b> {{ p.respuesta }}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="10" style="text-align: center">NO EXISTEN NINGUN
+                                                JUSTIFICATIVO
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% endif %}
+                        {% endif %}
+                    {% else %}
+
+                        <h3 style="font-size: 19px;"><i class="fa fa-vote-yea text-primary fs-3"></i> Usted se encuentra
+                            empadronado</h3><br>
+                        <table class='table table_primary table_striped'>
+                            <thead>
+                            <tr>
+                                <th class="column-title text-left" style="width: 70%">Procesos Activos</th>
+                                <th class="column-title text-center" style="width: 15%">Facultad</th>
+                                <th class="column-title text-center" style="width: 15%">PDF</th>
+                                {#                                <th class="column-title text-center" style="width: 20%">Lugar de votación</th>#}
+                                <th class="column-title text-center"></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for p in listvigente %}
+                                <tr>
+                                    <td class="text-left">
+                                        {{ p.cab.nombre }} - <b class="text-primary">{{ p.get_tipo }}</b><br>
+                                        <i class="fa fa-calendar"></i> Fecha de elección: {{ p.cab.fecha|date:"d-m-Y" }}<br>
+                                        {% if p.info_mesa %}
+                                            <b class="text-error">
+                                                <i class="fa fa-vote-yea"></i> Miembro de Junta Receptora del Voto:
+                                                <br>
+                                                <b>Rol:</b> {{ p.info_mesa.0 }} <br>
+                                                <b>Lugar:</b> {{ p.info_mesa.1 }}
+                                                {% if p.info_mesa.6 %}<br>
+                                                    <b>Fecha de Asignación:</b> {{ p.info_mesa.6 }}
+                                                {% endif %}
+                                            </b>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if p.lugar %}
+                                            <b class="text-warning fs-14">{{ p.lugar }}</b>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {#                                            {% if p.pdf %}#}
+                                        {#                                                <a href="{{ p.pdf.url }}" target="_blank">#}
+                                        {#                                                    <b class="text-warning fs-14">Ver Pdf</b>#}
+                                        {#                                                </a>#}
+                                        {#                                            {% else %}#}
+                                        {% if p.pdf %}
+                                            <a href="{{ p.pdf.url }}" target="_blank">
+                                            <b style="color: #FC7E00">Ver Pdf </b>
+                                            </a><br>
+                                        {% endif %}
+
+                                        <a href="javascript:;" onclick="generar_qr({{ p.id }})">
+                                            <b class="text-info fs-14">Generar PDF</b>
+                                        </a>
+                                        {#                                            {% endif %}#}
+                                        {#                                            <br>#}
+                                    </td>
+
+                                    {#                                    <td class="text-center">#}
+                                    {#                                        {% if p.lugar %}#}
+                                    {#                                            {{ p.lugar }}#}
+                                    {#                                        {% endif %}#}
+                                    {#                                    </td>#}
+                                    <td class="text-center">
+                                        {% if p.cab.puede_justificar %}
+                                            <a href="?action=justificacion&id={{ p.pk|encrypt }}" class="btn btn-info">Justificar</a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="10" style="text-align: center">Ningún dato disponible en esta tabla
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    {% endif %}
+                </div>
+            </div>
+
+            {#            <div class="col-lg-12 mt-5">#}
+            {#                <div class="table-responsive">#}
+            {#                    <table class='table table_warning table_striped'>#}
+            {#                        <thead>#}
+            {#                        <tr>#}
+            {#                            <th class="column-title text-left" style="width: 70%">Procesos Pasados</th>#}
+            {#                            <th class="column-title text-center" style="width: 20%">Lugar de votación</th>#}
+            {#                            <th class="column-title text-center" style="width: 30%"></th>#}
+            {#                        </tr>#}
+            {#                        </thead>#}
+            {#                        <tbody>#}
+            {#                        {% for p in listpasados %}#}
+            {#                            <tr>#}
+            {#                                <td class="text-left">#}
+            {#                                    {{ p.cab.nombre }} - <b class="text-primary">{{ p.get_tipo }}</b><br>#}
+            {#                                    <i class="fa fa-calendar"></i> Fecha de elección: {{ p.cab.fecha|date:"d-m-Y" }}<br>#}
+            {#                                    {% if p.info_mesa %}#}
+            {#                                        <b class="text-error">#}
+            {#                                            <i class="fa fa-vote-yea"></i> Miembro de Junta Receptora del Voto:#}
+            {#                                            <br>#}
+            {#                                            <b>Rol:</b> {{ p.info_mesa.0 }} <br>#}
+            {#                                            <b>Lugar:</b> {{ p.info_mesa.1 }}#}
+            {#                                            {% if p.info_mesa.6 %}<br>#}
+            {#                                                <b>Fecha de Asignación:</b> {{ p.info_mesa.6 }}#}
+            {#                                            {% endif %}#}
+            {#                                        </b>#}
+            {#                                    {% endif %}#}
+            {#                                </td>#}
+            {#                                <td class="text-center">#}
+            {#                                    {% if p.lugar %}#}
+            {#                                        {{ p.lugar }}#}
+            {#                                    {% endif %}#}
+            {#                                </td>#}
+            {#                                <td class="text-center">#}
+            {#                                    <a href="?action=justificacion&id={{ p.pk|encrypt }}" class="btn btn-warning">Justificativos</a>#}
+            {#                                </td>#}
+            {#                            </tr>#}
+            {#                        {% empty %}#}
+            {#                            <tr>#}
+            {#                                <td colspan="10" style="text-align: center">Ningún dato disponible en esta tabla</td>#}
+            {#                            </tr>#}
+            {#                        {% endfor %}#}
+            {#                        </tbody>#}
+            {#                    </table>#}
+            {#                </div>#}
+            {#            </div>#}
+
+            {% if sedeelectoral %}
+                <div class="col-lg-12 mt-5">
+                    <h3 style="font-size: 19px;"><i class="fa fa-map-marker text-warning fs-3"></i> Confirma tu sede
+                        electoral</h3>
+                    <br>
+                    <table class='table table_warning table_striped'>
+                        <thead>
+                        <tr>
+                            <th class="column-title text-left" style="width: 30%">Evento</th>
+                            <th class="column-title text-left" style="width: 30%">Ciudad</th>
+                            <th class="column-title text-left" style="width: 30%">Provincia</th>
+                            <th class="column-title text-center" style="width: 30%"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for p in sedeelectoral %}
+                            <tr>
+                                <td class="text-left">
+                                    {{ p.sede.periodo.nombre }}
+                                </td>
+                                <td class="text-center p-lg-5">
+                                    {{ p.sede.canton.nombre }}
+                                </td>
+                                <td class="text-center p-lg-5">
+                                    {{ p.sede.canton.provincia.nombre }}
+                                </td>
+                                <td class="text-center p-lg-5">
+                                    <a class="btn btn-orange" href="javascript:void(0);"
+                                       onclick="formModal('{{ p.id|encrypt }}','Confirmación de sede electoral','cambiarsede', true)">
+                                        Cambiar
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="10" style="text-align: center">NO EXISTEN NINGUN JUSTIFICATIVO</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+
+                </div>
+            {% endif %}
+
+
+            <div class="col-lg-12 mt-5">
+                {% if listvigente %}
+                    {% if procesoactivo and soliprocesoactivos %}
+                        {#                        <h3 style="font-size: 19px;"><i class="fa fa-warning text-danger fs-3"></i> ¿Deseas generar un reclamo de conformación del padrón electoral? <a class="btn btn-orange fs-5" href="javascript:void(0);" onclick="formModal('{{ procesoactivo.id|encrypt }}','Generar Reclamo','addsolicitud', true)"><i class="fa fa-plus-circle"></i> Llenar formulario</a></h3>#}
+                        <h3 style="font-size: 19px;"><i class="fa fa-warning text-danger fs-3"></i> Reclamos de
+                            conformación del padrón electoral</h3>
+                        {% if soliprocesoactivos %}<br>
+                            <table class='table table_danger table_striped'>
+                                <thead>
+                                <tr>
+                                    <th class="column-title text-left" style="width: 30%">Evento</th>
+                                    <th class="column-title text-left" style="width: 40%">Observación</th>
+                                    <th class="column-title text-center" style="width: 30%">Respuesta</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for p in soliprocesoactivos %}
+                                    <tr>
+                                        <td class="text-left">
+                                            {{ p.cab.nombre }}
+                                        </td>
+                                        <td class="text-left p-lg-5">
+                                            <b>Categoría:</b> {{ p.tipo }} <br>
+                                            {#                                            <b>Asunto:</b> {{ p.titulo }}<br>#}
+                                            <b>Obs.</b> {{ p.observacion }} <br>
+                                            <b>F. Creación:</b> {{ p.fecha_creacion|date:"d-m-Y" }} <br>
+                                            <b>Estado:</b>
+                                            {% if p.estados == 0 %}
+                                                <span class="text-primary">{{ p.get_estados_display }}</span>
+                                            {% elif p.estados == 1 %}
+                                                <span class="text-success">{{ p.get_estados_display }}</span>
+                                            {% elif p.estados == 2 %}
+                                                <span class="text-danger">{{ p.get_estados_display }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-left p-lg-5">
+                                            {% if p.estados == 0 %}
+                                                <span class="text-danger"><i class="fa fa-history"></i> Pendiente</span>
+                                            {% else %}
+                                                <b>F. Validación:</b> {{ p.fechavalidacion|date:"d-m-Y" }}<br>
+                                                <b>Resp.</b> {{ p.respuesta }}
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="10" style="text-align: center">NO EXISTEN NINGUN JUSTIFICATIVO</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+            </div>
+
+        </div>
+
+    </div>
+
+
+{% endblock %}

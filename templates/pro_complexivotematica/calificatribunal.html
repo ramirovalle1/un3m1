@@ -1,0 +1,577 @@
+{% extends 'basebs.html' %}
+{% load sga_extras %}
+{% block atras %}/pro_complexivotematica?per={{ perid|encrypt }}{% endblock %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function () {
+            $(".nota").hide();
+            $(".calficacion").change(function(){
+                var did = $(this).attr('did');
+                var nota = 0;
+                $("input[name="+did+"]").each(function () {
+                    var nota = parseFloat($(this).val());
+
+                    if (isNaN(nota)){
+                        $(this).val($(this).attr("av"));
+                        nota = $(this).attr("av")
+                    }
+                    if(nota>100){
+                        nota = 100;
+                        $(this).val(nota);
+                    }
+                    if(nota<0){
+                        nota = 0;
+                        $(this).val(nota);
+                    }
+                    actualizar_notas();
+                });
+
+            }).focusout(function () {
+                var vala = $(this).val();
+                var va = $(this).attr("av");
+                if (vala === "" || isNaN(vala)){
+                    $(this).val(va);
+                }
+            });
+            actualizar_lista = function () {
+                bloqueointerface();
+                lista_notas=[];
+                var nota = 0;
+                $(".calficacion").each(function () {
+                    var id = $(this).attr('did');
+                    $("[did="+id+"]").each(function () {
+                        nota = parseFloat($(this).val());
+                    });
+                    var item = {
+                        id: id,
+                        nota: nota
+                    };
+                    lista_notas.push(item);
+                });
+                $.post("/pro_complexivotematica", {'action':'notasustentacion', 'datos': JSON.stringify(lista_notas)}, function (data) {
+                        if (data.result==="ok") {
+                            location.reload();
+                        } else {
+                            $(".calficacion").each(function(){
+                                var elemento = $(this);
+                                elemento.css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                            });
+                            smoke.alert("Ocurrio un problema al guardar las calificaciones.");
+                        }
+                        $.unblockUI();
+                    }, "json"
+                );
+
+            };
+            actualizar_notas= function () {
+                $(".calficaciones").each(function () {
+                    var did = $(this).attr('did');
+                    var pt = parseFloat($("#pt"+did).attr('valu'));
+                    var pg = parseFloat($("#pg"+did).attr('valu'));
+                    var complexivo=0;
+                    var grado =0;
+                    var nota= parseFloat($("input[name="+did+"]").val());
+                    {% if grupo.alternativa.tipotitulacion.tipo == 2 %}
+                        complexivo = ((pt+nota)/2);
+                        grado = ((pg+complexivo)/2);
+                        $("#notacomplexivo"+did).html(complexivo.toFixed(2));
+                    {% else %}
+                        grado = ((nota+pg)/2);
+                    {% endif %}
+                    $("#notagrado"+did).html(grado.toFixed(2));
+                });
+            };
+            actualizar_observacion = function(){
+                modalobservaciones = $("#observaciones");
+                var obs = $(this).attr("obs");
+                var id = $(this).attr("did");
+                modalobservaciones.find("#contenido_observacion").attr({"value": obs, "ids": id});
+                $("#error").html("");
+                modalobservaciones.modal("show");
+            };
+            actualizar_notas();
+            $("#btn-guardarobservacion").click(function() {
+                contenidoobservacion = $("#contenido_observacion");
+                var observacion = contenidoobservacion.attr("value");
+                var id = contenidoobservacion.attr("ids");
+                $("#observaciones").modal("hide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'observaciones', 'id': id, 'observacion': observacion},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok'){
+                            $("#obs_"+id).attr({"obs":observacion});
+                        } else {
+                            $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                            $("#observaciones").modal("show");
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                        $("#observaciones").modal("show");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".btn-cerrar").click(function(){
+                $("#observaciones").modal("hide");
+            });
+            $(".btn-observacion").click(actualizar_observacion);
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            {#$(".calificarrubrica").click(function () {#}
+            {#    alert('vv')#}
+            {#$.post("/pro_complexivotematica", {"action": "calificar_rubrica"}, function(data) {#}
+            {#    if (data.result=="ok"){#}
+            {#        $(".paneltitlerubrica").html(data.title);#}
+            {#        $(".panelbodyrubrica").html(data.data);#}
+            {#        $("#itemspanelrubrica").modal({backdrop:'static', width: '1200px'}).modal('show');#}
+            {#    }else{#}
+            {#        $.unblockUI();#}
+            {#        smoke.alert(data.mensaje);#}
+            {#    }#}
+            {# }, "json");#}
+            {# })#}
+
+            $(".aprobarcorrecion").click(function () {
+                $("#itemspanelaprobarcorrecion").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+            $(".btn-cerraraprobarcorrecion").click(function () {
+                $("#itemspanelaprobarcorrecion").modal('hide');
+            });
+            $(".btn-aprobarcorrecion").click(function () {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'aprobarcorrecion', 'idg': {{ grupo.id }} },
+                    success: function(data) {
+                        if (data.result == 'ok') {
+                            location.reload();
+                            $("#itemspanelaprobarcorrecion").modal('hide');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".calificar_propuesta").click(function () {
+                var idi = $(this).attr('idi');
+                var idg = $(this).attr('idg');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'calificar_propuesta', 'idi': idi, 'idg': idg},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#idi").val(idi);
+                            $("#idg").val(idg);
+                            $("#itemspanel").modal({backdrop:'static', width: '1000px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                {#$("#itemspanel").modal({backdrop:'static', width: '1000px'}).modal('show');#}
+            });
+            $(".btn-aprobar").click(function () {
+                var calpresidente = $("#id_presidente").val();
+                var calsecretaria = $("#id_secretaria").val();
+                var caldelegado = $("#id_delegado").val();
+                var idi = $("#idi").val();
+                var idg = $("#idg").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'guardar_calificacion_propuesta', 'idi': idi, 'idg': idg, 'calpresidente':calpresidente, 'calsecretaria':calsecretaria, 'caldelegado':caldelegado },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            location.reload();
+                            $("#itemspanel").modal("hide");
+                            return false;
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".graduar_cerrar_acta").click(function () {
+                var id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'graduar_estudiante', 'id': id },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            smoke.alert(data.mensaje);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".nota").change(function () {
+                var nota = $(this).val();
+                var id = $(this).attr('did');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'addnotasustentacion_ind', 'id': id, 'not': nota},
+                    success: function(data) {
+                        if (data.result == 'ok'){
+                            $("#estado_"+id).removeClass();
+                            if (data.estado == 10){
+                                $("#estado_"+id).html("<span class='label label-success'>APROBADO</span>");
+                            }else{
+                                $("#estado_"+id).html("<span class='label label-important'>REPROBADO</span>");
+                            }
+                            {#                            $("#notafinal_"+id).html("<span>"+data.notafinal+"</span>");#}
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert('error de solicitud');
+                    },
+                    dataType: "json"
+                });
+            })
+            $(".detalleobs").click(function () {
+                var iddeta=$(this).attr("iddeta");
+                bloqueointerface();
+                $("#contenidoparticipantes").empty();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_complexivotematica",
+                    data: {'action': 'detalleobservacion', 'id': iddeta},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            for (elemento in data.listaobservaciones){
+                                $("#contenidoparticipantes").append('<tr>' +
+                                    '<td style="text-align: left;" class="idtema" width="40%"> <strong>' + data.listaobservaciones[elemento][2] + '</strong><br>' + data.listaobservaciones[elemento][0] + '</td>' +
+                                    '<td style="text-align:left;" width="50%">' + data.listaobservaciones[elemento][1] + '</td></tr>');
+                            }
+                            $("#modaldetalleobservacion").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".btn-cerrarobservacion").click(function () {
+                $("#modaldetalleobservacion").modal('hide');
+            });
+        });
+        function pdfactatribunalcalificaciones(codigo){
+            openwindow('POST' ,'/pro_complexivotematica', {action:'pdfactatribunalcalificaciones','id': codigo }, '_blank');
+        }
+        function pdfactatribunalcalificacionesnew(codigo){
+            openwindow('POST' ,'/pro_complexivotematica', {action:'pdfactatribunalcalificacionesnew','id': codigo }, '_blank');
+        }
+        function pdfrubricacalificaciones(codigo){
+            openwindow('POST' ,'/pro_complexivotematica', {action:'pdfrubricacalificacionesnew','id': codigo }, '_blank');
+        }
+    </script>
+        <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>Periodo: {{ grupo.alternativa.grupotitulacion.periodogrupo }}</h4>
+            <h4>Altenativa: {{ grupo.alternativa }}({{ grupo.alternativa.id }})</h4>
+            <h5>Carrera: {{ grupo.alternativa.carrera }}</h5>
+            <h5>Línea de investigación: {{ grupo.tematica}}({{ grupo.tematica.id }})</h5>
+            <h5>Tema: {{ grupo.subtema }}</h5>
+            <h5>Fecha: {{ grupo.fechadefensa|date:'d-m-Y'}}</h5>
+        </div>
+    </div>
+    {% if puedecalificar %}
+        <div class="row-fluid">
+            <div class="span12">
+                {% if puedecerraracta and actacalificada %}
+                    <a class="confirmacionmodal btn btn-info" href="javascript:;" nhref="/pro_complexivotematica?action=cerraracta&id={{ grupo.id|encrypt }}&idt={{ idt|encrypt }}&perid={{ perid|encrypt }}"><span class="fa fa-graduation-cap" ></span> <i class=" hidden-phone hidden-tablet visible-desktop "></i> Cerrar acta de tribunal calificador</a>
+                {% endif %}
+                {% if faltamalla %}
+                    <br><br>
+                    <div class="alert alert-error" style="text-align: justify">
+                        Los estudiantes que se presentan a continuación tiene pendiente asignaturas en la malla, motivo por el cual no se puede graduar.
+                        {% for est in faltamalla %}<br>{{ forloop.counter }}.  {{ est.0 }}{% endfor %}.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        {% if puedecerraracta %}
+            {% if not cronogramaactivo %}
+                <div class="alert alert-error" style="text-align: justify">
+                    Comunicar a Gestión Técnica Académica que la fecha de evaluación no se encuentra dentro del cronograma.
+                </div>
+            {% endif %}
+        {% endif %}
+    {% endif %}
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row-fluid'>
+            <div class='span12'>
+                <table class='table table-bordered filterable'>
+                    <thead>
+                    <tr>
+                        <th style="text-align: center; width: 15px;">No.</th>
+                        <th style="width: 260px;text-align: center">Estudiante</th>
+                        {% if puedegeneraracta %}
+                            <th style="text-align: center;width: 50px">Acta</th>
+                        {% endif %}
+                        <th style="text-align: center; width: 40px;">Archivo Trabajo Titulación</th>
+                        {% if grupo.alternativa.tipotitulacion.tipo == 2 %}
+                            <th style="text-align: center; width: 80px;">Nota Prueba Teórica</th>
+                        {% endif %}
+                        <th style="text-align: center; width: 100px;">Nota Trabajo Titulación</th>
+                        {% if grupo.alternativa.tipotitulacion.tipo == 2 %}
+                            <th style="text-align: center; width: 80px;">Nota Ex. Complexivo</th>
+                        {% endif %}
+                        <th style="text-align: center; width: 25px;">Estado</th>
+                        <th style="text-align: center; width: 70px;">Promedio General</th>
+                        <th style="text-align: center; width: 50px;">Nota Grado</th>
+                        {#                    <th style="text-align: center; width: 70px;">Rubica evaluación</th>#}
+                        <th style="text-align: center; width: 30px;">Acciones</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    {% for integrante in integrantes %}
+                        <tr>
+                            <td data-title='No.' style="text-align: center;">{{ forloop.counter }}</td>
+                            <td data-title='Estudiante' >
+                                {{ integrante.matricula.inscripcion }} - {{ integrante.matricula.alternativa.paralelo }}
+                                <br>
+                                {% if integrante.matricula.cumplerequisitos == 1 %}
+                                    <span class="label label-info ">
+                            {{ integrante.matricula.get_cumplerequisitos_display }}
+                                </span>
+                                {% endif %}
+                                {% if integrante.matricula.cumplerequisitos == 2 %}
+                                    <span class="label label-success ">
+                            {{ integrante.matricula.get_cumplerequisitos_display }}
+                                </span>
+                                {% endif %}
+                                {% if integrante.matricula.cumplerequisitos == 3 %}
+                                    <span class="label label-important ">
+                            {{ integrante.matricula.get_cumplerequisitos_display }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            {% if puedegeneraracta %}
+                                <td data-title='Acta' style="text-align: center;vertical-align: Center;width: 50px">
+                                    {#                                {% if not integrante.matricula.estado == 9 %}#}
+                                    {% if integrante.actacerrada %}
+                                        {% if integrante.matricula.cumplerequisitos == 2 and integrante.matriculaaptahistorico %}
+                                            {% if integrante.rubrica %}
+                                                <table>
+                                                    <tbody>
+                                                    <tr>
+                                                        <th>
+                                                            <a onclick="pdfactatribunalcalificacionesnew({{ integrante.id }})" href="javascript:;" class="btn btn-warning btn-mini"><i class="fa fa-file-pdf-o"></i> ACTA<br></a>
+                                                        </th>
+                                                        <th>
+                                                            <a onclick="pdfrubricacalificaciones({{ integrante.id }})" href="javascript:;" class="btn btn-warning btn-mini"><i class="fa fa-file-pdf-o"></i> RÚBRICA</a>
+                                                        </th>
+                                                    </tr>
+                                                    </tbody>
+                                                </table>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% else %}
+                                        <a href="#" class='btn btn-mini btn btn-info tu' title="El acta del tribunal calificador se muestra una vez cerrada el acta"><i class="fa fa-question-circle"></i></a>
+                                    {% endif %}
+                                    {#                                {% endif %}#}
+                                </td>
+                            {% endif %}
+                            <td data-title='Archivo Trabajo Titulación' style="text-align: center;">{% if grupo.estado_propuesta.get_propuesta %} <a href="{{ grupo.estado_propuesta.get_propuesta.archivo.url }}" target="_blank"><i class="fa fa-file-word-o"></i> Descargar</a>{% endif %}</td>
+                            {% if integrante.matricula.alternativa.tipotitulacion.tipo == 2 %}
+                                <td style="text-align: center; vertical-align: middle;" id="pt{{ integrante.id }}" valu="{{ integrante.notafinal }}">{{ integrante.notafinal }}</td>
+                            {% endif %}
+                            <td data-title='Nota Trabajo Titulación' style="text-align: center;vertical-align: Center;">
+                                {{ integrante.calificacion|floatformat:"2" }}
+                                <input type="text" style="font-size: 11px; margin: 0; width: 45px; padding: 4px 0;" did="{{ integrante.id }}" name="{{ integrante.id }}" class="nota input-mini calficaciones disabled" disabled="disabled" av="{{ integrante.calificacion|floatformat:"2" }}" value="{{ integrante.calificacion|floatformat:"2" }}"/>
+                            </td>
+                            {% if integrante.matricula.alternativa.tipotitulacion.tipo == 2 %}
+                                <td style="text-align: center; vertical-align: middle;" id="notacomplexivo{{ integrante.id }}"></td>
+                            {% endif %}
+                            <td data-title='Estado' style="text-align: center;vertical-align: Center;">
+                                {% if integrante.estadotribunal == 3 %}
+                                    <span class="label label-important">
+                                REPROBADO
+                                </span>
+                                {% else %}
+                                    {% if not integrante.califico %}
+                                        <span class="label label-info">
+                                    Falta delegados por calificar
+                                {{ integrante.numerotribunalcalifico }}/3
+                                </span>
+                                    {% else %}
+                                        <span id="estado_{{ integrante.id }}" class="label{% if  integrante.estadotribunal == 2 %} label-success {% endif %} {% if  integrante.estadotribunal == 3 %} label-important {% endif %}{% if  integrante.estadotribunal == 1 %} label-info {% endif %}">{{ integrante.get_estadotribunal_display }}</span>
+                                    {% endif %}
+                                {% endif %}
+                                {#                            {{ integrante.matricula.estado }}#}
+                            </td>
+                            <td data-title='Promedio General' style="text-align: center;vertical-align: middle;" id="pg{{ integrante.id }}" valu="{{ integrante.matricula.inscripcion.promedio_record }}">{{ integrante.matricula.inscripcion.promedio_record }}</td>
+                            <td data-title='Nota Grado' style="text-align: center;vertical-align: center" id="notagrado{{ integrante.id }}"></td>
+                            {#                        <td style="text-align: center;">{% if integrante.archivotribunal %} <a href="{{ integrante.archivotribunal.url }}" target="_blank"><i class="fa fa-arrow-down"></i> Descargar</a>{% endif %}</td>#}
+
+                            <td data-title='Acciones' style="text-align: center;vertical-align: center;">
+                                {% if integrante.matricula.cumplerequisitos == 2 %}
+                                    {% if not integrante.actacerrada %}
+                                        {% if integrante.estadotribunal == 1 or actacalificada %}
+                                            {% if grupo.alternativa.tipotitulacion.rubrica %}
+                                                <a href="pro_complexivotematica?action=calificarrubricasustentacionnew&id={{ integrante.id|encrypt }}&idg={{ grupo.id|encrypt }}&perid={{ perid|encrypt }}" class='btn btn-mini btn btn-success bloqueo_pantalla tu' title="Calificar"><i class="fa fa-edit"></i> Calificar</a>
+                                            {% else %}
+                                                <span class="label label-info">SIN RÚBRICA<span>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if integrante.actacerrada %}
+                                    {% if integrante.rubrica %}
+                                        <a href="javascript:;" title="Observación" class='btn btn-mini tu detalleobs' iddeta="{{ integrante.id }}"><i class="fa fa-comment"></i> Observaciones</a>
+                                    {% endif %}
+                                {% endif %}
+
+                                {% if integrante.califico  and integrante.actacerrada == False%} {#actacalificada-> todos los integrantes deben estar calificados#}
+                                    <a class="confirmacionmodal btn btn-info" href="javascript:;" nhref="/pro_complexivotematica?action=cerraracta_individual&id={{ grupo.id|encrypt }}&idt={{ idt|encrypt }}&perid={{ perid|encrypt }}&idMat={{ integrante.matricula.pk|encrypt }}"><span class="fa fa-graduation-cap"></span> <i class=" hidden-phone hidden-tablet visible-desktop "></i> Cerrar acta</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% if grupo.subirarchivofinalgrupo %}
+                    <strong>TRABAJO TITULACIÓN (OBSERVACIONES DEL TRIBUNAL)</strong>
+                    <table class='table table-bordered filterable' style="width: 400px;">
+                        <thead>
+                        <tr>
+                            <th style="width: 50px;text-align: center">Archivo final</th>
+                            <th style="width: 100px;text-align: center">Estado</th>
+                            {% if grupo.estadoarchivofinalgrupo == 1 %}
+                                <th style="width: 100px;text-align: center">Aprobación</th>
+                            {% endif %}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td style="text-align: center;">
+                                {% if grupo.archivofinalgrupo %}
+                                    <a href="media/{{ grupo.archivofinalgrupo }}"><i class="fa fa-file-word-o"></i> Descargar</a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;">
+                                {% if grupo.archivofinalgrupo %}
+                                    <span class="label label-{% if grupo.estadoarchivofinalgrupo == 1 %}warning{% endif %}{% if grupo.estadoarchivofinalgrupo == 2 %}success{% endif %}">{{ grupo.get_estadoarchivofinalgrupo_display }}</span>
+                                {% else %}
+                                    <span class="label label-warning">PENDIENTE</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;">
+                                {% if grupo.archivofinalgrupo %}
+                                    {% if grupo.estadoarchivofinalgrupo == 1 %}
+                                        {% if grupo.presidentepropuesta == profesor %}
+                                            <a class="btn btn-success aprobarcorrecion"><i class="fa fa-save"></i></a>
+                                        {% endif %}
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Calificaciones</h3>
+        </div>
+        <input type='hidden' name='idi' id="idi"/>
+        <input type='hidden' name='idg' id="idg"/>
+        <div class="modal-body panelbody">
+
+        </div>
+        <div class="modal-footer" style="margin-top: -25px">
+            <a href="javascript:;" class="btn btn-aprobar btn-success"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelaprobarcorrecion" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleaprobarcorrecion">Aprobación final</h3>
+        </div>
+        <div class="modal-body panelbodyaprobarcorrecion">
+            Esta seguro de aprobar corrección?<br><br>
+        </div>
+        <div class="modal-footer" style="margin-top: -25px">
+            <a href="javascript:;" class="btn btn-aprobarcorrecion btn-success"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerraraprobarcorrecion btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="modaldetalleobservacion" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleobservacion">Observación</h3>
+        </div>
+        <div class="modal-body panelbodyobservacion" >
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" id="example">
+                <thead>
+                <tr>
+                    <th style="text-align: left">
+                        TRIBUNAL
+                    </th>
+                    <th style="text-align: left">OBSERVACIÓN</th>
+                </tr>
+                </thead>
+                <tbody id="contenidoparticipantes">
+                </tbody>
+            </table>
+        </div><br>
+        <div class="modal-footer" style="margin-top: -25px">
+            <a href="javascript:;" class="btn btn-cerrarobservacion btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

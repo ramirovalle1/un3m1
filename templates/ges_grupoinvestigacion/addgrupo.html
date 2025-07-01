@@ -1,0 +1,237 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        var switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(function(){
+            var secuenciapersona = 0;
+            var contper = 0;
+            lista_items1 = [];
+            
+            $("body").initSwitchery();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#id_nombre, #id_personas_aux").addClass("validate[required]");
+            $("#id_descripcion").css('resize', 'none');
+            $("#id_nombre, #id_descripcion").css('text-transform', 'uppercase');
+
+            $(".agregarpersona").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': 'addintegrante'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodypersona").html(data.data);
+                            $(".paneltitlepersona").html(data.title);
+                            $("#itemspanelpersona").modal({backdrop:'static', width: '700px'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelpersona .agregar").click(function () {
+                $("#frmPersona").validationEngine('attach',{ scroll: false });
+                var valido = $("#frmPersona").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarPersona()){
+                        borrarFilaDefaultPersona();
+                        
+                        idpersona = $('#auxpersona_select2').attr("idp");
+                        identificacion = $('#auxpersona_select2').attr("identificacion");
+                        nombres = $('#auxpersona_select2').attr("nombre");
+                        idfuncion = $("#funcionpersona").val();
+                        funcion = $("#funcionpersona").find('option:selected').text();
+                        fecha = $("#fechainicio").val();
+
+
+                        secuenciapersona ++;
+                        contper ++;
+
+                        nueva_fila = '<tr class="detallepersonas" id="filapersona_'+contper.toString()+'" idreg="0" idpe="'+idpersona+'" nombre="'+nombres+'" idfuncion="'+idfuncion+'" fecha="'+fecha+'">'+
+                            '<td style="text-align: right">'+secuenciapersona.toString()+'</td>'+
+                            '<td style="text-align: center">'+identificacion+'</td>'+
+                            '<td style="text-align: justify">'+nombres+'</td>'+
+                            '<td style="text-align: center">'+fecha+'</td>'+
+                            '<td style="text-align: center">'+funcion+'</td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarpersona tu" idreg="0" idfila="'+contper.toString()+'" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                            '</tr>';
+
+                        $("#detalle_personas").append(nueva_fila);
+                        $(".eliminarpersona").unbind("click.eliminarpersona");
+                        $(".eliminarpersona").bind("click.eliminarpersona", eliminarPersona);
+                        actualizarListaPersona();
+                        $('#itemspanelpersona').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarPersona = function (){
+                var idper = $('#auxpersona_select2').attr("idp");
+                var npersona = $('#auxpersona_select2').attr("nombre");
+                var idfun = $("#funcionpersona").val();
+                var funcion = $("#funcionpersona").find('option:selected').text();
+                var repetido = false;
+
+                if($('.detallepersonas[idpe="'+idper+'"]').length > 0){
+                    repetido = true;
+                }
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "La persona: " + npersona + " ya ha sido agregado al detalle de integrantes del grupo");
+                    return false;
+                }
+
+                if(idfun == '1'){
+                    if($('.detallepersonas[idfuncion="'+idfun+'"]').length > 0){
+                        repetido = true;
+                    }
+                }
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "Ya existe otra persona con la función: " + funcion + " en el detalle de integrantes del grupo");
+                    return false;
+                }
+                return true;
+            };
+
+            eliminarPersona = function() {
+                var idf = $(this).attr("idfila");
+                $("#filapersona_"+idf).remove();
+
+                secuenciapersona = 0;
+                $("#tbdetallepersonas tbody tr").each(function (index) {
+                    secuenciapersona ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciapersona.toString());
+                    });
+                });
+
+                if(secuenciapersona == 0)
+                    agregarFilaDefaultPersona();
+
+                actualizarListaPersona();
+            };
+
+            actualizarListaPersona = function () {
+                lista_items1 = [];
+                $(".detallepersonas").each(function(){
+                    idreg = $(this).attr('idreg');
+                    idpe = $(this).attr('idpe');
+                    idfun = $(this).attr('idfuncion');
+                    fecha = $(this).attr('fecha');
+                    var item = {
+                        idreg: idreg,
+                        idpersona: idpe,
+                        idfuncion: idfun,
+                        fecha:fecha
+                    };
+                    lista_items1.push(item);
+                });
+            }
+
+            agregarFilaDefaultPersona = function (){
+                filadefault = '<tr id="fila_default_personas">'+
+                              '<td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE INTEGRANTES DEL GRUPO</td>'+
+                              '</tr>';
+                $("#detalle_personas").append(filadefault);
+                $("#id_personas_aux").val("");
+            };
+
+            borrarFilaDefaultPersona = function (){
+                $("#fila_default_personas").remove();
+                $("#id_personas_aux").val("OK");
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/ges_grupoinvestigacion{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/ges_grupoinvestigacion{% endblock %}
+{% block formdestinationswal %}/ges_grupoinvestigacion{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addgrupo'/>
+{% endblock %}
+{% block formback %}/ges_grupoinvestigacion{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div id="separator2_requisitos" style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_requisitos" style="padding:0 10px; background: white;">Integrantes del Grupo de Investigación</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetallepersonas">
+            <thead>
+                <tr>
+                    <th style="width: 3%; text-align: center; text-transform: none">#</th>
+                    <th style="width: 14%; text-align: center; text-transform: none">Identificación</th>
+                    <th style="width: 45%; text-align: center; text-transform: none">Nombres</th>
+                    <th style="width: 45%; text-align: center; text-transform: none">Fecha de Ingreso</th>
+                    <th style="width: 35%; text-align: center; text-transform: none">Función</th>
+                    <th style="width: 3%;">
+                        <a href="javascript:;" id="btnagregarinterno" class="btn btn-success btn-mini agregarpersona" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Integrante"><i class="fa fa-plus"></i> </a>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="detalle_personas">
+                <tr id="fila_default_personas">
+                    <td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE INTEGRANTES DEL GRUPO</td>
+                </tr>
+            </tbody>
+        </table>
+        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_personas_aux" value="">
+        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+    </div>
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static"  id="itemspanelpersona" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><span class="paneltitlepersona">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodypersona">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar"> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

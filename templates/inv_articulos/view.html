@@ -1,0 +1,710 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type='text/javascript' src='/static/js/jquery.flexbox.js?v=1.0.0'></script>
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+
+    <style>
+        div.dataTables_filter {
+            padding-bottom: 10px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(function() {
+            $("#anioevidencia").select2();
+
+            busqueda = function(){
+                var term = $("#searchinput").val().toUpperCase().trim();
+                var tipobuse = $("#tipobusqueda").val();
+
+                if (term.length>0){
+                    location.href = "/articulosinvestigacion?s="+term+"&tipobus="+tipobuse;
+                }
+                else{
+                    location.href = "/articulosinvestigacion";
+                }
+            };
+
+            $(".consultaestadoparticipante").click(function (){
+                estadoparticipante = $(this).attr('estado');
+                location.href = "/articulosinvestigacion?estadoparticipante="+estadoparticipante;
+            });
+
+            $(".informacionsolicitud").click(function(){
+                var tipo = "1";
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/articulosinvestigacion",
+                    data: {'action':'solicitudes', 'tipo': tipo},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detallesolicitudmodal_body").html(data.html);
+                            $("#detallesolicitudmodal").modal({"backdrop":"static", "width": "1250px"}).modal("show");
+                            $('.confirmacionmodal').bind('click.conectar_confirmacion', conectar_confirmacion);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+
+            $("#detallesolicitudmodal_cerrar").click(function(){
+                $("#detallesolicitudmodal").modal("hide");
+            });
+
+            $("#search").click(function(){
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            var h =$(window).height() - 332;
+            var table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging":   false,
+                "ordering": false,
+                "info":     false,
+                "searching": false,
+                {#                "scrollY": h,#}
+                "order": [[ 2, 'asc' ]],
+                "columnDefs": [{ "visible": false,"targets": 1 }],
+                "drawCallback": function ( settings ) {
+                    var api = this.api();
+                    var rows = api.rows( {page:'current'} ).nodes();
+                    var last=null;
+                    api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                        if ( last !== group ) {
+                            $(rows).eq( i ).before(
+                                '<tr class="group"><td colspan="14" height="30" bgcolor="#f1f1f1">'+group+'</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+
+            $(".evidenciasarticulos").click(function () {
+                $("#itemspaneldescargaevidencia .paneltitledescargaevidencia").html($(this).attr('titulo'));
+                $("#anioevidencia").val(0).trigger('change');
+                $("#itemspaneldescargaevidencia").modal({backdrop:'static', width: '400'}).modal('show');
+            });
+
+            $("#itemspaneldescargaevidencia .btn-cerrar").click(function () {
+                $("#itemspaneldescargaevidencia").modal('hide');
+            });
+
+            $("#itemspaneldescargaevidencia .btn-procesar").click(function () {
+                if(datosCompletosReporte()){
+                    var anio = $("#anioevidencia").val();
+                    accion = "evidenciasarticulo";
+
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/articulosinvestigacion",
+                        data: {"action": accion, "anio": anio},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                location.href = data.archivo;
+                                $("#itemspaneldescargaevidencia").modal('hide');
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            datosCompletosReporte = function (){
+                var validacion = true;
+
+                if($("#anioevidencia").val()=='0'){
+                    smoke.alert("Seleccione el año de publicación");
+                    return false;
+                }
+
+                return validacion;
+            };
+
+            var table = $('#example2').DataTable({
+                "sDom": 'T<"clear">lfrtip',
+                "ordering": false,
+                "scroller": true,
+                "scrollY": "50vh",
+                "paging": false,
+                "bInfo" : false
+            });
+
+            $(".seleccionarparticipantes").click(function() {
+                $("#itemspanelparticipante").modal({backdrop:'static', width: '850px'}).modal('show');
+                $("#nombresseleccionados").empty();
+
+                if($(this).attr('tipo') == 'consulta'){
+                    $("#btn-aplicar-filtro").show();
+                    $("#btn-descargar-listado").hide();
+                }else {
+                    $("#btn-aplicar-filtro").hide();
+                    $("#btn-descargar-listado").show();
+                }
+
+            });
+
+            $('#itemspanelparticipante').on('shown.bs.modal', function (e) {
+                $($.fn.dataTable.tables( true ) ).DataTable().columns.adjust().draw();
+            });
+
+            $("#itemspanelparticipante .aplicar").click(function () {
+                aplicarFiltro();
+            });
+
+            $("#itemspanelparticipante .descargar").click(function () {
+                descargarListado();
+            });
+
+            $("#itemspanelparticipante .cerrar").click(function () {
+                $('#itemspanelparticipante').modal('hide');
+            });
+
+            $("#itemspanelparticipante .cerrar2").click(function () {
+                $('#itemspanelparticipante').modal('hide');
+            });
+
+            aplicarFiltro = function (){
+                if(datosCompletosFiltro()){
+                    idparticipantes = ""
+
+                    $(".grupoparticipante").each(function() {
+                        idpart = $(this).attr('idpart');
+
+                        if(idparticipantes == "")
+                            idparticipantes = idpart;
+                        else
+                            idparticipantes = idparticipantes + "," + idpart;
+                    });
+                    $("#cparticipantes").val(idparticipantes);
+                    $('#itemspanelparticipante').modal('hide');
+
+                    location.href = "/articulosinvestigacion?idsp="+idparticipantes;
+                }
+            };
+
+            datosCompletosFiltro = function (){
+                var c1e = true;
+                var marcados = $('.grupoparticipante').length;
+
+                if(marcados == 0){
+                    smoke.alert("Agregue al menos un participante para aplicar el filtro");
+                    c1e = false;
+                    return false;
+                }
+
+                return c1e;
+            };
+
+            $(".selparticipante").click(function() {
+                idpart = $(this).attr('idpart');
+
+                if(!$("#grupoparticipante"+idpart).length){
+                    nparticipante = $(this).attr('nparticipante');
+                    nombre_persona = '<span class="grupoparticipante" id="grupoparticipante'+idpart+'" idpart="'+idpart+'"> <span class="label label-info">'+nparticipante+'</span><a href="javascript:;" class="borrarparticipante btn-danger btn-mini" idpart="'+idpart+'" title="Borrar"><i class="fa fa-remove"></i></a> </span>';
+                    $("#nombresseleccionados").append(nombre_persona);
+                    $(".borrarparticipante").unbind("click.borrarParticipante");
+                    $(".borrarparticipante").bind("click.borrarParticipante", borrarParticipante);
+
+                    var divSeleccionados = document.getElementById("nombresseleccionados");
+                    divSeleccionados.scrollTop = divSeleccionados.scrollHeight;
+                }
+            });
+
+            borrarParticipante = function() {
+                var id = $(this).attr("idpart");
+                $("#grupoparticipante"+id).remove();
+            };
+
+            descargarListado = function (){
+                if(datosCompletosFiltro()){
+                    idparticipantes = ""
+
+                    $(".grupoparticipante").each(function() {
+                        idpart = $(this).attr('idpart');
+
+                        if(idparticipantes == "")
+                            idparticipantes = idpart;
+                        else
+                            idparticipantes = idparticipantes + "," + idpart;
+                    });
+                    $("#cparticipantes").val(idparticipantes);
+                    $('#itemspanelparticipante').modal('hide');
+
+                    location.href = "/articulosinvestigacion?action=reporte_articulos_excel_participante&idsp="+idparticipantes;
+                }
+            };
+
+            seleccionar = function (valor){
+                $("#tipobusqueda").val(valor);
+                $("#cparticipantes").val("");
+
+                if(valor == '3')
+                    $("#seleccionarparticipantes").show();
+                else
+                    $("#seleccionarparticipantes").hide();
+
+            };
+
+            {% if tipobus != 3 %}
+                $("#seleccionarparticipantes").hide();
+            {% endif %}
+
+            $(".preaprobar").click(function() {
+                var id = $(this).attr('id');
+                var titulo = $(this).attr('titulo');
+                var url = "/articulosinvestigacion";
+                var action = "preaprobararticulo";
+                var urlDestino = "/articulosinvestigacion?estadoparticipante=2";
+                mensajeConfirmSwal("Pre-Aprobar Solicitud de Registro de Publicación", "¿Está seguro de pre-aprobar la solicitud de registro de publicación con el título "+titulo+"?", true, url, action, id, urlDestino);
+            });
+
+            $(".aprobar").click(function() {
+                var id = $(this).attr('id');
+                var titulo = $(this).attr('titulo');
+                var url = "/articulosinvestigacion";
+                var action = "aprobararticulo";
+                var urlDestino = "/adm_produccioncientifica?estado=2";
+                mensajeConfirmSwal("Aprobar Solicitud de Registro de Publicación", "¿Está seguro de aprobar la solicitud de registro de publicación con el título "+titulo+"?", true, url, action, id, urlDestino);
+            });
+
+        });
+
+        function vistaficha(idarticulo){
+            openwindow('POST' ,'/articulosinvestigacion', {action:'pdffichacatalograficas_articulo',id:idarticulo}, '_blank');
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/ges_investigacion{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <a href="javascript:;" class='btn btn-default tu' title="Artículos"><span class="fa fa-list"></span> Artículos</a>
+        <a href="/ponenciasinvestigacion" class='btn btn-info tu' title="Ponencias"><span class="fa fa-list"></span> Ponencias</a>
+        <a href="/librosinvestigacion" class='btn btn-info tu' title="Libros"><span class="fa fa-list"></span> Libros</a>
+        <a href="/librosinvestigacion?action=listacapitulos" class='btn btn-info tu' title="Capítulos de Libros"><span class="fa fa-list"></span> Capítulos</a>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span7">
+            <a href="/articulosinvestigacion?action=perfilesorcid" class='btn btn-default tu' title="Personal perfil ORCID"><span class="fa fa-id-card" ></span> Perfiles ORCID</a>
+            <a href="/articulosinvestigacion?action=perfilesscopus" class='btn btn-default tu' title="Personal perfil SCOPUS"><span class="fa fa-id-card" ></span> Perfiles SCOPUS</a>
+            <div class="btn-group ">
+                <a href="javascript:;" class="btn btn-warning tu evidenciasarticulos" titulo="Descargar Evidencias de Artículos" title="Descargar Evidencias"><i class="fa fa-download"></i> Evidencias</a>
+            </div>
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle btn-success" data-toggle="dropdown" href="#"> Artículo <span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    {% if perms.sga.puede_modificar_articulos %}
+                        <li><a href="/articulosinvestigacion?action=addarticulo"><span class="fa fa-plus "></span> Adicionar</a></li>
+                    {% endif %}
+                    <li><a target="_blank" href="/articulosinvestigacion?action=reporte_articulos_excel"><i class="fa fa-file-excel-o"></i> Listado General</a></li>
+                    <li><a href="javascript:;" class="seleccionarparticipantes" tipo="reporte"><i class="fa fa-list"></i> Listado por Participantes</a></li>
+                </ul>
+            </div>
+            <div class="btn-group ">
+                <a href="javascript:;" class="btn btn-info informacionsolicitud"><i class="fa fa-list"></i> Ver Solicitudes</a>
+            </div>
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle" data-toggle="dropdown" href="#"> Revistas <span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    <li><a href="/articulosinvestigacion?action=listadorevistas"><i class="fa fa-list "></i> Listado</a></li>
+                </ul>
+            </div>
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle" data-toggle="dropdown" href="#"> Bases <span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    <li><a href="/articulosinvestigacion?action=listadobases"><i class="fa fa-list "></i> Listado</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="span5">
+            <table class="table table-bordered" style="padding: 0px; margin: 0px">
+                <tr>
+                    {#                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar todos los artículos" estado="0">Total Artículos: <span class="badge badge-info tu"><strong>{{ totalarticulos }}</strong></span></a></td>#}
+                    {#                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar artículos con participantes" estado="1">Registros completos: <span class="badge badge-success tu"><strong>{{ totalconparticipantes }}</strong></span></a></td>#}
+                    {#                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar artículos sin participantes" estado="2">Registros sin participantes: <span class="badge badge-warning tu"><strong>{{ totalsinparticipantes }}</strong></span></a></td>#}
+                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar todos los artículos" estado="0">Total Artículos: <span class="badge badge-info tu"><strong>{{ totalarticulos }}</strong></span></a></td>
+                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar artículos aprobados" estado="1">Registros Aprobados: <span class="badge badge-success tu"><strong>{{ totalaprobados }}</strong></span></a></td>
+                    <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadoparticipante tu" title="Mostrar artículos por aprobar" estado="2">Registros por Aprobar: <span class="badge badge-warning tu"><strong>{{ totalporaprobar }}</strong></span></a></td>
+                </tr>
+            </table>
+        </div>
+
+    </div>
+    <div class='row-fluid'>
+        <div class="span4">
+            {#            <strong class="tu" title="Estado de Participantes">Estado Participante:</strong>#}
+            <select id="estadoparticipantes" style="width: 200px; visibility: hidden">
+                <option value="0" selected="selected">TODOS</option>
+                {#                <option value="1" {% if estadoparticipante == 1 %}selected="selected"{% endif %}>ASIGNADOS</option>#}
+                {#                <option value="2" {% if estadoparticipante == 2 %}selected="selected"{% endif %}>NO ASIGNADOS</option>#}
+            </select>
+        </div>
+        <div class="span4">
+            <div class="btn-group" data-toggle="buttons">
+                <label class="btn btn-default">Buscar Por</label>
+                <label class="btn btn-{% if tipobus == 1 %}info{% else %}default{% endif %}">
+                    <input type="radio" name="options" id="option1" autocomplete="off" value="1" {% if tipobus == 1 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Revista</strong>
+                </label>
+
+                <label class="btn btn-{% if tipobus == 2 %}info{% else %}default{% endif %}">
+                    <input type="radio" name="options" id="option2" autocomplete="off" value="2" {% if tipobus == 2 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Artículo</strong>
+                </label>
+
+                <label class="btn btn-{% if tipobus == 3 %}info{% else %}default{% endif %}">
+                    <input type="radio" name="options" id="option3" autocomplete="off" value="3" {% if tipobus == 3 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Participante</strong>
+                </label>
+                <label class="btn btn-{% if tipobus == 4 %}info{% else %}default{% endif %} tu" title="Base Indexada">
+                    <input type="radio" name="options" id="option4" autocomplete="off" value="4" {% if tipobus == 4 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Base</strong>
+                </label>
+                <label class="btn btn-{% if tipobus == 5 %}info{% else %}default{% endif %} tu" title="Año de Publicación" >
+                    <input type="radio" name="options" id="option5" autocomplete="off" value="5" {% if tipobus == 5 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Año Pub</strong>
+                </label>
+                <input type="hidden" name="tipobusqueda" id="tipobusqueda" value="{{ tipobus }}">
+                <a href="javascript:;" id="seleccionarparticipantes" class="btn btn-warning tu seleccionarparticipantes" tipo="consulta" titulo="Seleccionar participantes" title="Seleccionar participantes"><i class="fa fa-users"></i> </a>
+                <input type="hidden" name="cparticipantes" id="cparticipantes" value="">
+            </div>
+{#            <div>#}
+{#                <a href="javascript:;" class="btn btn-mini btn-warning tu evidenciasarticulos" titulo="Seleccionar participantes" title="Seleccionar participantes"><i class="fa fa-users"></i> </a>#}
+{#            </div>#}
+        </div>
+        <div class="span4" style="text-align: right">
+            <form class="form-search">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search " ></span> Buscar</a>
+                {% if search or ids %}
+                    <a href="/articulosinvestigacion?tipobus=2" id='allresults' class='btn btn-info'><span class="fa fa-refresh " ></span> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" id="example">
+                <thead>
+                <tr>
+                    <th style="width: 50px;">Código</th>
+                    <th style="width: 300px;text-align: center;">Revista</th>
+                    <th style="width: 300px;text-align: center;">Artículo</th>
+                    <th style="width: 300px;text-align: center;">Autores y Coautores</th>
+                    <th style="width: 25px;text-align: center;">Proy.Inv</th>
+                    <th style="width: 25px;text-align: center;">Grup.Inv</th>
+                    <th style="width: 70px;text-align: center;">Base Indexada / Categoría</th>
+                    <th style="width: 50px;text-align: center;">Publicación</th>
+                    <th style="width: 50px;text-align: center;">Num.Revista</th>
+                    <th style="width: 40px;text-align: center;">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for articulo in articulos %}
+                    <tr>
+                        <td style="text-align: center">
+                            {{ articulo.revista.codigoissn }}-{{ articulo.id }}-ART<br>
+                            {% if articulo.aprobado %}<span class="label label-success">APROBADO</span>{% else %}<span class="label label-warning">POR APROBAR</span>{% endif %}
+                        </td>
+                        <td style="text-align: justify;"><strong>{% if articulo.revista.tiporegistro == 1 %}REVISTA{% else %}CONGRESO{% endif %}: {{ articulo.revista.codigoissn }}-{{ articulo.revista }}</strong></td>
+                        <td style="text-align: justify;">{{ articulo }} <br> <strong>ACCESO:
+                            {% if articulo.accesoabierto %}<i class="fa fa-folder-open tu" title="ABIERTO" ></i>{% else %}<i class="fa fa-lock tu" title="CERRADO" ></i>{% endif %}
+
+                        </strong></td>
+                        <td style="text-align: justify;">
+                            {% with listaparticipantes=articulo|call:'participantes' %}
+                                {% for participes in listaparticipantes %}
+                                    <strong>
+                                        {#                                        <a href="/articulosinvestigacion?action=verarticulos&idp={{ participes.profesor.persona.id|default_if_none:'' }} {{ participes.administrativo.persona.id|default_if_none:''}}"><span class="fa fa-bar-chart"></span></a>#}
+                                        {% if participes.profesor %}
+                                            <span class="label label-info tu" data-original-title="Participante Docente">D</span>
+                                        {% else %}
+                                            {% if participes.administrativo %}
+                                                <span class="label label-info tu" data-original-title="Participante Administrativo">A</span>
+                                            {% else %}
+                                                <span class="label label-info tu" data-original-title="Participante Estudiante">E</span>
+                                            {% endif %}
+                                        {% endif %}
+                                        {{ participes.get_tipo_display }}:</strong> {{ participes.profesor|default_if_none:"" }} {{ participes.administrativo|default_if_none:"" }}  {{ participes.inscripcion|default_if_none:"" }}
+                                    <br>
+                                {% empty %}
+                                    <a href='/articulosinvestigacion?action=participantesarticulos&id={{ articulo.id }}'><span class="label label-warning"> PARTICIPANTE(S) NO ASIGNADO(S)</span></a>
+                                {% endfor %}
+                            {% endwith %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if articulo.tipoproyecto %}
+                                <span class="label label-success tu" title="{% if articulo.proyectointerno %}{{ articulo.proyectointerno.nombre }}{% else %}{{ articulo.proyectoexterno.nombre }}{% endif %}">SI</span>
+                            {% else %}
+                                <span class="label label-inverse">NO</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if articulo.pertenecegrupoinv %}
+                                <span class="label label-success tu" title="{{ articulo.grupoinvestigacion.nombre }}">SI</span>
+                            {% else %}
+                                <span class="label label-inverse">NO</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% with listabasesindexadas=articulo|call:'basesartculos' %}
+                                {% for listabases in listabasesindexadas %}
+                                    {#                                    <span class="label label-info tu" title="Base Indexada">{{ listabases.baseindexada }}</span>&nbsp;#}
+                                    {{ listabases.baseindexada }}&nbsp;
+                                    {#                                    <span class="label label-default"> {{ listabases.baseindexada.get_tipo_display }}</span><br>#}
+                                {% endfor %}
+                                {% if articulo.categoria %}
+                                    /
+                                    {{ articulo.get_categoria_display }}
+                                    {#                                    <span class="label label-success tu" title="Categoría del Artículo"> {{ articulo.get_categoria_display }}</span>#}
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                        <td style="text-align: center;">{{ articulo.fechapublicacion|date:"Y-m-d" }}</td>
+                        <td style="text-align: center;">{{ articulo.numero }}</td>
+                        <td style="text-align: center">
+                            <div class="btn-group" style="text-align: left">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right">
+                                    {% if perms.sga.puede_modificar_articulos %}
+                                        {% if not articulo.aprobado %}
+                                            <li><a href='/articulosinvestigacion?action=editarticulo&id={{ articulo.id|encrypt }}'><span class="fa fa-edit "></span> Editar</a></li>
+                                        {% else %}
+                                            {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                                <li><a href='/articulosinvestigacion?action=editarticulo&id={{ articulo.id|encrypt }}'><span class="fa fa-edit "></span> Editar</a></li>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                    {% with numeroevidencias=articulo|call:'numeroevidenciasarticulos' numeroparticipantes=articulo|call:'numeroparticipantesarticulo' %}
+                                        <li><a href='/articulosinvestigacion?action=evidenciasarticulos&id={{ articulo.id|encrypt }}'><span class="fa fa-table "></span> Evidencia
+                                            <label class="label tu">{{ numeroevidencias }}</label>
+                                        </a></li>
+                                        <li><a href='/articulosinvestigacion?action=participantesarticulos&id={{ articulo.id|encrypt }}'><span class="fa fa-group "></span> Participantes
+                                            <label class="label tu">{{ numeroparticipantes }}</label></a>
+                                        </li>
+                                    {% endwith %}
+
+                                    <li><a class="list-group-item" onclick="vistaficha('{{ articulo.id|encrypt }}')" href="javascript:;"><i class="fa fa-print"></i>&nbsp; Ficha Catalográfica</a> </li>
+
+                                    {#                                    <li><a href='/articulosinvestigacion?action=basesindexadas&id={{ articulo.id }}'><span class="fa fa-list "></span> Bases Indexadas <label class="label tu"></label></a></li>#}
+                                    {% if perms.sga.puede_modificar_articulos %}
+                                        {#                                        {% if not articulo.aprobado %}#}
+                                        {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                            <li><a class="eliminacionmodal" href="javascript:;" nhref='/articulosinvestigacion?action=deletearticulo&idarticulo={{ articulo.id|encrypt }}'><span class="fa fa-minus "></span> Eliminar <label class="label tu"></label></a></li>
+                                        {% endif %}
+                                        {#                                        {% endif %}#}
+
+{#                                                                                {% if not articulo.aprobado and articulo.solicitudpublicacion %}#}
+                                        {% if not articulo.aprobado %}
+                                            {% with totalevidencias=articulo|call:"numeroevidenciasarticulos" totalparticipantes=articulo|call:"numeroparticipantesarticulo" %}
+                                                {% if totalevidencias > 0 and totalparticipantes > 0 %}
+                                                    {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                                        <li style="height:1px; margin:9px 0; overflow:hidden; background-color: #e5e5e5 "></li>
+                                                        <li><a class="aprobar" id="{{ articulo.id|encrypt }}" titulo="<b>{{ articulo.nombre }}</b>" href="javascript:;"><i class="fa fa-check-square-o"></i> Aprobar Artículo</a></li>
+                                                    {% endif %}
+{#                                                    {% if not articulo.preaprobado and not articulo.aprobado %}#}
+{#                                                        {% if persona.es_analista_investigacion or persona.es_aprobador_produccion_cientifica %}#}
+{#                                                            <li style="height:1px; margin:9px 0; overflow:hidden; background-color: #e5e5e5 "></li>#}
+{#                                                            <li><a class="preaprobar" id="{{ articulo.id|encrypt }}" titulo="<b>{{ articulo.nombre }}</b>" href="javascript:;"><i class="fa fa-share"></i> Pre-Aprobar Artículo</a></li>#}
+{#                                                        {% endif %}#}
+{#                                                    {% else %}#}
+{#                                                        {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}#}
+{#                                                            <li style="height:1px; margin:9px 0; overflow:hidden; background-color: #e5e5e5 "></li>#}
+{#                                                            <li><a class="aprobar" id="{{ articulo.id|encrypt }}" titulo="<b>{{ articulo.nombre }}</b>" href="javascript:;"><i class="fa fa-check-square-o"></i> Aprobar Artículo</a></li>#}
+{#                                                        {% endif %}#}
+{#                                                    {% endif %}#}
+
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% endif %}
+
+                                    {% endif %}
+                                    {#                                    {% if articulo.solicitudpublicacion.aprobado %}#}
+
+                                    {#                                    {% endif %}#}
+
+                                    {#                                    <li><a class="confirmacionmodal" href="javascript:;" nhref='/articulosinvestigacion?action=aprobararticulo&idarticulo={{ articulo.id }}'><span class="fa fa-check-square-o"></span> Aprobar Artículo <label class="label tu"></label></a></li>#}
+
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not articulos %}
+                    <tr>
+                        <td colspan="13">
+                            NO HAY ARTÍCULOS
+                        </td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 20 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page=1">1</a></li>
+                            <li><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page={{ pagenumber }}&tipobus={{ tipobus }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page={{ paging.ellipsis_derecha }}&tipobus={{ tipobus }}" class="active">...</a></li>
+                            <li><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page={{ paging.num_pages }}&tipobus={{ tipobus }}">{{ paging.num_pages }}</a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/articulosinvestigacion?{% if search %}s={{ search }}&{% endif %}{% if estadoparticipante %}&estadoparticipante={{ estadoparticipante }}&{% endif %}page={{ pagenumber }}&tipobus={{ tipobus }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="detallesolicitudmodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle de Solicitudes de Artículos Pendientes de Registrar</h3>
+        </div>
+        <div class="modal-body" id="detallesolicitudmodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detallesolicitudmodal_cerrar" class="btn btn-info"> Cerrar</a>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="detalleverarticulosmodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle de Solicitudes</h3>
+        </div>
+        <div class="modal-body" id="detalleverarticulosmodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalleverarticulosmodal_cerrar" class="btn btn-info"> Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" data-keyboard="false" id="itemspaneldescargaevidencia" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitledescargaevidencia">Descargar Evidencias de Artículos</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class=ow-fluid">
+                <form id="formDescargaEvidencia" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                    <table class="table table-bordered" id="descarga_evidencia" >
+                        <tbody>
+                        <tr>
+                            <td style="width: 30%;">Año Publicación:</td>
+                            <td style="width: 70%;">
+                                <select id="anioevidencia" name="anioevidencia" style="width: 95%">
+                                    <option value="0" selected>---------</option>
+                                    {% for anio in aniosevidencias %}
+                                        <option value="{{ anio }}">{{ anio }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-procesar btn-success"><i class="fa fa-download"></i> Descargar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelparticipante" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleparticipante">Seleccionar Participantes para filtro de búsqueda</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyparticipante">
+            <table style="width: 100%;" class='table table-bordered table-striped' id="example2">
+                <thead>
+                <tr>
+                    <th style="text-align: center; width: 3%;">#</th>
+                    <th style="text-align: center; width: 20%;">Cédula</th>
+                    <th style="text-align: center; width: 35%;">Apellidos</th>
+                    <th style="text-align: center; width: 35%;">Nombres</th>
+                    <th style="text-align: center; width: 7%">Sel</th>
+                </tr>
+                </thead>
+                <tbody id="detalle_participantes">
+                    {% for participante in participantes %}
+                        <tr>
+                            <td style="width: 3%; text-align: right; font-weight: bold">{{ forloop.counter }}</td>
+                            <td style="width: 20%; text-align: justify;">{{ participante.cedula }}</td>
+                            <td style="width: 35%; text-align: justify;">{{ participante.apellido1 }} {{ participante.apellido2 }}</td>
+                            <td style="width: 35%; text-align: justify;">{{ participante.nombres }}</td>
+                            <td style="width: 7%; text-align: center;">
+                                <a href="javascript:;" idpart="{{ participante.id }}" nparticipante="{{ participante.apellido1 }} {{ participante.apellido2 }} {{ participante.nombres }}" class="btn btn-mini btn-success tu selparticipante" title="Agregar"><i class="fa fa-plus"></i> Agregar</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="padding-left: 5px; padding-top: 0px; padding-bottom: 0px; text-align: left">
+            <strong>Participantes seleccionados:</strong>
+        </div>
+        <div class="modal-footer" id="nombresseleccionados" style="text-align: left; padding: 5px; height: 70px; overflow-y:scroll;">
+
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" id="btn-aplicar-filtro" class="btn btn-success aplicar"> Aplicar Filtro</a>
+            <a href="javascript:;" id="btn-descargar-listado" class="btn btn-success descargar"> Descargar Listado</a>
+            <a href="javascript:;" id="btn-cerrar-filtro" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+
+{% endblock %}

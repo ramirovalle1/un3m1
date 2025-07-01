@@ -1,0 +1,235 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script type="text/javascript">
+        $(function() {
+            {% if habilitado_ingreso_calificaciones %}
+                $(".nota").change(function() {
+                    var valor;
+                    var mid = $(this).attr("mid");
+                    var va = $(this).attr("va");
+                    var sel = $(this).attr("sel");
+                    var elemento = $(this);
+                    numerico(elemento, 0, {{ planificacion.tipoevaluacion.notamaxima|floatformat:0 }}, 2);
+                    valor = $(this).val();
+                    bloqueointerface();
+                    $.post("/pro_planificacion", {'action': 'nota',  'id': mid, 'valor': valor, 'sel': sel }, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            elemento.css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                            $("#not_"+mid).val(data.valor).attr({'va': data.valor});
+                            {% comment %}if(data.valor > 0){
+                                $("#not_"+mid).attr('disabled', false);
+                            }else{
+                                $("#not_"+mid).attr('disabled', false);
+                            }{% endcomment %}
+                            if (data.curso){
+                                $("#estado_"+mid).html("<label class='label label-info'>"+data.estado+"</label>");
+                            } else {
+                                if (data.aprobada){
+                                    $("#estado_"+mid).html("<label class='label label-success'>"+data.estado+"</label>");
+                                } else {
+                                    $("#estado_"+mid).html("<label class='label label-important'>"+data.estado+"</label>");
+                                }
+                            }
+                        } else {
+                            elemento.css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                            $("#not_"+mid).val(va);
+                        }
+                    });
+                });
+
+                $(".observacion").change(function() {
+                    var valor;
+                    var mid = $(this).attr("mid");
+                    valor = $(this).val();
+                    bloqueointerface();
+                    $.post("/pro_planificacion", {'action': 'observacion', 'valor': valor, 'id': mid}, function(data) {
+                        $.unblockUI();
+                        if (data.result!='ok') {
+                            smoke.alert("Error: Problemas al guardar la Observacion, intente otra vez.")
+                        }
+                    });
+                });
+
+                $(".borrarsesioningreso").click(function() {
+                    bloqueointerface();
+                    $.post("/pro_planificacion", {'action': 'cerrar_habilitacion'}, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            document.location.reload();
+                        }
+                    });
+                });
+            {% else %}
+                $('#envioclave').click(function(){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'envioclave', 'id': '{{ profesor.id|encrypt }}' },
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok') {
+                                smoke.alert("Se ha generado y enviado correctamente la clave para ingreso de notas.");
+                            } else {
+                                smoke.alert("Error al generar la clave.");
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al generar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+                $('#ingresoclave').click(function(){
+                    bloqueointerface();
+                    clave = $('#clave').val();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'verificacionclave', 'id': '{{ profesor.id|encrypt}}', 'clave': clave},
+                        success: function(data) {
+                            if (data.result=='ok') {
+                                location.href = 'pro_planificacion?action=calificar&id={{ planificacion.id|encrypt }}&sel={{ sel }}';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al verificar la clave.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+            {% endif %}
+
+            descargazip = function(id) {
+                bloqueointerface();
+                $.post("/pro_planificacion", {'action': 'descargazip', 'id': id}, function(data) {
+                    $.unblockUI();
+                    if (data.result=='ok') {
+                        openwindow_reporte(location.origin + data.url, 800, 500);
+                    }else{
+                        smoke.alert(data.mensaje)
+                    }
+                });
+            };
+
+        });
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_planificacion?action=planificaciones&id={{ planificacion.materia.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+
+        <div class='span9'>
+            <h4>{{ title }}</h4>
+            <h5>Planificacion: {{ planificacion.materia.nombre_mostrar }}</h5>
+        </div>
+        <div class='span3'>
+            {% if planificacion.enlinea %}
+                <a class="btn btn-success " onclick="descargazip('{{ planificacion.id|encrypt }}')" href="javascript:;"><i class="fa fa-arrow-down"></i> Descarga Masiva</a>
+            {% endif %}
+            {% if habilitado_ingreso_calificaciones and utiliza_validacion_calificaciones %}
+                <a class="btn btn-warning borrarsesioningreso" href="javascript:;"><i class="fa fa-close"></i> Deshabilitar edición de notas</a>
+                <strong>Edición de notas caduca a las : 23:59:59 pm</strong>
+            {% endif %}
+        </div>
+
+    </div>
+    {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones %}
+        <div class='row-fluid'>
+            <div class='span12'>
+                <div class="alert alert-danger">
+                    <div class="form-horizontal">
+                        <b>Clave:</b> <input class="input-control input-small" id="clave" type="text" value="">
+                        <a  href="javascript:;" class="btn btn-info tu" id="ingresoclave" title="Ingreso de clave"><i class="fa fa-key"></i></a>
+                        <span style="margin-left: 20px">Debe generar una clave para poder ingresar calificaciones cada vez que ingrese al sistema, la misma sera enviada a su correo electronico registrado en su hoja de vida.
+                            <a href="javascript:;" class="btn btn-success btn-mini tu" id="envioclave" title="Envio de clave al correo"><i class="fa fa-envelope"></i> Generar</a>
+                            </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class='row-fluid'>
+            <div class='span12'>
+                <table class='table table-bordered table-striped' >
+                    {% if materiasasignadas %}
+                        <tr>
+                            <th style="text-align: center;">Foto</th>
+                            <th>Estudiante</th>
+                            <th style="text-align: center; width: 50px;">Actuaciones</th>
+                            <th style="width: 100px; text-align: center">Nota ({{ planificacion.tipoevaluacion.notaminima|floatformat:0 }}-{{ planificacion.tipoevaluacion.notamaxima|floatformat:0 }})</th>
+                            {% if planificacion.enlinea %}
+                                <th style="width: 120px; text-align: center">Archivo</th>
+                                <th style="width: 100px; text-align: center">Entrega</th>
+                                <th style="width: 300px; text-align: center">Observaci&oacute;n</th>
+                            {% endif %}
+                            <th style="width: 30px; text-align: center">Log</th>
+                        </tr>
+                        {% for materiaasignadaplani in materiasasignadas %}
+                            <tr>
+                                <td style="text-align: center">
+                                    {% if materiaasignadaplani.materiaasignada.matricula.inscripcion.persona.tiene_foto %}
+                                        <a title="{{ materiaasignadaplani.materiaasignada.matricula.inscripcion.persona.nombre_completo }}" href='{{ materiaasignadaplani.materiaasignada.matricula.inscripcion.persona.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ materiaasignadaplani.materiaasignada.matricula.inscripcion.persona.foto.foto.url }}" width="30px"></a>
+                                    {% endif %}
+                                </td>
+                                <td>{{ materiaasignadaplani.materiaasignada.matricula.inscripcion }}
+{#                                    {% if materiaasignadaplani.materiaasignada.matricula.bloqueomatricula %}#}
+{#                                        <br>#}
+{#                                        <label class="label label-important">MATRICULA BLOQUEADA</label>#}
+{#                                    {% endif %}#}
+                                </td>
+                                <td style="text-align: center;vertical-align: middle;">
+                                    {{ materiaasignadaplani.materiaasignada.promedio_evaluacion_clase }} ({{ materiaasignadaplani.materiaasignada.cantidad_evaluaciones_clase }})
+                                </td>
+                                <td style="text-align: center">
+                                    {#                            {% with permite=planificacion.tipoevaluacion|args:materiaasignadaplani.materiaasignada|args:cronograma|call:'permite_ingreso_nota' %}#}
+                                    {#                                <input {% if not permite %} disabled="disabled" {% endif %} class="nota" style="width: 60%; text-align: center;" type="text" mid="{{ materiaasignadaplani.id }}" id="mp_{{ materiaasignadaplani.id }}" va="{{ materiaasignadaplani.calificacion }}" value="{{ materiaasignadaplani.calificacion }}" sel="{{ sel }}">#}
+
+{#                                    {% if materiaasignadaplani.materiaasignada.matricula.bloqueomatricula and materiaasignadaplani.materiaasignada.matricula.inscripcion.carrera.id != 113 %}#}
+{#                                        <label class="label label-important">MATRICULA BLOQUEADA</label>#}
+{#                                    {% else %}#}
+{#                                        <input class="nota tl" {% if materiaasignadaplani.calificacion > 0 %}disabled="disabled"{% endif %} style="width: 60%; text-align: center;" type="text" mid="{{ materiaasignadaplani.id|encrypt }}" id="mp_{{ materiaasignadaplani.id|encrypt }}" va="{{ materiaasignadaplani.calificacion }}" value="{{ materiaasignadaplani.calificacion }}" sel="{{ sel }}" data-html="true" title="Nota mínima: {{ planificacion.tipoevaluacion.notaminima|floatformat:0 }} <br/> Nota máxima:{{ planificacion.tipoevaluacion.notamaxima|floatformat:0 }}">#}
+                                        <input class="nota tl"  style="width: 60%; text-align: center;" type="text" mid="{{ materiaasignadaplani.id|encrypt }}" id="mp_{{ materiaasignadaplani.id|encrypt }}" va="{{ materiaasignadaplani.calificacion }}" value="{{ materiaasignadaplani.calificacion }}" sel="{{ sel }}" data-html="true" title="Nota mínima: {{ planificacion.tipoevaluacion.notaminima|floatformat:0 }} <br/> Nota máxima:{{ planificacion.tipoevaluacion.notamaxima|floatformat:0 }}">
+{#                                    {% endif %}#}
+                                    {#                            {% endwith %}#}
+                                </td>
+                                {% if planificacion.enlinea %}
+                                    <td style="text-align: center">
+                                        {% if materiaasignadaplani.archivo %}
+                                            <a class="btn btn-success btn-mini" href="{{ materiaasignadaplani.archivo.url }}"><i class="fa fa-arrow-down"></i> Descargar</a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span class="smaller"> {{ materiaasignadaplani.fechaentrega|date:'d-m-Y' }}, {{ materiaasignadaplani.horaentrega|time:'H:i' }}</span>
+                                    </td>
+                                    <td>
+                                        <input class="observacion"  mid="{{ materiaasignadaplani.id|encrypt }}" style="width: 100%" type="text" id="mp_observacion" va="{{ materiaasignadaplani.observacion|default_if_none:"" }}" value="{{ materiaasignadaplani.observacion|default_if_none:"" }}" >
+                                    </td>
+                                {% endif %}
+                                <td style="text-align: center"><a href="javascript:;" nhref="/pro_planificacion?action=viewauditoria&id={{ materiaasignadaplani.id|encrypt }}" class="tl viewhtml" title="Auditoria de calificación"><img width="16" src="/static/images/16/log.png"></a></td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="15">NO TIENE ESTUDIANTES MATRICULADO EN ESTA MATERIA</td>
+                        </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

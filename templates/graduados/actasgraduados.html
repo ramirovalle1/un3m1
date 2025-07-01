@@ -1,0 +1,1556 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <link href="/static/widget_ppp.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="/static/dropify/css/dropify.min.css">
+    <script type="text/javascript" src='/static/dropify/js/dropify.min.js?v=1.0.0'></script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <style type="text/css">
+        .searchinput {
+        {% if search %}
+            max-width: 220px !important;
+        {% else %}
+            max-width: 250px !important;
+        {% endif %}
+            min-width: 100px !important;
+        }
+
+        .radio label,
+        .checkbox label {
+            display: inline-block;
+            cursor: pointer;
+            color: #0074D9;
+            position: relative;
+            padding: 5px 15px 5px 51px;
+            font-size: 1em;
+            border-radius: 5px;
+            -webkit-transition: all 0.3s ease;
+            -o-transition: all 0.3s ease;
+            transition: all 0.3s ease;
+        }
+
+        .radio label:hover,
+        .checkbox label:hover {
+            background: rgba(255, 65, 54, 0.1);
+        }
+
+        .radio label:before,
+        .checkbox label:before {
+            content: "";
+            display: inline-block;
+            width: 17px;
+            height: 17px;
+            position: absolute;
+            left: 15px;
+            border-radius: 50%;
+            background: none;
+            border: 3px solid #0074D9;
+        }
+
+        input[type="radio"] {
+            display: none;
+        }
+
+        input[type="radio"]:checked + label:before {
+            display: none;
+        }
+
+        input[type="radio"]:checked + label {
+            padding: 5px 15px;
+            background: #0074D9;
+            border-radius: 2px;
+            color: #fff;
+        }
+
+        .checkbox label:before {
+            border-radius: 3px;
+        }
+
+        .checkbox input[type="checkbox"] {
+            display: none;
+        }
+
+        .checkbox input[type="checkbox"]:checked + label:before {
+            display: none;
+        }
+
+        .checkbox input[type="checkbox"]:checked + label {
+            background: #0074D9;
+            color: #fff;
+            padding: 5px 15px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+        });
+        var busqueda = function (page/*=undefined*/) {
+            var term = $("#searchinput").val().toUpperCase().trim();
+            var idc = $("#carrera_list").val();
+            var ida = $("#anio_list").val();
+            var idg = $('[name="filter_sexo"]:checked').val();
+            page = typeof page == 'undefined' ? 1 : page;
+            if (term.length > 0) {
+                bloqueointerface();
+                location.href = `/graduados?s=${term}&idc=${idc}&ida=${ida}&idg=${idg}&page=${page}`;
+            } else {
+                bloqueointerface();
+                location.href = `/graduados?&idc=${idc}&ida=${ida}&idg=${idg}&page=${page}`;
+            }
+            return false;
+        };
+
+        $(function () {
+
+            $(".pdfactatitulacion").click(function () {
+                var idasig = $(this).attr('idasig');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'pdfactatitulacioncomplexivo', 'idmateriaasign': idasig},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === "ok") {
+                            window.open(data.url, '_blank');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                })
+            });
+
+            $("select").select2({with: "100%", minimumResultsForSearch: 10});
+
+            $('[name="filter_sexo"]').change(function () {
+                busqueda();
+            });
+
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("#carrera_list, #anio_list").change(function () {
+                busqueda();
+            });
+            $("#id_fechainirural, #id_fechafinrural").addClass("validate[required]").datepicker({format: "yyyy-mm-dd"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            })
+            $("#modal_rural").click(function () {
+                $("#id_fechaini").val('');
+                $("#id_fechafin").val('');
+                $("#idoperativoadd").val('');
+                $("#idoperativoadd").val(5);
+                if ($("#carrera_list option:selected").val() == 0) {
+                    smoke.alert("Seleccione carrera");
+                    return false;
+                }
+                var carrera = $("#carrera_list option:selected").text();
+                $(".carreraindicador").html(carrera);
+                $("#alertaingresoaddindicadorrural").hide();
+                $("#itemspaneladdacionesrural .incompletoaddindicadorrural").hide();
+                $("#itemspaneladdacionesrural .incompletovaloresaddindicadorrural").hide();
+                $("#generar_reporterural").show();
+                $("#guardar").hide();
+                $("#modaladdindicadoresrural").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+            $("#generar_reporterural").click(function () {
+                var id_fini = $("#id_fechainirural").val();
+                var id_ffin = $("#id_fechafinrural").val();
+                var carrera_list = $("#carrera_list").val();
+                openwindow('GET', '/graduados', {action: 'excelgraduadosrural', fechainicio: id_fini, fechafin: id_ffin, carrera: carrera_list}, '_blank');
+                $("#modaladdindicadores").modal("hide");
+            });
+            $("#cerrarindicadoresaddrural").click(function () {
+                $("#modaladdindicadoresrural .incompletoaddindicadoresrural").hide();
+                $("#modaladdindicadoresrural .incompletovaloindicadoresrural").hide();
+                $("#modaladdindicadoresrural").modal("hide");
+            });
+            $("#id_fechaini, #id_fechafin, #id_fechainidip, #id_fechafindip").addClass("validate[required]").datepicker({format: "yyyy-mm-dd"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            })
+            $("#modal_autoregistro").click(function () {
+                $("#id_fechaini").val('');
+                $("#id_fechafin").val('');
+                $("#idoperativoadd").val('');
+                $("#idoperativoadd").val(5);
+                if ($("#carrera_list option:selected").val() == 0) {
+                    smoke.alert("Seleccione carrera");
+                    return false;
+                }
+                var carrera = $("#carrera_list option:selected").text();
+                $(".carreraindicador").html(carrera);
+                $("#alertaingresoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicador").hide();
+                $("#generar_reporte").show();
+                $("#guardar").hide();
+                $("#modaladdindicadores").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+
+            $("#modal_autoregistrodip").click(function () {
+                $("#id_fechainidip").val('');
+                $("#id_fechafindip").val('');
+                $("#idoperativoadd").val('');
+                $("#idoperativoadd").val(5);
+                if ($("#carrera_list option:selected").val() == 0) {
+                    smoke.alert("Seleccione carrera");
+                    return false;
+                }
+                var carrera = $("#carrera_list option:selected").text();
+                $(".carreraindicador").html(carrera);
+                $("#alertaingresoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicador").hide();
+                $("#generar_reportedip").show();
+                $("#guardar").hide();
+                $("#modaladdindicadoresdip").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+
+            $("#generar_reporte").click(function () {
+                var id_fini = $("#id_fechaini").val();
+                var id_ffin = $("#id_fechafin").val();
+                var cmbgenero = $("#cmbgenero").val();
+                var carrera_list = $("#carrera_list").val();
+                openwindow('GET', '/graduados', {action: 'excelgraduados', fechainicio: id_fini, cmbgenero: cmbgenero, fechafin: id_ffin, carrera: carrera_list}, '_blank');
+                $("#modaladdindicadores").modal("hide");
+            });
+
+            $("#generar_reportedip").click(function () {
+                var id_fini = $("#id_fechainidip").val();
+                var id_ffin = $("#id_fechafindip").val();
+                var carrera_list = $("#carrera_list").val();
+                openwindow('GET', '/graduados', {action: 'excelgraduadosdip', fechainicio: id_fini, fechafin: id_ffin, carrera: carrera_list}, '_blank');
+                $("#modaladdindicadoresdip").modal("hide");
+            });
+
+            $("#cerrarindicadoresadd").click(function () {
+                $("#modaladdindicadores .incompletoaddindicadores").hide();
+                $("#modaladdindicadores .incompletovaloindicadores").hide();
+                $("#modaladdindicadores").modal("hide");
+            });
+
+            $("#cerrarindicadoresadd_dip").click(function () {
+                $("#modaladdindicadoresdip .incompletoaddindicadores").hide();
+                $("#modaladdindicadoresdip .incompletovaloindicadores").hide();
+                $("#modaladdindicadoresdip").modal("hide");
+            });
+
+            $(".actafacultad").click(function () {
+                $('#id_actafacultad').val(0).trigger("change");
+                bloqueointerface();
+                var idg = $(this).attr('idg');
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'graduadopersona', 'id': idg},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $("#idg").val(idg);
+                            if (data.idaf) {
+                                $('#id_actafacultad').val(data.idaf).trigger("change");
+                            }
+                            $('#id_actafacultad').addClass("validate[required]");
+                            $("#id_estudiante").val(data.estudiante);
+                            $("#citamodal").modal({backdrop: 'static', width: '400px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $('#cerrarcitamodal').click(function () {
+                $('#citamodal').modal('hide');
+            });
+
+            $("#id_actafacultad").change(function () {
+                $('#mensaje').hide();
+            });
+
+            $('#citamodal_run').click(function () {
+                var idaf = $('#id_actafacultad').val();
+                var idg = $("#idg").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'addactafacultad', 'idaf': idaf, 'idg': idg},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            location.reload();
+                            $('#citamodal').modal('hide');
+                            return false;
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+                return false;
+            });
+            $(".eliminarsubdecano").click(function () {
+                var idg = $(this).attr('idg');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'delsubdecano', 'id': idg},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+                return false;
+            });
+            $(".eliminarreprdocentep").click(function () {
+                var idg = $(this).attr('idg');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'delrepresentantedocente', 'id': idg},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+                return false;
+            });
+
+            $(".eliminarreprestudiantil").click(function () {
+                var idg = $(this).attr('idg');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'delrepresentanteestudiantil', 'id': idg},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+                return false;
+            });
+
+            $("#action_min").click(function () {
+                $("#panel_filter .panel-body").hide();
+                $("#action_min").hide();
+                $("#action_max").show();
+            });
+            $("#action_max").click(function () {
+                $("#panel_filter .panel-body").show();
+                $("#action_min").show();
+                $("#action_max").hide();
+            });
+
+            {% if not search and not ids and idc == 0 and idg == 0 and ida == 0 %}
+                $("#action_min").trigger("click");
+            {% else %}
+                $("#action_max").trigger("click");
+            {% endif %}
+
+            $(".action_page").click(function () {
+                var page = $(this).attr('page');
+                busqueda(page);
+            });
+            $(".action_clean").click(function () {
+                $('#searchinput').val("");
+                busqueda();
+            });
+            $(".editposgrado").click(function () {
+                $('#codigograduado').val($(this).attr('idgra'));
+                $('#idnumeroacta').val($(this).attr('idnumero'));
+                $("#modaladddetalle").modal({backdrop: 'static', width: '600px'}).modal('show');
+            });
+            $("#cancel_cancelardetalle").click(function () {
+                $('#modaladddetalle').modal('hide');
+            });
+            $("#boton_adicionardetalle").click(function () {
+                var codigograduado = $('#codigograduado').val();
+                var idnumeroacta = $('#idnumeroacta').val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/graduados",
+                    data: {'action': 'editarnumeroacta', 'id': codigograduado, 'idnumeroacta': idnumeroacta},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al editar.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            location.reload();
+                            $("#modaladddetalle").modal({backdrop: 'static', width: '600px'}).modal('show');
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+        });
+
+        function vistaprevia(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfacta', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function actagradoposgrado(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactagradpoposgrado', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+        function actagradoposgradoposgrado(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactagradpoposgradograduado', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistapreviaex(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactaexcomplexivo', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistapreviasusten(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactasustentacion', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistapreviarubri(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfrubricasustentacion', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistaborrador(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactaborrador', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistaborradorex(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactaborradorexcom', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistarecord(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactarecord', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistarecord2(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactarecord2', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function recordintegracion(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfrecordintegracion', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistarecordexcom(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfactarecordexcomp', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function vistitulacion(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfcalificaciontitulacion', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        function visexamencomplexivo(idinscripcion) {
+            openwindow('POST', '/graduados', {action: 'pdfcalificacionexamencomplexivo', id: idinscripcion, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');
+        }
+
+        {#        function reportexcel(idinscripcion){#}
+        {#            id_fini = $("#id_fini").val()#}
+        {#            id_ffin = $("#id_ffin").val()#}
+        {#            openwindow('GET' ,'/sistemasag', {action:'excelencuestados',idperiodo:{{ periodoencuesta.id }},fechainicio:id_fini,fechafin:id_ffin,x:1}, '_blank');#}
+        {#        }#}
+
+        function subirarchivo(acta, id){
+            {#document.getElementById("acta").innerHTML  = acta;#}
+            document.getElementById("actaNombre").value=acta;
+            $.ajax({
+                type: "GET",
+                url: "/graduados",
+                data: {
+                    'action': "consultaracta", 'nombre':acta, 'id':id,
+                },
+                success: function (data) {
+                    if (data.result === "ok") {
+                        $("#id_descarga").each(function(){
+                            $(this).empty();
+                            $(this).append('<a target="_blank" href="media/'+ data.ruta +'" class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'"  \
+                               data-fancybox-type="iframe" title="Archivo"><i\
+                               class="fa fa-arrow-down"></i></a>')
+                        })
+                    }else{
+                        $("#id_descarga").empty();
+                    }
+                },
+                error: function () {
+                    $("#id_descarga").empty();
+                }
+            });
+            $("#itemspanelarchivos").modal({backdrop: 'static', width: '500px'}).modal('show');
+        }
+
+        function cerrar(){
+            $("#itemspanelarchivos").modal("hide");
+        }
+
+        function guardar(){
+
+        }
+
+        function anadiracta(id, text, action, width, height, tipoacta, responsable) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/graduados",
+                data: {
+                    'action': action,
+                    'id': id,
+                    'tipoacta':tipoacta,
+                    'responsable':responsable
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: width, height: height}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModal() {
+            var text = ""
+            var id = ""
+            $.ajax({
+                type: "GET",
+                url: "/graduados",
+                data: {
+                    'action': "modalsubirarchivo",
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html("Hola");
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalrecorrido(idp, id, text, action, dimension = 'modal-lg', footer = true, idex = '', icon = 'fa-outdent') {
+            bloqueointerface()
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': idp,
+                    'idex': idex,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    footer ? $('#footermodal').hide() : $('#footermodal').show();
+                    $('#title-icon').removeClass('fa-outdent').addClass(icon)
+                    $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                    if (data.result === true) {
+                        $('#itemspanelrecorrido .panelbody').html(data.data);
+                        $('#itemspanelrecorrido .paneltitle').html(text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
+                        $("#itemspanelrecorrido").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        if (data.reload) {
+                            location.reload()
+                        } else {
+                            mensajeDanger(data.message);
+                        }
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function guardarActa(){
+            bloqueointerface();
+            {#console.log($('#guardarActa .modal-body').find('form'))#}
+            var formdata = new FormData($('#formActa')[0]);
+            $.ajax({
+                type: 'POST',
+                url: '/graduados',
+                dataType: "html",
+                data: formdata,
+                async: false,
+                cache: false,
+                contentType: false,
+                enctype: 'multipart/form-data',
+                processData: false,
+                success: function(data) {
+                    if (data.result === 'ok' || data.result === true) {
+                        Swal.fire({
+                            title: 'REGISTRO EXITOSO!',
+                            text: '',
+                            type: 'success',
+                            showConfirmButton: false,
+                            showCancelButton: false,
+                            allowOutsideClick: false,
+                            confirmButtonColor: '#3085d6',
+                            confirmButtonText: 'Ok'
+                        })
+                        $.unblockUI();
+                        $('#itemspanelarchivos').modal('hide');
+                        location.reload();
+                    } else {
+                        $.unblockUI();
+                        Swal.fire({
+                            title: 'ARCHIVO INCORRECTO!',
+                            text: '',
+                            type: 'error',
+                            showCancelButton: false,
+                            allowOutsideClick: false,
+                            confirmButtonColor: '#3085d6',
+                            confirmButtonText: 'Ok'
+                        })
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                    NotificationJG.error('Error de conexión  con el servidor');
+                },
+                dataType: 'json',
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        }
+        {#function pdfactatitulacion(idasignado){#}
+        {#    openwindow('POST' ,'/graduados', {action:'pdfactatitulacioncomplexivo','idmateriaasign': idasignado }, '_blank');#}
+        {# }#}
+        function pdfactagrado(idgraduado){
+            openwindow('POST' ,'/graduados', {action:'pdfactagradocomplexivo','idgraduado': idgraduado }, '_blank');
+        }
+    </script>
+{% endblock %}
+{% block atras %}/graduados{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ title }}</h3>
+                <h6>Estudiante: {{ graduado.inscripcion.persona }}</h6>
+                {% if graduado.materiatitulacion %}
+                    <h6>{{ graduado.materiatitulacion.materiaasignada.materia }}</h6>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <table class="table table_primary tabla_responsive">
+            <thead class="table-light">
+            <tr>
+                <th title="Nombre del Acta" style="text-align: left">Nombre del acta</th>
+                <th style="width:160px;text-align: center" title="Archivo">Archivo origen</th>
+                <th style="width:160px;text-align: center" title="Archivo">Archivo firmado</th>
+                <th style="text-align: center;width:200px">Subir evidencia firmada</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if graduado.inscripcion.coordinacion.id == 7 %}
+                <tr>
+                    <td>Acta de Grado Posgrado</td>
+                    <td style="text-align: center"><a class="btn btn-warning" onclick="actagradoposgradoposgrado({{ graduado.inscripcion.id }})" href="javascript:;"><i class="fa fa-download"></i> Descargar</a></td>
+                    {% with acta=graduado|args:1|call:'rutaacta' %}
+                        <td style="text-align: center">
+                            {% if acta %}
+                                <a target="_blank"
+                                   href="media/{{ acta.0.archivo }} "
+                                   class="btn btn-success btn-mini tu btn-fancybox"
+                                   data-original-title="Archivo '+ acta +'"
+                                   data-fancybox-type="iframe" title="Archivo"><i
+                                        class="fa fa-arrow-down"></i></a>
+                            {% endif %}
+                        </td>
+                    {% endwith %}
+                    <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',1,0)"
+                                                      href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                    </a></td>
+                </tr>
+                <tr>
+                    <td>Archivo de trabajo de titulación final</td>
+                    <td style="text-align: center">-  </td>
+                    {% with acta=graduado|args:12|call:'rutaacta' %}
+                        <td style="text-align: center">
+                            {% if acta %}
+                                <a target="_blank"
+                                   href="media/{{ acta.0.archivo }} "
+                                   class="btn btn-success btn-mini tu btn-fancybox"
+                                   data-original-title="Archivo '+ acta +'"
+                                   data-fancybox-type="iframe" title="Archivo"><i
+                                        class="fa fa-arrow-down"></i></a>
+                            {% endif %}
+                        </td>
+                    {% endwith %}
+                    <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',12,0)"
+                                                      href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                    </a></td>
+                </tr>
+            {% else %}
+                {% if graduado.materiatitulacion %}
+                    <tr>
+                        {% with acta=graduado|args:5|call:'rutaacta' %}
+                            <td>Acta de Grado</td>
+                            <td style="text-align: center">
+                                {% if not graduado.id|firmaactagradosistema %}
+                                    <a class="btn btn-warning" onclick="pdfactagrado({{ graduado.id }})" href="javascript:;"><i class="fa fa-download"></i> Descargar</a>
+                                {% endif %}
+                            </td>
+
+                            <td style="text-align: center">
+                                {% if acta %}
+                                    <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if not graduado.id|firmaactagradosistema %}
+                                    <a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',5,0)"
+                                       href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i>
+                                    </a>
+                                {% else %}
+                                    <a class="btn btn-info btn-mini" href="javascript:void(0)" onclick="formModalrecorrido('','{{ acta.0.id }}','Detalle de firmas','detallefirmasactagrado','modal-lg',false)">
+                                        <i class="fa fa-list dropdown-item-icon"></i>Firmas
+                                    </a>
+                                {% endif %}
+                            </td>
+                        {% endwith %}
+                    </tr>
+                    <tr>
+                        <td>Acta de Titulación</td>
+                        <td style="text-align: center">
+                            {% if graduado.materiatitulacion.archivotitulacionfirmada %}
+                                <a class="btn btn-default btn-sm btn-hover gallerypdf" data-fancybox-type="iframe" href="{{ graduado.materiatitulacion.download_evidencia }}"><img src="/static/images/pdf.png" width="18" height="18" align="absmiddle"></a>
+                                {#                                    <a class="btn btn-warning pdfactatitulacion" idasig="{{ graduado.materiatitulacion.id }}" href="javascript:;" ><i class="fa fa-download"></i> Descargar</a>#}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if graduado.materiatitulacion.archivotitulacionfirmada %}
+                                <p class="text-success active"><i class="fa fa-qrcode"></i> FIRMADO</p>
+                            {% else %}
+                                <p class="text-danger active"><i class="fa fa-qrcode"></i> NO FIRMADO</p>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center"></td>
+                    </tr>
+                    <tr>
+                        {% with acta=graduado|args:6|call:'rutaacta' %}
+                            <td>Acta Consolidada</td>
+                            <td style="text-align: center">
+                                {% if not graduado.id|firmaactagradosistema %}
+                                    <a class="btn btn-warning" onclick="recordintegracion({{ graduado.inscripcion.id }})" href="javascript:;"><i class="fa fa-download"></i> Descargar</a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if acta %}
+                                    <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if not graduado.id|firmaactagradosistema %}
+                                    <a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',6,0)"
+                                       href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i>
+                                    </a>
+                                {% else %}
+                                    <a class="btn btn-info btn-mini" href="javascript:void(0)" onclick="formModalrecorrido('','{{ acta.0.id }}','Detalle de firmas','detallefirmasactagrado','modal-lg',false)">
+                                        <i class="fa fa-list dropdown-item-icon"></i>Firmas
+                                    </a>
+                                {% endif %}
+                            </td>
+                        {% endwith %}
+                    </tr>
+                {% else %}
+                    {% if graduado.inscripcion.tieneactasustentacion %}
+                        <tr>
+                            <td>Acta de Sustentación</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="vistapreviasusten({{ graduado.inscripcion.id }})" href="javascript:;"><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:2|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',2,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                        <tr>
+                            <td>Rúbricas de Sustentación</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="vistapreviarubri({{ graduado.inscripcion.id }})" href="javascript:;"
+                            ><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:3|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',3,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                    {% endif %}
+                    {% if graduado.examencomplexivo %}
+                        <tr>
+                            <td>Acta de Grado(Ex.Com)</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="vistapreviaex({{ graduado.inscripcion.id }})" href="javascript:;"
+                            ><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:4|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',4,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td>Acta de Grado</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="vistaprevia({{ graduado.inscripcion.id }})" href="javascript:;"
+                            ><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:5|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',5,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <td>Acta Consolidada</td>
+                        <td style="text-align: center"><a class="btn btn-warning"
+                                                          onclick="vistarecord({{ graduado.inscripcion.id }})" href="javascript:;"
+                        ><i class="fa fa-download"></i> Descargar</a></td>
+                        {% with acta=graduado|args:6|call:'rutaacta' %}
+                            <td style="text-align: center">
+                                {% if acta %}
+                                    <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                {% endif %}
+                            </td>
+                        {% endwith %}
+                        <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',6,0)"
+                                                          href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                    </tr>
+                    <tr>
+                        <td>Acta consolidada anterior</td>
+                        <td style="text-align: center"><a class="btn btn-warning"
+                                                          onclick="vistarecord2({{ graduado.inscripcion.id }})" href="javascript:;"
+                        ><i class="fa fa-download"></i> Descargar</a></td>
+                        {% with acta=graduado|args:7|call:'rutaacta' %}
+                            <td style="text-align: center">
+                                {% if acta %}
+                                    <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                {% endif %}
+                            </td>
+                        {% endwith %}
+                        <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',7,0)"
+                                                          href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                    </tr>
+                    {% if not graduado.examencomplexivo %}
+                        <tr>
+                            <td>Calificación Examen Complexivo</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="visexamencomplexivo({{ graduado.inscripcion.id }})" href="javascript:;"
+                            ><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:8|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',8,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td>Calificación Titulación</td>
+                            <td style="text-align: center"><a class="btn btn-warning"
+                                                              onclick="vistitulacion({{ graduado.inscripcion.id }})" href="javascript:;"
+                            ><i class="fa fa-download"></i> Descargar</a></td>
+                            {% with acta=graduado|args:9|call:'rutaacta' %}
+                                <td style="text-align: center">
+                                    {% if acta %}
+                                        <a target="_blank" href="media/{{ acta.0.archivo }} " class="btn btn-success btn-mini tu btn-fancybox" data-original-title="Archivo '+ acta +'" data-fancybox-type="iframe" title="Archivo"><i class="fa fa-arrow-down"></i></a>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                            <td style="text-align: center"><a onclick="anadiracta('{{ graduado.id }}','Acta','adicionaractagraduado', '500', '236',9,0)"
+                                                              href="javascript:void(0)"; class="btn btn-info"><i class="fa fa-upload"></i></a></td>
+
+                        </tr>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+    <div class="modal fade static" id="itemspanel2" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte Marcadas Docente</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <form id="form3" class="form-horizontal form-modal" style="width: 370px; margin-bottom: 0">
+                    <div style="width: 150px">
+                        <p>Desde: <input type="text" id="id_fecha_desde"></p>
+                        <p>Hastta: <input type="text" id="id_fecha_hasta"></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_adicionar_2"><i class="fa fa-plus"></i> Procesar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar_2"> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel3" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte Asistencia Docente</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!
+            </div>
+            <div style="text-align: left">
+                <span> <b> Tipo de archivo: </b>  </span><br>
+                <select style="width: 200px" class="no-margin-bottom tipo_archivo">
+                    <option  value="1">Archivo Pdf</option>
+                    <option  value="2">Archivo Excel</option>
+                </select>
+                <br><br>
+                <div class="form-group" id="facultad_group2" style="display: none">
+                    <span> <b> Coordinación: </b>  </span>
+                    <form class="form-search">
+                        <select id="id_facultad2" name="Facultad" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                    <br>
+                </div>
+                <span> <b> Rango de fechas: </b>  </span><br>
+                <input placeholder="Fecha desde" type="text" value="{{ fechainicio }}" name="fini" id="id_fecha_inicio" style="width: 100px">
+                <input placeholder="Fecha hasta" type="text" value="{{ fechafin }}" name="ffin" id="id_fecha_fin" style="width: 100px"><br>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_adicionar_3"><i class="fa fa-plus"></i> Procesar</a>
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_cerrar_3"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+                </div>
+                <div class="modal-body">
+                    <div class="card mb-4">
+                        <form class="form-horizontal form-modal form" autocomplete="off" method="post"
+                              enctype="multipart/form-data" action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="row-fluid panelbody">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelrecorrido" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><i class="fa fa-outdent" id="title-icon"></i> <b class="paneltitle"> FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default cerrar" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelpares" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte Pares</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione
+            </div>
+            <div style="text-align: left;">
+                <span> <b> Seleccione una coordinación: </b>  </span>
+                <select style="width: 400px" class="no-margin-bottom" name="cmbcarreras" id="cmbcarreras">
+                    {% for listacar in listadocarreras %}
+                        <option  value="{{ listacar.id }}">{{ listacar }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_reportepares"><i class="fa fa-plus"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_reportepares"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itemspanelactividadespendientes" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte actividades pendientes</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione
+            </div>
+            <div style="text-align: left;">
+                <span> <b> Seleccione una Carrera: </b></span>
+                <select style="width: 400px" class="no-margin-bottom" name="cmbcarreraspregradovirtual" id="cmbcarreraspregradovirtual">
+                    {% for listacar in listadocarreraspregradovirtual %}
+                        <option  value="{{ listacar.id }}">{{ listacar }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_reporteactividades"><i class="fa fa-plus"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_reporteactividades"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelinformeactividades" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Informe actividades </h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger incompletoinformeactividades" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione
+            </div>
+            <div style="text-align: left;">
+                <span> <b> Seleccione una Carrera: </b>  </span> <br>
+                <select style="width: 400px" class="no-margin-bottom" name="cbocarreraactividades" id="cbocarreraactividades">
+                    {% for listacar in listadocarreraspregradovirtual %}
+                        <option  value="{{ listacar.id }}">{{ listacar }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_informeactividades"><i class="fa fa-plus"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_informeactividades"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modal_reportes" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Filtrar por periodo</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="form-group" id="facultad_group" style="display: none">
+                        <form class="form-search">
+                            <select id="id_facultad" name="Facultad" style="width: 415px;">
+                                <option value="0">--------</option>
+                            </select>
+                        </form>
+                    </div>
+
+                    <div class="form-group" id="periodo_group" style="display: none">
+                        <form class="form-search">
+                            <select id="id_periodo" name="Periodo" style="width: 415px;">
+                                <option value="0">--------</option>
+                            </select>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a class="btn btn-info " id="download_report"><i class="fa fa-plus"></i> Descargar Reporte</a>
+                    </td>
+                    <td><a class="btn btn-danger" data-dismiss="modal"><i class="fa fa-close"></i> Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspaneltutoria" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte Tutorias</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!
+            </div>
+            <div style="text-align: left;">
+                {#                <input placeholder="Fecha desde" type="text" value="{{ fechainicio }}" name="fini" id="id_fecha_inicio" style="width: 100px">#}
+                {#                <input placeholder="Fecha hasta" type="text" value="{{ fechafin }}" name="ffin" id="id_fecha_fin" style="width: 100px"><br><br>#}
+                <span> <b> Seleccione el tipo de archivo: </b>  </span> <br>
+                <select style="width: 200px" class="no-margin-bottom tipo_archivo_tutoria">
+                    <option  value="1">Archivo Pdf</option>
+                    <option  value="2">Archivo Excel</option>
+                </select>
+                <br><br>
+                <div class="form-group" id="facultad_group3" style="display: none">
+                    <span> <b> Seleccione una coordinación: </b>  </span>
+                    <form class="form-search">
+                        <select id="id_facultad3" name="Facultad" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_tutoria"><i class="fa fa-plus"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_tutoria"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelseguimiento" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Reporte Seguimiento Notas</h4>
+        </div>
+        <div class="modal-body panelbody">
+            {#            <div class="alert alert-danger invalidofechas" style="display: none">#}
+            {#                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!#}
+            {#            </div>#}
+            <div style="text-align: left;">
+                {#                <input placeholder="Fecha desde" type="text" value="{{ fechainicio }}" name="fini" id="id_fecha_inicio" style="width: 100px">#}
+                {#                <input placeholder="Fecha hasta" type="text" value="{{ fechafin }}" name="ffin" id="id_fecha_fin" style="width: 100px"><br><br>#}
+                <span> <b> Seleccione el tipo de archivo: </b>  </span><br>
+                <select style="width: 200px" class="no-margin-bottom tipo_archivo_seguimiento">
+                    <option  value="1">Archivo Pdf</option>
+                    {#                    <option  value="2">Archivo Excel</option>#}
+                </select>
+                <br><br>
+                <div class="form-group" id="facultad_group4" style="display: none">
+                    <span> <b> Seleccione una coordinación: </b>  </span>
+                    <form class="form-search">
+                        <select id="id_facultad4" name="Facultad" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_seguimiento"><i class="fa fa-plus"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_seguimiento"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelarticulo" style="display: none;" >
+        <div class="modal-header">
+            <h4 id="paneltitle">Ingrese los datos para descargar</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div style="text-align: left">
+                <form id="formArticulo" style="height: 15px; text-align: left">
+                    <span> <b>Seleccione un año:</b> </span> <br>
+                    <input placeholder="Año" type="text" style="text-align: center; width: 150px" values="" name="anio" id="id_anio">
+                    <span class='help-text' id="itemshelptext"></span>
+                </form>
+                <br><br>
+                <div class="form-group" id="facultad_group5" style="display: none">
+                    <span><b> Seleccione una coordinación: </b></span> <br>
+                    <form class="form-search">
+                        <select id="id_facultad5" name="Facultad" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" class="btn btn-info generarinformearticulo"><i class="fa fa-plus"></i> Procesar</a>
+                <a href="javascript:;" class="btn btn-danger cancelarinformearticulo"><i class="fa fa-close"></i> Cancelar</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modal_reportes3" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Productos de investigación docente</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <div class="span12">
+
+
+                    <div class="form-group" id="facultad_group6" style="display: none; text-align: left">
+                        <span> <b> Seleccione una coordinación: </b>  </span>
+                        <form class="form-search">
+                            <select id="id_facultad6" name="Facultad" style="width: 415px;">
+                                <option value="0">--------</option>
+                            </select>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a class="btn btn-info " id="generar_producto"><i class="fa fa-plus"></i> Generar</a>
+                    </td>
+                    <td><a class="btn btn-danger" id="cerrar_producto"><i class="fa fa-close"></i> Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="modal_reportes2" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Reporte Ejecución de Tutorías</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <div class="span12">
+
+                    <b> <b> Rango de Fechas: </b> </b>
+                    <br>
+
+                    <div class="form-group span4">
+
+                        <div class="input-group input-daterange">
+                            <input type="date" name="fechas" id="fecha_desde" class="form-control span12" value=""
+                                   autocomplete="off"
+                                   placeholder="FECHA DESDE">
+                        </div>
+                    </div>
+
+                    <div class="form-group span4">
+
+                        <div class="input-group input-daterange">
+                            <input type="date" name="fechas" id="fecha_hasta" class="form-control span12" value=""
+                                   autocomplete="off"
+                                   placeholder="FECHA HASTA">
+                        </div>
+                    </div>
+
+                    <br><br>
+
+
+                    {#                   <div class="form-group" id="periodo_group2" style="display: none">#}
+                    {#                       <span> <b> Periodo: </b>  </span>#}
+                    {#                       <form class="form-search">#}
+                    {#                           <select id="id_periodo2" name="Periodo" style="width: 415px;">#}
+                    {#                               <option value="0">--------</option>#}
+                    {#                           </select>#}
+                    {#                       </form>#}
+                    {#                   </div>#}
+
+                    <div class="form-group" id="estado_group2" style="display: none">
+                        <span> <b> Estado: </b> </span>
+                        <form class="form-search">
+                            <select id="id_estado2" name="Estado" style="width: 415px;">
+                                <option value="">TODOS</option>
+                                <option value="1">SOLICITADO</option>
+                                <option value="2">PROGRAMADO</option>
+                                <option value="3">EJECUTADO</option>
+                                <option value="4">CANCELADO</option>
+                            </select>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a class="btn btn-info " id="download_report2"><i class="fa fa-plus"></i> Descargar Reporte</a>
+                    </td>
+                    <td><a class="btn btn-danger" data-dismiss="modal"><i class="fa fa-close"></i> Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    {#INICIO REPORTE MARCADAS  #}
+    <div class="modal fade static" id="modal_reportes4" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Reporte de Marcadas Docentes</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <div class="span12">
+
+                    <b> <b> Rango de Fechas: </b> </b>
+                    <br><br>
+
+                    <div class="form-group span4">
+
+                        <div class="input-group input-daterange">
+                            <input type="date" name="fechas" id="fecha_desde_1" class="form-control span12" value=""
+                                   autocomplete="off"
+                                   placeholder="FECHA DESDE">
+                        </div>
+                    </div>
+
+                    <div class="form-group span4">
+
+                        <div class="input-group input-daterange">
+                            <input type="date" name="fechas" id="fecha_hasta_1" class="form-control span12" value=""
+                                   autocomplete="off"
+                                   placeholder="FECHA HASTA">
+                        </div>
+                    </div>
+
+                    <br>
+                    <br>
+                    <br>
+
+                    <div class="form-group" id="periodo_group3">
+                        <span> <b> Periodo: </b>  </span>
+                        <form class="form-search">
+                            <select id="id_periodo3" name="Periodo" style="width: 415px;">
+                                <option value="0">--------</option>
+                            </select>
+                        </form>
+                    </div>
+
+                    <br>
+
+                    <div class="form-group" id="facultad_group9">
+                        {#                       <label for="id_facultad8"> <b>Coordinación:</b></label>#}
+                        <span> <b> Facultad: </b>  </span>
+                        <form class="form-search">
+                            <select id="id_facultad9" name="coordinacion" style="width: 415px;">
+                                <option value="0">--------</option>
+                            </select>
+                        </form>
+                    </div>
+
+
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a class="btn btn-info " id="descargar_reporte_marcadas"><i class="fa fa-plus"></i> Descargar Reporte</a>
+                    </td>
+                    <td><a class="btn btn-danger" data-dismiss="modal"><i class="fa fa-close"></i> Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    {#FIN REPORTE MARCADAS            #}
+    <div class="modal fade static" id="itemsformacion" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Formación Docentes</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div style="text-align: left;">
+                <div class="form-group" id="facultad_group7" style="display: none">
+                    <span> <b> Seleccione una coordinación: </b>  </span>
+                    <form class="form-search">
+                        <select id="id_facultad7" name="Facultad" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info" id="generar_formacion"><i class="fa fa-plus"></i> Procesar</a>
+            <a href="javascript:;" class="btn btn-danger" id="cerrar_formacion"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itemsactividadeshoras" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle"> Paramentros del reporte</h3>
+        </div>
+
+        <div class="modal-body panelbody">
+            <form>
+                <div class="form-group" id="facultad_group8" style="display: none">
+                    <label for="id_facultad8"> <b>Coordinación:</b></label>
+                    <form class="form-search">
+                        <select id="id_facultad8" name="coordinacion" style="width: 415px;">
+                            <option value="0">--------</option>
+                        </select>
+                    </form>
+                </div>
+                <div class="form-group">
+                    <label for="formato"><b>Formato de reporte:</b></label>
+                    <select name="formato" id="formato">
+                        <option value="pdf">PDF</option>
+                        <option value="docx">WORD</option>
+                        <option value="xls">EXCEL</option>
+                        <option value="csv">CSV</option>
+
+                    </select>
+                </div>
+                <br>
+                <div class="form-group" style="text-align: right">
+                    <a href="javascript:;" type="button" class="btn btn-info generar_reporte_actividad"><i class="fa fa-plus"></i> Generar</a>
+                    <button class="btn btn-danger" type="button" data-dismiss="modal"><i class="fa fa-close"></i> Cerrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelarchivos" style="display: none;">
+        <div class="modal-body panelbodyarchivos">
+            <table class="table table-bordered">
+                <thead>
+                <tr>
+                    {#                    <th style="width: 50%;">Nombre del Acta</th>#}
+                    {#                    <th style="width: 20%;text-align: center">Archivo</th>#}
+                    <th style="width: 30%;text-align: center">Subir evidencia firmada</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    {#                    <td id="acta"></td>#}
+                    {#                    <td style="text-align: center" id="id_descarga">#}
+                    {#                        {% if actas.archivo %}#}
+                    {#                            <a target="_blank" href="#"#}
+                    {#                               class="btn btn-success btn-mini tu btn-fancybox"#}
+                    {#                               data-original-title="Archivo PDF Resolución de Aprobación del CES."#}
+                    {#                               data-fancybox-type="iframe" title="Archivo PDF Resolución de Aprobación del CES."><i#}
+                    {#                                    class="fa fa-arrow-down"></i></a>#}
+                    {#                        {% endif %}#}
+                    </td>
+                    <form id="formActa" enctype="multipart/form-data" method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="addactasgraduados">
+                        <input type="hidden" name="id" id="{{ graduado.pk }}" value="{{ graduado.pk }}">
+                        <input type="hidden" name="acta" id="actaNombre">
+                        <td style="text-align: center">
+                            <input type="file" id="archivo" name="archivo"/>
+                            {#                            <a class="btn btn-info btn-mini tu" title="Subir Archivo"#}
+                            {#                               href="javascript:;"><i#}
+                            {#                                    class="fa fa-upload"></i> <input type="file" id="archivo" name="archivo"/></a>#}
+                        </td>
+                    </form>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a onclick="cerrar()" href="javascript:;" class="btn btn-cerrar btn-danger">Cerrar</a></td>
+                    {#                    <td><input type="submit" value="Guardar" class="btn btn btn-success"></td>#}
+                    <td><a id="guardarActa" onclick="guardarActa()" class="btn btn-success">Guardar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+{% endblock %}

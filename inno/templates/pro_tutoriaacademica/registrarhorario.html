@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <style>
+        .text-red {
+            color:red;
+
+        }
+        .opacity-3 {
+            opacity: .8;
+        }
+
+        th {
+            background-color: #d7e9ff54 !important;
+            text-align: center !important;
+            vertical-align: middle !important;
+            text-transform: uppercase;
+            padding: 4px !important;
+        }
+
+        td {
+            background-color: #ffffff !important;
+        }
+    </style>
+    <script type="text/javascript">
+
+        global_turno = 0;
+        global_profesormateria = 0;
+        global_tutoria = 0;
+        $(function() {
+            $("#diasemana,#turnosemana, #profmaterias").select2();
+
+            $("#profmaterias").change(function (e) {
+                let pk = $(this).val();
+                if (pk){
+                    $.get("{{ request.path }}", {'action': 'get_materia_date', 'pk': pk}, function (data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                            $("#id_fechainicio").val(data.fi);
+                            $("#id_fechafin").val(data.ff);
+                        }
+                    }, 'json');
+                }
+            });
+
+            $("#diasemana").change(function(){
+                $('#turnosemana').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $('#profmaterias').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var dia = parseInt($("#diasemana").val());
+                if (dia !== 100) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_tutoriaacademica",
+                        data: {'action': 'buscarturnos', 'dia': dia},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#turnosemana').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+
+                                for (elemento in data.lista_materias) {
+                                    $('#profmaterias').append('<option value="' + data.lista_materias[elemento][0] + '">' + data.lista_materias[elemento][1] + '</option>');
+                                }
+
+                                $("#turnosemana").val(global_turno).trigger('change');
+                                $("#profmaterias").val(global_profesormateria).trigger('change');
+
+                            } else {
+                                NotificationJG.error(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            NotificationJG.error("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+            $(".addturno").click(function() {
+                let dia = $(this).data('dia');
+                $("#addturno #id_action").val('addhorariotutoria');
+                global_turno = $(this).data('idturno');
+                $("#diasemana").val(dia).trigger('change');
+                $("#addturno").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+
+            $(".edithorario").click(function () {
+                let dia = $(this).data('dia');
+                global_profesormateria = $(this).data('profesormateria');
+                global_tutoria = $(this).data('tutoria');
+                $("#addturno #id_action").val('edithorariotutoria');
+                $("#diasemana").val(dia).trigger('change').attr('disabled','disabled');
+                global_turno = $(this).data('turno');
+                $("#turnosemana").attr('disabled','disabled');
+                $("#addturno").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+
+            $("#addturno .btn-cerrar").click(function() {
+                $("#addturno").modal("hide");
+                return false;
+            });
+
+            $("#addturno .btn-agregarturno").click(function() {
+                let action = $("#addturno #id_action").val();
+                var iddia = $("#diasemana").val();
+                var idturno = $("#turnosemana").val();
+                var idprofmate = $("#profmaterias").val();
+                let finicio = $("#id_fechainicio").val();
+                let ffin = $("#id_fechafin").val();
+
+                if (!finicio){
+                    NotificationJG.error("Seleccione una fecha de inicio.");
+                    return false;
+                }
+
+                if (!ffin){
+                    NotificationJG.error("Seleccione una fecha fin.");
+                    return false;
+                }
+
+                if((iddia == "") || (iddia == 100)){
+                    NotificationJG.error("Seleccione un día.");
+                    $("#diasemana").focus();
+                    return false;
+                }
+
+                if((idturno == "") || (idturno == 0)){
+                    NotificationJG.error("Seleccione un turno.");
+                    $("#turnosemana").focus();
+                    return false;
+                }
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaacademica",
+                    data: {'action': action,'idturno': idturno, 'iddia': iddia, 'idprofmate':idprofmate, 'fi':finicio, 'ff':ffin, 'id_tutoria':global_tutoria },
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            {% if  director %}
+                $('#solicitud_nueva_fecha').on('click', function (e) {
+                e.preventDefault();
+                $('#id_observacion').val('');
+                $('#solicitarfecha').modal({backdrop:'static', width: '400px'}).modal('show');
+            });
+
+                $("#solicitarfecha .btn-solictarfecha").click(function () {
+                if ($('#id_observacion').val() !== ''){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_tutoriaacademica",
+                        data: {
+                            'action': 'addsolicitudhorario',
+                            'iddirector': {{director.id}},
+                            'observacion': $('#id_observacion').val()
+                        },
+                        success: function (data) {
+                            $('#solicitarfecha').modal('hide');
+                            $.unblockUI();
+                            if (data.result === 'ok') {
+                                NotificationJG.success('Solicitud enviada a: {{director.persona}}');
+                                setTimeout(function () {
+                                    window.location.reload();
+                                }, 2000);
+                            } else {
+                                NotificationJG.error(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos al servidor.");
+                        },
+                        dataType: "json"
+                    });
+                } else { $('.text-danger').show();}
+            });
+            {% endif %}
+
+        });
+
+
+    </script>
+{% endblock %}
+{% block atras %}/pro_tutoriaacademica{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='col-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6 class="fs-5"><b>Profesor: </b>{{ profesor|lower|title }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+            <div class="alert alert-info">
+                <strong>
+                    <i class="fa fa-info"></i> Los turnos disponibles se han validado para no generar conflicto con los horarios de clases y actividades del estudiante, las actividades propias del profesor y de las que puedan evitar que el estudiante acceda o solicite una tutoría académica
+                </strong>
+            </div>
+        </div>
+    </div>
+    {% if suma == 0 or suma < sumaactividad %}
+        {% if periodo.periodo_academia  %}
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="alert alert-{% if puede_registrar %}warning{% else %}danger{% endif %}">
+                        <strong>
+                            <i class="fa fa-warning"></i> Estimado docente la fecha límite para la planificación del horario en este periodo
+                            {% if puede_registrar %}es:{% else %}fue hasta el:{% endif %}  {{ periodo.periodo_academia.fecha_limite_horario_tutoria|date:'d/m/Y' }}.
+                            {% if solicitud and  solicitud.fecha %} Y la fecha de su solictud fue hasta
+                                {{ solicitud.fecha|date:'d/m/Y' }}{% endif %}
+                        </strong>
+                    </div>
+                </div>
+            </div>
+        {% if not solicitud and director and not puede_registrar or solicitud_caduca %}
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="alert alert-success">
+                        <b><i class="fa fa-share-square-o"></i> Si desea solicitar una nueva fecha subir la
+                            planificación del horario en este periodo haz click <i class="fa fa-arrow-right"></i> <a
+                                    href="javascript:;" id="solicitud_nueva_fecha"> aqui</a></b>
+                    </div>
+                </div>
+            </div>
+        {% elif solicitud.estadosolicitud == 0 %}
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="alert alert-success">
+                        <b><i class="fa fa-share-square-o"></i> Usted tiene una solicitud PENDIENTE para subir el horario de
+                            tutorias en una nueva fecha. La solicitud fue enviada a  {{ solicitud.director.persona }} </b>
+                    </div>
+                </div>
+            </div>
+        {% elif solicitud.estadosolicitud == 1 and  solicitud.fecha and puede_registrar %}
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="alert alert-success">
+                        <b><i class="fa fa-share-square-o"></i> Usted tiene una solicitud aprobada para subir el horario
+                            de tutorias hasta el {{ solicitud.fecha|date:'Y-m-d' }} </b>
+                    </div>
+                </div>
+            </div>
+         {% elif solicitud.estadosolicitud == 2 %}
+            <div class="row-fluid">
+                <div class="span12">
+                    <div class="alert alert-danger">
+                        <b><i class="fa fa-warning"></i> Su solictud del {{ solicitud.fecha_creacion|date:'Y-m-d' }} para subir la planificación del horario en este periodo fue rechazada.<br>
+                            Motivo: {{ solicitud.repuestadirector }}<br>
+                            <br><a href="javascript:;" type="button" class=" btn btn-primary" id="solicitud_nueva_fecha"> <i class="fa fa-share-square"></i> Solicitar nueva fecha</a> </b>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+    {% endif %}
+
+    <div class='row-fluid'>
+        <div class='span12'>
+            <div class="card mb-2">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <table class='tabla_responsive table table-bordered'>
+                    <thead>
+                        <tr>
+                            <th colspan="8">ORIENTACIÓN Y ACOMPAÑAMIENTO A TRAVÉS DE TUTORÍAS PRESENCIALES O VIRTUALES, INDIVIDUALES O GRUPALES: <b style="color: #0a0d1e;"> {{ sumaactividad }} HORAS</b></th>
+                        </tr>
+                        <tr>
+                            <th style="width:60px;position: sticky;top: 0;"><i class="fa fa-clock"></i> TURNOS</th>
+                            {% for s in semana %}
+                                <th style="position: sticky;top: 0;width:160px;background-color: {% if s.0 == diahoy %}rgb(212, 230, 251) !important;{% else %}#d7e9ff54{% endif %}">{{ s.1 }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for turno in turnos %}
+                        <tr>
+                            <td>{{ turno.nombre_horario }}</td>
+                            {% for dia in semana %}
+                                <td style="text-align: center;">
+                                    {% with horariotutoria=turno|args:dia.0|args:profesor|args:periodo|call:"horario_tutorias_academicas_tutor" %}
+                                        {%  if horariotutoria %}
+                                            <table class='cell table table-bordered' dia='{{ forloop.counter }}' turno='{{ turno.id }}' style="margin-bottom: 5px">
+                                                {% for tuto in horariotutoria %}
+                                                    <tr data-tuto="{{ tuto.id }}" >
+                                                        <td style="text-align: center">
+                                                            <div class="row" style='background-color: #1b6d85; border: 1px solid #1b6d85; color:#ffffff;font-weight: 500;font-size: 12px'>
+                                                                <center>
+                                                                    <span style="font-size: 10px;">ORIENTACIÓN Y ACOMPAÑAMIENTO A TRAVÉS DE TUTORÍAS PRESENCIALES O VIRTUALES, INDIVIDUALES O GRUPALES</span><br>
+                                                                    {% if tuto.fecha_inicio_horario_tutoria and tuto.fecha_fin_horario_tutoria %}
+                                                                        <span class="text-dark-warning fw-bold">{{ tuto.fecha_inicio_horario_tutoria|date:"d/m/Y" }} al {{ tuto.fecha_fin_horario_tutoria|date:"d/m/Y" }}</span><br>
+                                                                        {% else %}
+                                                                        <br>
+                                                                    {% endif %}
+                                                                    {% if tuto.profesormateria %}
+                                                                        <span style="font-size: 10px;">
+                                                                            {{ tuto.profesormateria.materia.asignatura }} <br>
+                                                                            - {{ tuto.profesormateria.materia.paralelo }} -
+                                                                        </span>
+                                                                    {% endif %}
+                                                                </center>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            {% if not tuto.en_uso or suma > sumaactividad %}
+                                                                {%  if puede_registrar or suma > sumaactividad %}
+                                                                    <a href="javascript:;" class="eliminacionmodal tu btn btn-mini btn-danger opacity-3" title="Eliminar" nhref="/pro_tutoriaacademica?action=delhorario&id={{ tuto.id|encrypt }}{% if suma > sumaactividad  %}&max=1{% endif %}">
+                                                                        &nbsp;<i class="fa fa-close"></i>&nbsp;
+                                                                    </a>
+                                                                {% endif %}
+                                                            {% endif %}
+                                                            <a href="javascript:void(0);" class="edithorario btn btn-mini btn-default tu" data-dia="{{ dia.0 }}" data-turno="{{ turno.id }}" data-profesormateria="{{ tuto.profesormateria_id }}" data-tutoria="{{ tuto.pk }}" title="Editar">&nbsp;<i class="fa fa-edit"></i></a>
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </table>
+                                        {% endif %}
+                                        {% if suma  < sumaactividad  %}
+                                            {%  if puede_registrar %}
+                                                <a href="javascript:;"  class="btn btn-success addturno" data-dia="{{ dia.0 }}" data-idturno="{{ turno.id }}"><i class="fa fa-plus fa-lg"></i></a>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endwith %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% empty %}
+                        <tr style="text-align: center">
+                            <td></td>
+                            {% for dia in semana %}
+                                <td>
+                                    {% if suma  < sumaactividad  %}
+                                        {%  if puede_registrar %}
+                                            <a href="javascript:;"  class="btn btn-success addturno" data-dia="{{ dia.0 }}"><i class="fa fa-plus fa-lg"></i></a>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="addturno" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="text-center"><b class="paneltitle m-2">AGREGAR HORARIO</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="panelbody">
+                        <div class="row">
+                            <div class="col-12 mx-2">
+                                <div class="row-fluid">
+                                    <div class="mb-1">
+                                        <input type="hidden" name="action" id="id_action" value="addhorariotutoria">
+                                        <label><b>Dia: <span class="text-red">*</span></b></label>
+                                        <select id="diasemana" style="width: 100%">
+                                            <option value="100">--Ninguno--</option>
+                                            {% for dia in semana %}
+                                                <option value='{{ dia.0 }}'>{{ dia.1 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-1">
+                                        <label><b>Turno: <span class="text-red">*</span></b></label>
+                                        <select id="turnosemana" style="width: 100%">
+                                            <option value='0'>--Ninguno--</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label><b>Módulo: <span class="text-red">*</span></b></label>
+                                        <select id="profmaterias" style="width: 100%">
+                                            <option value='0'>---------</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="id_fechainicio"><b>Fecha inicio: <span style="color:red">*</span></b></label>
+                                        <input type="date" id="id_fechainicio" name="fi" style="width: 100%"><br>
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="id_fechainicio"><b>Fecha fín: <span style="color:red">*</span></b></label>
+                                        <input type="date" id="id_fechafin" name="ff" style="width: 100%">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-agregarturno btn-success"><i class="fa fa-database"></i> <b>Guardar</b></a></td>
+                            <td><a href="javascript:;" class="btn btn-cerrar btn-danger"><b> &times; Cerrar</b></a></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="solicitarfecha" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle"><i class="fa fa-calendar"></i> Solicitud de nueva fecha</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <label for="id_observacion"><b>Detalle el motivo de su solicitud:</b></label>
+            <textarea class="form-control" style="width: 100%" autocomplete="off" id="id_observacion" rows="3" required oninput="this.value = this.value.toUpperCase()"></textarea>
+            <p class="text-danger" style="color: red; display: none"> Debe ingresar un motivo </p>
+
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-solictarfecha btn-success"> Solicitar</a></td>
+                    <td><a href="javascript:;" data-dismiss="modal" class="btn btn-cerrar btn-danger">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+{% endblock %}

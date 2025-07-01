@@ -1,0 +1,556 @@
+{% extends 'base.html' %}
+{% load sga_extras %}
+{% block atras %}{{ request.path }}?action=incidencias{% endblock %}
+{% block heading %}
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <script>
+        let listaIntegrantes = []
+        let cont = {{ incidencia.personas_sancion|length }}
+        let params = {}
+        $(function () {
+            let falta = $("#id_falta")
+            let motivoprincipal = $("#id_motivoprincipal")
+            let motivo = $("#id_motivo")
+            let integrante = $("#id_integrante")
+            let btn_generar = $("#generar_evidencia")
+            $("#num_inte").text(cont)
+            $(".select2").select2({
+                width: '100%',
+                allowClear: true,
+                placeholder: 'Seleccione una opción...',
+                minimumResultsForSearch: 5
+            })
+            cargarSelectSecundario('cargarmotivos', falta, motivoprincipal,'', 'principal')
+            cargarSelectSecundario('cargarmotivos', motivoprincipal, motivo, '', 'submotivo')
+            integrante.on('select2:select', function (e) {
+                let data = e.params.data;
+                let id = data.id
+                let id_motivo = motivo.val()
+                if (!id_motivo){
+                    integrante.val('').trigger('change')
+                    alertaWarning('Seleccione un motivo de sanción para poder seleccionar un funcionario')
+                }else{
+                    listaIntegrantes.push({'id':id, 'nombre':data.text});
+                    console.log(listaIntegrantes)
+                    consultaAjax(id, 'cargarfuncionario','{{ request.path }}', id_motivo)
+                    integrante.val('').trigger('change')
+                    cont += 1
+                    $("#num_inte").text(cont)
+                    let optionToRemove = integrante.find(`option[value="${id}"]`);
+                    if (optionToRemove.length) {
+                        optionToRemove.remove();
+                    }
+                }
+            })
+            falta.on('select2:select', function (e) {
+                $("#id_motivoprincipal").val('').trigger('change')
+                $("#id_motivo").val('').trigger('change').empty()
+                limpiar()
+            })
+            motivoprincipal.on('select2:select', function (e) {
+                limpiar()
+            })
+            motivo.on('select2:select', function (e) {
+                limpiar()
+            })
+            MenuFijo()
+            {% if incidencia %}
+                $("#id_clear").hide()
+            {% endif %}
+            btn_generar.click(function () {
+                if (params.punto_control == 2){
+                    params['fecha_inicio'] = $("#id_fecha_inicio").val();
+                    params['fecha_fin'] = $("#id_fecha_fin").val();
+                    if (!params['fecha_inicio'] || !params['fecha_fin']) {
+                        alertaWarning('Por favor, complete ambos campos de fecha.');
+                        return;
+                    }
+                    if (new Date(params['fecha_inicio']) > new Date(params['fecha_fin'])) {
+                        alertaWarning('La fecha de inicio debe ser menor a la fecha de fin.');
+                        return;
+                    }
+                }
+                $('.cerrar-modal').trigger('click');
+                consultaAjax('', 'generarevidencia','{{ request.path }}', params)
+            })
+        });
+        // Función para obtener un registro por su id
+        function obtenerIntegrante(id) {
+            return listaIntegrantes.find(integrante => integrante.id == id);
+        }
+        
+        function addOption(id, nombre) {
+                let selectElement = $('#id_integrante');
+            
+                // Verificar si el option ya existe
+                if (selectElement.find(`option[value="${id}"]`).length === 0) {
+                    // Crear un nuevo option
+                    let newOption = new Option(nombre, id, false, false);
+                    
+                    // Agregar el nuevo option al select
+                    selectElement.append(newOption).trigger('change');
+                }
+            }
+        
+        function consultaAjaxResponse(response){
+            if(!response.punto_control) {
+                let data = response.data
+                let persona = data.persona
+                let listado = data.listado
+                let html = getCabeceraHtml(persona)
+                limpiar()
+                $("#ul_funcionario").append(html)
+                listado.forEach(item => {
+                    let seccion_html = getSeccionHtml(item, persona)
+                    $(`#items_${persona.id}`).append(seccion_html)
+                })
+                $("#id_clear").hide()
+            }else{
+                if(response.result === true){
+                    alertaSuccess(response.mensaje)
+                    $(`#input_group_${response.id_requisito}_${response.id_persona}`).html(response.data);
+                }
+                else {
+                    alertaDanger(response.mensaje)
+                }
+            }
+        };
+    
+        function limpiar(){
+            cont=0
+            $("#num_inte").text(cont)
+            $("#ul_funcionario").empty()
+            $("#id_clear").show()
+            listaIntegrantes.forEach(item => {
+                addOption(item.id, item.nombre)
+            })
+           
+        }
+
+        function getCabeceraHtml(persona){
+            let htmlCabecera = `<li class="list-group-item border-start border-bottom rounded-3 mb-2 p-0" id="li_integrante${persona.id}" data-id="${persona.id}">
+                        <div class="d-flex align-items-center">
+                        <a class="h5 w-100 mb-0 d-flex align-items-center text-inherit text-decoration-none rounded-3 active px-1 py-2"
+                        data-bs-toggle="collapse" href="#course_${persona.id}" aria-expanded="true"
+                        aria-controls="course_${persona.id}">
+                        <div class="me-auto">
+                        <div class="d-flex align-items-center">
+                        <img src="${persona.foto}" alt=""
+                        class="rounded-circle avatar-sm me-2">
+                        <h5 class="mb-0">${persona.nombre}</h5>
+                        </div>
+                        </div>
+                        <span class="chevron-arrow ms-4">
+                        <i class="bi bi-chevron-down fs-4 fw-semi-bold"></i>
+                        </span>
+                        </a>
+                        <a href="javascript:void(0)"
+                        onclick="eliminarIntegrante(${persona.id})"
+                        class="ms-2"
+                        title="Eliminar funcionario" data-bs-toggle="tooltip">
+                        <i class="bi bi-trash3 text-danger "></i>
+                        </a>
+                        </div>
+                        <div class="collapse show item" id="course_${persona.id}"
+                        data-bs-parent="#courseAccordion" style="">
+                        <div class="pt-3 pb-2 px-3 border-top border-1" id="items_${persona.id}">
+            
+                        </div>
+                        </div>
+                    </li>` 
+            return htmlCabecera
+        }
+
+        function getSeccionHtml(item, persona){
+            let text_required = item.obligatorio ? '<span class="text-danger fs-6">(Obligatorio)</span>' : '<span class="text-primary fs-6">(Opcional)</span>'
+            let input_type =  `<input type="${item.type_input}" id="input_requisito_${item.id}"
+                                    ${item.required}
+                                    data-item-id='${item.id}' accept="${item.accept}"
+                                    placeholder="Digite lo solicitado aqui.."
+                                    name="evidencia_${persona.id}_${item.id}" class="form-control evidencia">`
+            let button_action = ''
+            if(item.punto_control > 0){
+                button_action = `<div class="input-group-append">
+                                    <a class="btn btn-primary-old" style="padding-bottom: 12px; padding-top: 17px"
+                                        title="Generar evidencia de ${item.punto_control_display}"
+                                        data-bs-toggle="tooltip" href="javascript:void(0)"
+                                        onclick="generarEvidencia(${item.punto_control}, ${persona.id}, ${item.id},'${item.punto_control_display}')">
+                                        <i class="bi bi-file-break"></i> Generar evidencia
+                                    </a>
+                                 </div>`
+            }
+            let htmlSeccion = `<div class="row items" id="requisito_${persona.id}_${item.id}" data-item-id='${item.id}' >
+                        <div class="col-12 col-lg-6 lh-15 ">
+                            <div class="d-flex">
+                            <span class="icon-shape bg-light texto-blue icon-sm rounded-circle me-2"><i
+                            class="${item.icono} fs-4"></i>
+                            </span>
+                            <div>
+                            <span>${item.requisito.nombre}</span> ${text_required} <br>
+                            <span class="fs-6">${item.requisito.descripcion} </span>
+                            </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                            <div class="input-group mb-2" id="input_group_${item.id}_${persona.id}">
+                                ${input_type}
+                                ${button_action}
+                            </div>
+                        </div>
+                    </div>`
+            return htmlSeccion
+        }
+        
+        function eliminarIntegrante(id){
+            let divToRemove = $(`#li_integrante${id}`)
+            if (divToRemove.length) {
+                divToRemove.remove();
+            }
+            cont = cont - 1
+            $("#num_inte").text(cont)
+            let integrante = obtenerIntegrante(id)
+            addOption(integrante.id, integrante.nombre)
+        }
+
+        $(function () {
+            $('#id_borrador').click(function (e) {
+                $('#id_estadoincidencia').val('0')
+                $('#submit').click()
+            })
+        });
+        
+        function funcionAntesDeGuardar(){
+            lista_items1 = []
+            
+            $('ul#ul_funcionario > li').each(function (index, elementLi) {
+                let persona_san = $(elementLi).attr('data-persona-sancion-id')?$(elementLi).attr('data-persona-sancion-id'):''
+                let id_persona = $(elementLi).attr('data-id')
+                listaevidencias = []
+                $(elementLi).find(`#items_${id_persona} > div.items`).each(function (index, elementItem) {
+                    let id_requisito = $(elementItem).attr('data-item-id')
+                    let eleEvidencia= $(elementItem).find('div > input.evidencia')
+                    let eleEvidenciaGenerada = $(elementItem).find('div > div > a.evidencia_generada')
+                    let tipo = eleEvidencia.attr('type') 
+                    let name_evidencia = ''
+                    let evidencia = ''
+                    let size = ''
+                    let evidencia_id = $(elementItem).attr('data-evidencia-id')?$(elementItem).attr('data-evidencia-id'):''
+                    if (eleEvidenciaGenerada.length > 0){
+                        evidencia = eleEvidenciaGenerada.attr('href')
+                        name_evidencia = eleEvidenciaGenerada.attr('data-name')
+                        tipo = 'url_file'
+                    }else{
+                        if (tipo==='file'){
+                            let file = eleEvidencia[0]
+                            if (file.files && file.files.length > 0){
+                                evidencia = eleEvidencia.attr('name')
+                                name_evidencia = file ? file.files[0].name : ''
+                                size = file ? file.files[0].size : ''
+                            }
+                        } else {
+                            evidencia = eleEvidencia.val()
+                        }
+                    }
+                    listaevidencias.push({
+                        'id_requisito': id_requisito,
+                        'tipo': tipo,
+                        'evidencia':evidencia,
+                        'name_evidencia':name_evidencia,
+                        'size': size,
+                        'evidencia_id': evidencia_id
+                    });
+                });
+               
+                lista_items1.push({
+                    'id_persona': id_persona,
+                    'evidencias':listaevidencias,
+                    'persona_sancion': persona_san
+                 });
+            });
+        }
+
+        function generarEvidencia(punto_control, id_persona, id_requisito, punto_control_display){
+            params = {'punto_control':punto_control, 'id_requisito':id_requisito, 'id_persona':id_persona}
+            $("#itemspanel_evidencia .paneltitle").html(`Generar evidencia de ${punto_control_display}`)
+            $("#itemspanel_evidencia .modal-body .fields").html(getSeccionEvidenciaHtml())
+            $("#itemspanel_evidencia").modal({backdrop: 'static'}).modal('show');
+        }
+
+        function getSeccionEvidenciaHtml(){
+            if (params.punto_control === 2){
+                return `<div class="text-center mt-2">
+                            <h5>Seleccione el rango de fechas para el informe:</h5>
+                            <input placeholder="Fecha desde" type="date" value="" required id="id_fecha_inicio"
+                                   style="width: 100px">
+                            <input placeholder="Fecha hasta" type="date" value="" required id="id_fecha_fin"
+                                   style="width: 100px">
+                        </div>`
+            }
+        }
+
+</script>
+{% endblock %}
+{% block canvas %}
+    <div class="row">
+        <div class="col-12">
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6><i class="bi bi-diagram-3 fs-4"></i> {{ mi_departamento|title2 }}</h6>
+            </div>
+        </div>
+        <div class="col-md-8 col-xl-9">
+
+        </div>
+    </div>
+    <div class="container-fluid">
+        <form class="row" autocomplete="off" method="post"
+              enctype="multipart/form-data" action="{{ request.path }}">
+            {% csrf_token %}
+            <input type="hidden" name="estadoincidencia" value="2" id="id_estadoincidencia">  {# 2 = Revisión del informe del caso presentado.#}
+            <div class="col-lg-4">
+                <div class="card pb-2 caja-menu">
+                    <!-- Card body -->
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="ms-2">
+                                <h4 class="mb-1 texto-blue"><i class="bi bi-upc-scan"></i> {{ codigo }}</h4>
+                                <p class="mb-1 fs-5"><i class="bi bi-calendar-week"></i> {{ fecha|date:'d-m-Y' }}</p>
+                            </div>
+                        </div>
+                        <div class="border-top row mt-1 border-bottom mb-3 g-0">
+{#                            <div class="col">#}
+{#                                <div class="pe-1 ps-2 py-3">#}
+{#                                    <h5 class="mb-0">11,604</h5>#}
+{#                                    <span>Students</span>#}
+{#                                </div>#}
+{#                            </div>#}
+                            <div class="col ">
+                                <div class="pe-1 ps-3 py-3">
+                                    <h5 class="mb-0" id="num_inte">0</h5>
+                                    <span>Personal</span>
+                                </div>
+                            </div>
+                            <div class="col border-start">
+                                <div class="pe-1 ps-3 py-3">
+                                    <h5 class="mb-0 text-orange">Leve</h5>
+                                    <span>Tipo de falta</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="">
+                            En una institución pública, el manejo de las faltas disciplinarias y la imposición de
+                            sanciones a los trabajadores es un proceso regulado que tiene como objetivo mantener la disciplina,
+                            la ética y el cumplimiento de las normativas internas.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header border-bottom">
+                       <div class="headtitle mb-0 ms-0">
+                            <h3 class="texto-blue mb-0 fs-4">Registra los datos solicitados</h3>
+                        </div>
+                    </div>
+                    <div class="card-body p-4 pt-2">
+                        <div class="row">
+                            <input type="hidden" name="action" value="{{ action }}">
+                            <input type="hidden" name="id" value="{{ id|encrypt }}">
+                            {% include 'ajaxformmodal_seccion.html' %}
+                        </div>
+                        <div class="row">
+                            <div class="col-12 mt-2">
+                                <div class="">
+                                    <lalel class="field-label fw-semi-bold"><i class="bi bi-person-plus"></i> Agregar
+                                        personal:
+                                    </lalel>
+                                    <select name="integrante" id="id_integrante" class="select2">
+                                        <option value=""></option>
+                                        {% for l in integrantes %}
+                                            <option value="{{ l.id }}">{{ l.nombre_completo_minus }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion" id="courseAccordion">
+                            <label class="field-label fw-semi-bold mt-2"><i class="bi bi-people"></i>
+                                Personal agregado:
+                             </label>
+                            <div>
+                                <!-- List group -->
+                                <ul class="list-group list-group-flush" id="ul_funcionario">
+                                    {% for r in incidencia.personas_sancion %}
+                                        <li class="list-group-item border-start border-bottom rounded-3 mb-2 p-0" data-persona-sancion-id="{{ r.id }}"
+                                        id="li_integrante{{ r.persona.id }}" data-id="{{ r.persona.id }}">
+                                            <!-- Toggle -->
+                                            <div class="d-flex align-items-center">
+                                                <a class="h5 w-100 mb-0 d-flex align-items-center text-inherit text-decoration-none rounded-3 active px-1 py-2"
+                                                data-bs-toggle="collapse" href="#course_{{ r.persona.id }}" aria-expanded="true"
+                                                aria-controls="course_{{ r.persona.id }}">
+                                                <div class="me-auto">
+                                                    <div class="d-flex align-items-center">
+                                                        <img src="{{r.persona.get_foto}}" alt=""
+                                                        class="rounded-circle avatar-sm me-2">
+                                                        <h5 class="mb-0">{{ r.persona.nombre_completo_minus }}</h5>
+                                                    </div>
+                                                </div>
+                                                <!-- Chevron -->
+                                                <span class="chevron-arrow ms-4">
+                                                <i class="bi bi-chevron-down fs-4 fw-semi-bold"></i>
+                                                </span>
+                                                </a>
+                                                <a href="javascript:void(0)"
+                                                onclick="eliminarIntegrante('{{ r.persona.id }}')"
+                                                class="ms-2"
+                                                title="Eliminar funcionario" data-bs-toggle="tooltip">
+                                                <i class="bi bi-trash3 text-danger "></i>
+                                                </a>
+                                            </div>
+                                                <!-- Collapse -->
+                                            <div class="collapse show item" id="course_{{ r.persona.id }}"
+                                                 style="">
+                                                <div class="pt-3 pb-2 px-3 border-top border-1" id="items_{{ r.persona.id }}">
+                                                    {% for item in r.evidencias %}
+                                                        <div class="row items" data-evidencia-id="{{ item.id }}"
+                                                                id="requisito_{{ r.persona.id }}_{{ item.requisito_motivo.id }}" data-item-id='{{ item.requisito_motivo.id }}'>
+                                                        <div class="col-12 col-lg-6 lh-15 ">
+                                                            <div class="d-flex">
+                                                            <span class="icon-shape bg-light texto-blue icon-sm rounded-circle me-2"><i
+                                                            class="{{item.requisito_motivo.requisito.icono}} fs-4"></i>
+                                                            </span>
+                                                            <div>
+                                                           <span>{{ item.requisito_motivo.requisito.nombre }} </span>
+                                                                {% if item.requisito_motivo.obligatorio %}
+                                                                    <span class="fs-6 text-danger">(Obligatorio)</span>
+                                                                {% else %}
+                                                                    <span class="fs-6 text-primary">(Opcional)</span>
+                                                                {% endif %}
+                                                                <br>
+                                                            <span class="fs-6">{{item.requisito_motivo.requisito.descripcion}}</span>
+                                                            </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-12 col-lg-6 mx-0 px-0">
+                                                            {% if item.requisito_motivo.requisito.type_input == 'file' %}
+                                                                <div class="input-group d-flex">
+                                                                    {% if item.archivo %}
+                                                                        <a href="{{ item.archivo.url }}" class="btn btn-success doc_preview tb"
+                                                                           style="padding-bottom: 12px; padding-top: 17px;"
+                                                                           data-width="2048" data-height="1365"
+                                                                           data-fancybox="iframe{{ item.id }}"
+                                                                           id="evidenciacargada_{{ item.requisito_motivo.requisito }}"
+                                                                           title="Visualizar archivo cargado"
+                                                                           data-caption="Archivo actualmente cargado: {{ item.requisito_motivo.requisito }}">
+                                                                            <i class="fa fa-eye fs-35"></i>
+                                                                        </a>
+                                                                    {% endif %}
+                                                                    <input type="{{ item.requisito_motivo.requisito.type_input }}" style="max-width: 87%;"
+                                                                        {% if item.requisito_motivo.obligatorio and not item.archivo %}required{% endif %}
+                                                                        {% if item.archivo %}data-default-file="{{ item.archivo.url }}" value="{{ item.archivo.url }}"{% endif %}
+                                                                        data-item-id='{{ item.requisito_motivo.id }}'
+                                                                        placeholder="Digite lo solicitado aqui.."
+                                                                        name="evidencia_{{ r.persona.id }}_{{ item.requisito_motivo.id }}" class="form-control w-100 evidencia">
+                                                                </div>
+                                                            {% else %}
+                                                                <input type="{{ item.requisito_motivo.requisito.type_input }}"
+                                                                        {% if item.requisito_motivo.obligatorio %}required{% endif %}
+                                                                        data-item-id='{{ item.requisito_motivo.id }}'
+                                                                        value="{{ item.url }}"
+                                                                        name="evidencia_{{ r.persona.id }}_{{ item.requisito_motivo.id }}" class="form-control w-100 evidencia">
+                                                            {% endif %}
+
+
+{#                                                            {% if item.requisito_motivo.requisito.type_input == 'file' %}#}
+{#                                                                <div class="input-group">#}
+{#                                                                    {% if item.archivo %}#}
+{#                                                                        <a href="{{ item.archivo.url }}" class="btn btn-success doc_preview tb"#}
+{#                                                                           style="padding-bottom: 12px; padding-top: 17px"#}
+{#                                                                           data-width="2048" data-height="1365"#}
+{#                                                                           data-fancybox="iframe{{ item.id }}"#}
+{#                                                                           id="evidenciacargada_{{ item.requisito_motivo.requisito }}"#}
+{#                                                                           title="Visualizar archivo cargado"#}
+{#                                                                           data-caption="Documento actualmente cargado: {{ item.requisito_motivo.requisito }}">#}
+{#                                                                            <i class="fa fa-eye fs-35"></i>#}
+{#                                                                        </a>#}
+{#                                                                    {% endif %}#}
+{#                                                                    <input type="{{ item.requisito_motivo.requisito.type_input }}"#}
+{#                                                                        {% if item.requisito_motivo.obligatorio %}required{% endif %}#}
+{#                                                                        {% if item.archivo %}data-default-file="{{ item.archivo.url }}" value="{{ item.archivo.url }}"{% endif %}#}
+{#                                                                        data-item-id='{{ item.requisito_motivo.id }}'#}
+{#                                                                        placeholder="Digite lo solicitado aqui.."#}
+{#                                                                        name="evidencia_{{ r.persona.id }}_{{ item.requisito_motivo.id }}" class="form-control w-100 evidencia">#}
+{#                                                                </div>#}
+{#                                                            {% else %}#}
+{#                                                               #}
+{#                                                            {% endif %}#}
+{#                                                             <input type="{{ item.requisito_motivo.requisito.type_input }}"#}
+{#                                                                        {% if item.requisito_motivo.obligatorio %}required{% endif %}#}
+{#                                                                        data-item-id='{{ item.requisito_motivo.id }}'#}
+{#                                                                        value="{{ item.url }}"#}
+{#                                                                        name="evidencia_{{ r.persona.id }}_{{ item.requisito_motivo.id }}" class="form-control w-100 evidencia">#}
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="row" id="id_clear">
+                            <div class="col-12">
+                                <a href="#" data-bs-toggle="offcanvas" data-bs-target="#offcanvasRight" class="">
+                                    <div class="card h-100 border border-2 shadow-none card-dashed-hover p-0">
+                                        <div class="card-body text-center p-5 ">
+                                            <h4 class="text-muted"><i class="fa fa-close"></i> Sin funcionarios agregados</h4>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="row  mt-4">
+                            <div class="col-12 text-end">
+                                <button type="submit" id="submit" class="btn btn-orange fs-5 px-5"><i
+                                        class="fa fa-check-circle"></i> Guardar
+                                </button>
+{#                                <a href="javascript:void(0)" id="id_borrador"#}
+{#                                class="btn btn-cian-secondary fs-5 px-5">#}
+{#                                <i class="fa fa-eraser"></i>  Guardar como borrador#}
+{#                                </a>#}
+                                <a href="{{ request.path }}?action=incidencias" class="btn btn-cian-secondary fs-5 px-5"> 
+                                    <i class="fa fa-close"></i> Cancelar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanel_evidencia" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class=""><i class="fa fa-print"></i> <span class="paneltitle">FORMULARIO </span></h4>
+                      <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar-modal" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body panelbody row">
+                    <div class="fields col-12">
+                    </div>
+                    <div class="col-12 text-center p-3">
+                        <a href="javascript:;" class="btn btn-orange" id="generar_evidencia"><i
+                                class="fa fa-plus"></i> Procesar</a>
+                        <a href="javascript:;" class="btn btn-cian-secondary fs-5 cerrar-modal" data-bs-dismiss="modal"><i class="fa fa-close"></i> Cerrar</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+{% endblock %}

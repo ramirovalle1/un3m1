@@ -1,0 +1,320 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        $(function () {
+            $('.solo-numero').keyup(function () {
+                this.value = (this.value + '').replace(/[^0-9]/g, '');
+            });
+            $("#guardar").click(function () {
+                var carrerasingreso = '';
+                var totalhoras = 0;
+                var bandera = 0;
+                $("input[type=checkbox]:checked").each(function () {
+                    var idcarr = $(this).attr('ida');
+                    var horas = $('#' + idcarr + '_horas').val()
+                    if (horas == '') {
+                        horas = 0
+                    }
+                    if (horas == 0) {
+                        bandera = 1
+                    }
+                    totalhoras = parseInt(totalhoras) + parseInt(horas);
+                    carrerasingreso += idcarr + '_' + horas + ",";
+                });
+                if (bandera == 1) {
+                    smoke.alert("Ingrese hora.");
+                    return false;
+                }
+                carrerasingreso = carrerasingreso.substring(0, carrerasingreso.length - 1);
+                if ((totalhoras == 0) || (totalhoras <{{ actividad.horas }})) {
+                    $.unblockUI();
+                    smoke.alert("Debe ingresar numero de horas igual a las planificadas en la actividad.");
+                    return false;
+                }
+                if (totalhoras >{{ actividad.horas }}) {
+                    $.unblockUI();
+                    smoke.alert("No puede ingresar horas mayor a las planificadas en la actividad.");
+                    return false;
+                }
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {
+                        'action': 'addhorascarrerapracticas',
+                        'listacarrerasactividad': carrerasingreso,
+                        'actividad': {{ actividad.id }}
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            bloqueointerface();
+                            location.href = 'adm_criteriosactividadesdocente?action=addhorascarrera&id={{ actividad.id }}';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            })
+            {% if espractica %}
+                $('.cantidadhoras').on('change', function () {
+                    var input = $(this)
+                    var valor = $(this).val()
+                    var id = $(this).attr('data-id');
+                    var candelete = $(this).attr('data-candeleted');
+                    if (id) {
+                        if (valor) {
+                            $.ajax({
+                                type: 'POST',
+                                url: '{{ reques.path }}',
+                                async: false,
+                                data: {
+                                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                                    action: 'editcantidad',
+                                    id: id,
+                                    value: valor
+                                },
+                                dataType: "json",
+                                beforeSend: function () {
+                                    bloqueointerface();
+                                }
+                            }).done(function (data) {
+                                setTimeout($.unblockUI, 1);
+                                if (data.error === false) {
+                                    input.css("background", "#EBF5FB");
+                                    $(`#icono${data.pk}`).html(data.icono);
+                                    $(`#texto${data.pk}`).html(data.texto);
+                                    tooltips();
+                                } else {
+                                    input.val(data.valor)
+                                    if (data.message) {
+                                        smoke.alert(data.message);
+                                    }
+                                }
+                            }).fail(function (jqXHR, textStatus, errorThrown) {
+                                setTimeout($.unblockUI, 1);
+                                smoke.alert('Error en el servidor');
+                            }).always(function () {
+                            });
+                        } else {
+                            if (candelete === 'true') {
+
+                            } else {
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '{{ reques.path }}',
+                                    async: false,
+                                    data: {
+                                        csrfmiddlewaretoken: '{{ csrf_token }}',
+                                        action: 'consultarvalor',
+                                        id: id,
+                                        value: valor
+                                    },
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        bloqueointerface();
+                                    }
+                                }).done(function (data) {
+                                    setTimeout($.unblockUI, 1);
+                                    if (data.error === false) {
+                                        input.val(data.horas);
+                                        tooltips();
+                                        smoke.alert('No puede quitar horas a esta carrera porque tiene alumnos asignados')
+                                    } else {
+                                        if (data.message) {
+                                            smoke.alert(data.message);
+                                        }
+                                    }
+                                }).fail(function (jqXHR, textStatus, errorThrown) {
+                                    setTimeout($.unblockUI, 1);
+                                    smoke.alert('Error en el servidor');
+                                }).always(function () {
+                                });
+                            }
+                        }
+                    }
+                })
+            {% endif %}
+        })
+
+        function eliminarhora(pk) {
+            smoke.confirm("¿Está seguro que desea eliminar este registro?", function (e) {
+                if (e) {
+                    $.blockUI({message: null});
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'deletehoracarrera',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        smoke.alert('Error en el servidor');
+                    }).always(function () {
+                    });
+                }
+            }, {
+                ok: "SI,SEGURO",
+                cancel: "NO,CANCELAR",
+                classname: "custom-class",
+                reverseButtons: true
+            });
+
+        }
+
+        function consultar(pk, nombre, accion, ocultarcerrar = false) {
+            bloqueointerface()
+            $('#footerModalView').show();
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}",
+                data: {'action': accion, 'id': pk},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (ocultarcerrar === true) {
+                            $('#footerModalView').hide();
+                        }
+                        $('.tablaaqui').html(data.data)
+                        $('#frmConsulta #nombre').html(nombre);
+                        $('#modalConsulta').modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+    <script type="text/javascript" src='/static/js/fontawesomev3.js?v=1.0.0'></script>
+{% endblock %}
+{% block atras %}/adm_criteriosactividadesdocente?action=actividadescriterio&id={{ actividad.criterio.id }}&t=
+    {{ actividad.criterio.tipo }}{% endblock %}
+{% block canvas %}
+
+    <div class="modal fade static" id="modalConsulta" style="display: none;">
+        <form id="frmConsulta" method="post" enctype="multipart/form-data">{% csrf_token %}
+            <div class="modal-header">
+                <h4 class="modal-title"><b id="nombre"></b></h4>
+            </div>
+            <div class="modal-body tablaaqui">
+            </div>
+            <div class="modal-footer" id="footerModalView">
+                <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                        class="fa fa-window-close"></i>
+                    Cerrar</a>
+            </div>
+        </form>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>Actividad: {{ actividad.nombre }} ({{ actividad.horas|floatformat:0 }} horas)</h4><br>
+
+            <a href="javascript:void(0);"
+               onclick="consultar('{{ actividad.pk }}', 'Adicionar Carrera', 'addcarrera')"
+               class="btn btn-success">
+                <i class="fa fa-chalkboard-teacher"></i>
+                Agregar Carreras
+            </a>
+            <hr>
+
+            {% if actividadcarrera %}
+                <table class="table table-bordered table-stripped">
+                    <thead>
+                    <tr>
+                        <th style="text-align: center">Acción.</th>
+                        <th style="text-align: left">Carrera / Mencion</th>
+                        <th style="text-align: center">Horas</th>
+                        {% if espractica %}
+                            <th style="text-align: center">Detalle</th>
+                        {% endif %}
+                    </tr>
+                    </thead>
+                    <tbody id="contenido">
+                    {% for carrera in actividadcarrera %}
+                        <tr>
+                            <td style="text-align: center">
+                                {% if carrera.tutoriasdocentes__aprobadas_count == 0 %}
+                                    <a href="javascript:void(0)" class="btn btn-danger btn-mini tr" title="Eliminar"
+                                       onclick="eliminarhora('{{ carrera.pk }}')"><i class="fa fa-trash-o"></i></a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left;">{{ carrera.carrera.nombre }} {% if carrera.mencion %}/
+                                {{ carrera.mencion }}{% endif %}
+                                {% if carrera.modalidad %}
+                                    - {{ carrera.get_modalidad_display|default_if_none:"" }}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                <input id="{{ carrera.id }}_horas" name="{{ carrera.id }}_horas"
+                                       class="form-imput input-mini cantidadhoras solo-numero" type="text"
+                                       style="text-align: center"
+                                       data-carrera="{{ carrera.carrera.pk }}"
+                                       data-id="{{ carrera.pk }}"
+                                        {% if carrera.tutoriasdocentes__aprobadas_count == 0 %}
+                                       data-candelete="true"
+                                        {% else %}
+                                       data-candelete="false"
+                                        {% endif %}
+                                       data-valoranterior="{{ carrera.horas|floatformat:0 }}"
+                                       value="{{ carrera.horas|floatformat:0 }}">
+                            </td>
+                            <td style="text-align: center">
+                                        <span class="label label-inverse tl" title="Prácticas Aprobadas"><i
+                                                class="fa fa-users"></i> {{ carrera.tutoriasdocentes__aprobadas_count }}</span>
+                                <br>
+                                <span id="icono{{ carrera.pk }}"><i
+                                        class="{{ carrera.get_estado_disponibilidad|safe }}"></i></span>
+                                <span id="texto{{ carrera.pk }}">{{ carrera.get_estado_disponibilidad_txt|safe }}</span>
+
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <center>
+                    <img src="/static/images/undraw/nodata.png" style="width: 746px">
+                    <h3><b>NO EXISTEN CARRERAS ASIGNADAS</b></h3>
+                </center>
+            {% endif %}
+        </div>
+    </div>
+    {##}
+    {#    <div class='row-fluid'>#}
+    {#        <div class='span12'>#}
+    {#            <a class="btn btn-success" href="javascript:;" id="guardar">Guardar</a>#}
+    {#            <a class="btn btn-danger"#}
+    {#               href="/adm_criteriosactividadesdocente?action=actividadescriterio&id={{ actividad.criterio.id }}&t={{ actividad.criterio.tipo }}"#}
+    {#               id="cancelar">Cancelar</a>#}
+    {#        </div>#}
+    {#    </div>#}
+
+
+{% endblock %}

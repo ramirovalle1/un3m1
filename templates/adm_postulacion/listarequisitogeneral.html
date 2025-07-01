@@ -1,0 +1,348 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script type="text/javascript">
+        $(function () {
+            busqueda = function () {
+                bloqueointerface();
+                var term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length > 0) {
+                    location.href = "/adm_postulacion?action=listarequisitogeneral&s=" + term;
+                } else {
+                    location.href = "/adm_postulacion?action=listarequisitogeneral"
+                }
+            };
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $(".esobligatorio").click(function () {
+                actualizaCheckboxes('changeesobligatorio', $(this));
+                return false;
+            });
+            actualizaCheckboxes = function (accion, obj) {
+                var idreq = obj.attr('idreq');
+                $.blockUI({message: null});
+                $.post("/adm_postulacion", {'action': accion, 'idreq': idreq}, function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        if (data.valor) {
+                            obj.html('<i class="fa fa-check" style="color: green"></i>');
+                        } else {
+                            obj.html('<i class="fa fa-remove" style="color: red"></i>');
+                        }
+                    }
+                }, "json");
+                valores_check = null;
+            };
+            $("#itemspanel .btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+                location.reload();
+                return false;
+            });
+            $(".adicionar").click(function () {
+                var idc = $(this).attr('idc');
+                $.post("/adm_postulacion", {"action": "listarequisitogeneral", "id": idc}, function (data) {
+                    if (data.result == "ok") {
+                        $(".paneltitle").html(data.title);
+                        $(".panelbody").html(data.data);
+                        $("#itemspanel").modal({backdrop: 'static', width: '1200px'}).modal('show');
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                }, "json");
+            })
+            $("#cancel_importarcioncancela").click(function () {
+                $('#modalnotoficacionimportar').modal('hide');
+            });
+            $("#boton_notoficacionimportar").click(function () {
+                var lista = "";
+                $(".recorreparticipantes").each(function (index) {
+                    if ($(this).is(":checked")) {
+                        var seleccion = $(this).attr('idpar');
+                        lista += seleccion + ",";
+                    }
+                });
+                if (lista.length == 0) {
+                    smoke.alert('Favor seleccione requisitos');
+                    return false;
+                }
+                lista = lista.substring(0, lista.length - 1);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_postulacion",
+                    data: {'action': 'importarrequisitos', 'lista': lista},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $('#modalnotoficacionimportar').modal('hide');
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".eliminarequisitogeneral").click(function () {
+                var idasig = $(this).attr('idasig');
+                var nomasig = $(this).attr('nomasig');
+                smoke.confirm("¿Está seguro de eliminar el siguiente requisito #" + nomasig + ".? ", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        var id = idasig;
+                        $.ajax({
+                            type: "POST",
+                            url: "/adm_postulacion",
+                            data: {'action': 'eliminarequisitogeneral', 'id': id},
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al generar requisito.");
+                            },
+                            success: function (data) {
+                                if (data.result === "ok") {
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                }, {
+                    ok: "SI, EILIMINAR REQUISITO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+        });
+
+        function verlistadorequisitos() {
+            bloqueointerface();
+            $.get("/adm_postulacion", {'action': 'verlistadorequisitos'}, function (data) {
+                if (data.results) {
+                    $("#modalnotoficacionimportar").modal({backdrop: 'static', width: '950px'}).modal('show');
+                    for (elemento in data.listarequisitogeneral) {
+                        $("#contenidoparticipantes").append('<tr>' +
+                            '<td style="text-align: center;" class="idtema" width="5%"><input type="checkbox" class="recorreparticipantes" idpar="' + data.listarequisitogeneral[elemento][0] + '"> </td>' +
+                            '<td style="text-align:left;" width="95%">' + data.listarequisitogeneral[elemento][1] + '<br><span class="label label-info">' + data.listarequisitogeneral[elemento][2] + '</span></td></tr>');
+                    }
+                    $.unblockUI();
+                    $("#example").dataTable().fnDestroy();
+                    $(document).ready(function () {
+                        var h = $(window).height() - 332;
+                        var table = $('#example').DataTable({
+                            "sPaginationType": "full_numbers",
+                            "sDom": 'T<"clear">lfrtip',
+                            "paging": false,
+                            "ordering": false,
+                            "info": false,
+                            "scrollY": h,
+                            "order": [[1, 'asc']],
+                            //"columnDefs": [{ "visible": false,"targets": 2 }],
+                            "drawCallback": function (settings) {
+                                var api = this.api();
+                                var rows = api.rows({page: 'current'}).nodes();
+                                var last = null;
+
+                            }
+                        });
+                    });
+                }
+            }, 'json');
+        }
+    </script>
+{% endblock %}
+{% block atras %}/adm_postulacion?action=listadoprogramas{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    {#    {% if perms.sga.puede_permisos_admisionposgrado %}#}
+    <div class='row-fluid'>
+        <div class='span6'>
+            <a href='#' class='btn btn-success' onclick="verlistadorequisitos()"><span class="fa fa-list"></span>
+                Importar requisitos</a>
+        </div>
+        <div class="span6">
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span> Buscar</a>
+                {% if search or ids %}
+                    <a href="/adm_postulacion?action=listarequisitogeneral" id='allresults'
+                       class='btn btn-info bloqueo_pantalla'><span
+                            class="fa fa-refresh "></span> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    {#    {% endif %}#}
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row-fluid'>
+            <div class='span12'>
+                <table class='table table-bordered table-striped'>
+                    <thead>
+                    <tr>
+                        <th style="text-align: center;width: 35px" class="hidden-phone hidden-tablet">N.</th>
+                        <th style="width: 400px;text-align: left;">Requisito</th>
+                        <th style="width: 400px;text-align: left;">Observación</th>
+                        <th style="width: 50px;text-align: center;">Archivo</th>
+                        <th style="width: 50px;text-align: center;">Activo</th>
+                        <th style="width: 50px;text-align: center;">Obligatorio</th>
+                        <th style="width: 20px; text-align: center">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for requisito in listarequisitogeneral %}
+                        <tr>
+                            <td style="text-align: center" class="hidden-phone hidden-tablet">{{ forloop.counter }}</td>
+                            <td data-title='Requisito'>{{ requisito.requisito.nombre|default_if_none:"" }}</td>
+                            <td data-title='Observación'>{{ requisito.requisito.observacion|default_if_none:"" }}</td>
+                            <td style="text-align: center;" data-title='Archivo'>
+                                {% if requisito.requisito.archivo %}
+                                    <a href="{{ requisito.requisito.download_link }}" target="_blank"
+                                       class=" btn btn-warning btn-mini fa fa-download"></a>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;" data-title='Activo'>
+                                <i class="fa
+                            {% if requisito.requisito.activo %}
+                                 fa-check
+                                 {% else %}
+                                 fa-close
+                            {% endif %}
+                            "></i>
+                            </td>
+                            <td style="text-align: center;" data-title='Activo'>
+                                <a href="javascript:;"
+                                   {% if perms.sga.puede_permisos_admisionposgrado %}{% if cohorte.procesoabierto %}class="esobligatorio"
+                                   {% endif %}{% endif %} idreq="{{ requisito.id }}">
+                                    {% if requisito.obligatorio %}
+                                        <i class="fa fa-check" style="color: green"></i>
+                                    {% else %}
+                                        <i class="fa fa-remove" style="color: red"></i>
+                                    {% endif %}
+                                </a>
+                            </td>
+                            <td style="text-align: center">
+                                <div class="btn-group">
+                                    {% if not requisito.enuso_requigenerales %}
+                                    <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span
+                                            class="caret"></span></a>
+                                    <ul class="dropdown-menu pull-right" style="text-align: left">
+                                        <li><a class="eliminarequisitogeneral" idasig="{{ requisito.id }}"
+                                               nomasig="{{ forloop.counter }} {{ requisito.requisito.nombre }}"><i
+                                                class="fa fa-minus"></i> Eliminar</a></li>
+                                    </ul>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td style="text-align: center" colspan="12">NO EXISTEN DATOS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class='row-fluid'>
+            <div class="span12">
+                {% if paging.num_pages > 15 %}
+                    <div class='pagination'>
+                        <ul>
+                            {% if paging.primera_pagina %}
+                                <li>
+                                    <a href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page=1">1</a>
+                                </li>
+                                <li>
+                                    <a href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}"
+                                       class="active">...</a></li>
+                            {% endif %}
+                            {% for pagenumber in paging.paginas %}
+                                <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                        href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                                </li>
+                            {% endfor %}
+                            {% if paging.ultima_pagina %}
+                                <li>
+                                    <a href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}"
+                                       class="active">...</a></li>
+                                <li>
+                                    <a href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                {% else %}
+                    <div class='pagination'>
+                        <ul>
+                            {% for pagenumber in paging.page_range %}
+                                <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                        href="/adm_postulacion?action=listarequisitogeneral&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="modal fade static" id="itemspanel" style="display: none;">
+            <div class="modal-body panelbody">
+                <div class="modal-header">
+                    <h3 class="paneltitle"></h3>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <table class="pull-right">
+                    <tr>
+                        <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="modal fade static" id="modalnotoficacionimportar" style="display: none;">
+            <div class="modal-header">
+                <h4 id="paneltitle">Listado de requisitos</h4>
+            </div>
+            <div class="modal-body" style="overflow: scroll;">
+                <table class='table table-bordered' cellpadding="0" cellspacing="0" id="example">
+                    <thead>
+                    <tr>
+                        <th style="text-align: left">
+                            -
+                        </th>
+                        <th style="text-align: left" width="70%">Requisitos</th>
+                    </tr>
+                    </thead>
+                    <tbody id="contenidoparticipantes">
+                    </tbody>
+                </table>
+                {#                <input type="hidden" id="idgrupoexa" name="idgrupoexa">#}
+            </div>
+            <div class="modal-footer">
+                <p style="text-align: right; margin-bottom: 0">
+                    <a href="javascript:;" id="boton_notoficacionimportar" class='btn btn-success'> Importar</a>
+                    <a href="javascript:;" id="cancel_importarcioncancela" class='btn btn-default'> Cancelar</a>
+                </p>
+            </div>
+        </div>
+    </div>
+{% endblock %}

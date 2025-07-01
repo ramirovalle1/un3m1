@@ -1,0 +1,309 @@
+{% load sga_extras %}
+<input type="hidden" name="id" value="{{ filtro.id|encrypt }}"/>
+<input type="hidden" name="action" id="id_action" value="adddescuento"/>
+<input type="hidden" name="iddescuento" id="id_descuento" value=""/>
+
+<div class="row">
+    <div class="col-md-6">
+        <h4>Valor normal: $ {{ filtro.actividad.valor }}</h4>
+    </div>
+    <div class="col-md-6 text-end">
+        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</button>
+         <a href="javascript:void(0);" onclick="addNew()" class="btn btn-primary d-none" id="nuevo" title="Agregar nuevo descuento" data-bs-toggle="tooltip"><i class="fa fa-plus"></i> Nuevo</a>
+         <a href="javascript:void(0);" onclick="limpiarInputs()" class="btn btn-default" title="Limpiar" data-bs-toggle="tooltip"><i class="fa fa-refresh"></i> Limpiar</a>
+    </div>
+</div>
+<div class="row">
+    {% for field in form %}
+        {% if field.field.widget.attrs.separator %}
+            {% if field.field.widget.attrs.blanklinebefore %}
+            {% endif %}
+            <div style="width: 100%; height: max-content">
+                <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                </span>
+                </h6>
+            </div>
+        {% endif %}
+        <div id="fieldset_{{ field.name }}" class="col-lg-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}"
+             style="float: left; padding-right: 10px;">
+            <label class="control-label pr-2" for="id_{{ field.name }}">
+                <b>{{ field.label }}&nbsp;:</b></label>
+            <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+                {% if field.field.widget.attrs.input_group %}
+                    <div class="input-group mb-3">
+                      <span class="input-group-text">{% if field.name == 'porcentaje' %}%{% else %}${% endif %}</span>
+                      {{ field }}
+                    </div>
+                {% else %}
+                    {{ field }}
+                {% endif %}
+                <p class="help-text">{{ field.help_text }} </p>
+                <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0"></p>
+            </div>
+
+        </div>
+    {% endfor %}
+</div>
+<div class="row">
+    <div class="col-lg-12">
+        <table class="table table-bordered table-responsive tabla_paginada" width="100%">
+            <thead class="table-light">
+            <tr>
+                <th class="text-center"><i class="fa fa-dollar"></i> Valores de descuento </th>
+                <th class="text-center"><i class="fa fa-calendar"></i> Fechas</th>
+                <th class="text-center"><i class="fa fa-eye"></i> Publicado</th>
+                <th class="text-center"><i class="fa fa-cogs"></i></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for list in filtro.descuentos %}
+                <tr id="box_{{ list.id }}" class="box_">
+                    <td class="w-30">
+                        <p><b>Porcentaje : </b> {{ list.porcentaje }}%</p>
+                        <p><b>Valor a descontar : </b> ${{ list.valor_descuento}}</p>
+                        <p><b>Valor final : </b> ${{ list.valor_final }}</p>
+                    </td>
+                    <td class="align-middle text-center">
+                        {% if list.aplicavigencia %}
+                            <p><b>Inicio :</b> {{ list.fechainicio|date:"Y-m-d" }}</p>
+                            <p><b>Fin :</b> {{ list.fechafin|date:"Y-m-d" }}</p>
+                        {% else %}
+                            <p>Sin límite de tiempo</p>
+                        {% endif %} 
+                    </td>
+                    <td class="text-center align-middle">
+                         <input type="checkbox" {% if list.publicado %}checked{% endif %} name="publicar" class="publicar"
+                               id="publicar_{{ list.id }}" ida="{{ list.id }}">
+                    </td>
+                    <td class="text-center align-middle">
+                        <a href="javascript:void(0);" onclick="editDescuento('{{ list.id }}',
+                        '{{ list.porcentaje }}',
+                        '{{ list.valor_descuento }}',
+                        '{{ list.valor_final }}',
+                        '{{ list.aplicavigencia }}',
+                        '{{ list.fechainicio|date:"Y-m-d" }}','{{ list.fechafin|date:"Y-m-d" }}')"
+                        class="btn btn-mini btn-outline-secondary"><i class="fa fa-edit"></i></a>
+                        <a href="javascript:void(0);"
+                           onclick="eliminarajaxl('{{ list.id }}', '{{ list }}','deldescuento')"
+                           class="btn btn-mini btn-outline-danger"><i class="fa fa-trash"></i></a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr class="box_0">
+                    <td class="text-center" colspan="6">No existen descuentos agregados</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <h6 class="text-danger">*<i class="fa fa-info-circle"></i> Recordar que solo un descuento puede ser publicado.*</h6>
+    </div>
+</div>
+<script>
+    var total ={{ filtro.descuentos|length }};
+    var iter = false;
+    $(function () {
+        CargarSwitchery()
+        CheckActivation()
+        $("#fieldset_fechainicio, #fieldset_fechafin").addClass('d-none')
+        $("#id_fechainicio, #id_fechafin").removeAttr('required')
+        $('#cerrar').click(function () {
+            if (iter) {
+                location.reload()
+            }
+        });
+        $(".valor").change(function (){
+            let valor_normal='{{ filtro.actividad.valor }}';
+            let descuento=0;
+            let id=$(this).attr('id')
+            let valor_input=$(`#${id}`).val()
+            let valorFinal=0
+            let porcentaje=0
+            if (id=='id_porcentaje'){
+                porcentaje=valor_input
+                descuento=(valor_normal*(porcentaje/100)).toFixed(2)
+                valorFinal=(valor_normal-descuento).toFixed(2)
+            }else if(id=='id_valor_descuento'){
+                descuento=valor_input
+                porcentaje=((descuento/valor_normal)*100).toFixed(0)
+                valorFinal=(valor_normal-descuento).toFixed(2)
+
+            }else if(id=='id_valor_final'){
+                valorFinal=valor_input
+                descuento=(valor_normal-valorFinal).toFixed(2)
+                porcentaje=((descuento/valor_normal)*100).toFixed(0)
+            }
+            actualizarInputs(porcentaje,descuento,valorFinal)
+        })
+         $('#id_aplicavigencia').on('change', function () {
+                var check=$(this).is(':checked');
+                if (check){
+                    $("#fieldset_fechainicio, #fieldset_fechafin").removeClass('d-none')
+                    $("#id_fechainicio, #id_fechafin").attr('required', 'required')
+                }else{
+                    $("#fieldset_fechainicio, #fieldset_fechafin").addClass('d-none')
+                    $("#id_fechainicio, #id_fechafin").removeAttr('required').val('')
+                }
+            });
+
+    });
+    function actualizarInputs(porcentaje, valor_decuento, valor_final,vigencia, inicio, fin){
+        $('#id_porcentaje').val(porcentaje)
+        $('#id_valor_descuento').val(valor_decuento)
+        $('#id_valor_final').val(valor_final)
+        var aplica= document.querySelector('#id_aplicavigencia');
+        if (vigencia.toLowerCase()==='true'){
+            console.log(inicio)
+            $('#id_fechainicio').val(inicio)
+            $('#id_fechafin').val(fin)
+            aplica.checked = true;
+            aplica.dispatchEvent(new Event('change'));
+        }else{
+            $('#id_fechainicio, #id_fechafin').val('')
+             aplica.checked = false;
+            aplica.dispatchEvent(new Event('change'));
+        }
+    }
+
+    function limpiarInputs(){
+        $('#id_porcentaje, #id_valor_final, #id_valor_descuento,#id_fechainicio, #id_fechafin').val('')
+    }
+
+    //Actualizar estados de checks
+    function ActualizarEstado(id, action, check) {
+        bloqueointerface();
+        $.ajax({
+            type: "POST",
+            url: "{{ request.path }}",
+            data: {'action': action, 'id': id, 'val': check, 'idp':'{{ filtro.id }}'},
+            success: function (data) {
+                if (data.result === true) {
+                    $.unblockUI();
+                    if (check){
+                        $(".publicar").prop('checked', false);
+                        $("#publicar_" + id).prop('checked', true);
+                    }
+                    alertaSuccess(data.mensaje)
+                } else {
+                    $.unblockUI();
+                    CheckError(check, id)
+                    alertaDanger(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                CheckError(check, id)
+                alertaInfo("Error al enviar los datos.");
+            },
+            dataType: "json"
+        });
+        iter = true
+    }
+
+    function CheckActivation() {
+        $('.publicar').click(function () {
+            var id = $(this).attr('ida');
+            var check = $(this).is(':checked');
+            ActualizarEstado(id, 'publicardescuento', check)
+        });
+    }
+
+     function CheckError(check, id) {
+        if (check) {
+            $("#publicar_" + id).prop('checked', false);
+        } else {
+            $("#publicar_" + id).prop('checked', true);
+        }
+    }
+
+    function limpiar(id) {
+        $('#box_' + id).empty()
+        total -= 1
+        iter = true
+        $('#total').text(`${total}`)
+        if (total == 0) {
+            $('.tabla_paginada tbody').append($('<tr class="box_0">', {}).append(
+                $('<td>', {'class': 'text-center dataTables_empty', 'colspan': 5}).append($('<p>', {
+                    'class': 'text-secondary',
+                    'text': `No existen descuentos agregados`,
+                })),
+            ))
+        }
+    }
+
+    /*Actualizar Tabla con nuevos elementos*/
+    function ActualizarTabla(data) {
+        if (data.edit){
+            limpiar(data.id)
+        }
+        $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_${data.id}`, 'class': 'box_'}).append(
+            $('<td>', {
+                'class': 'w-30',
+                'html': `<p><b>Porcentaje : </b> ${data.porcentaje}%</p>
+                        <p><b>Valor a descontar : </b> $${data.valor_descuento}</p>
+                        <p><b>Valor final : </b> $${data.valor_final}</p>`,
+            }),
+             $('<td>', {
+                'class': 'text-center w-30 align-middle',
+                'html': (() => {
+                        if (data.aplicavigencia) {
+                            return `<p><b>Inicio : </b> ${data.fechainicio}</p>
+                                    <p><b>Fin : </b> ${data.fechafin}</p>`;
+                        } else {
+                            return '<p>Sin límite de tiempo</p>';
+                        }
+                    })(),
+            }),
+            $('<td>', {'class': 'text-center align-middle'}).append($('<input>', {
+                'class': 'publicar',
+                'type': 'checkbox',
+                'checked': data.publicado,
+                'ida': `${data.id}`,
+                'id': `publicar_${data.id}`,
+                'name': `publicar`,
+            })),
+            $('<td>', {'class': 'text-center align-middle'}).append($('<a>', {
+                'class': 'btn btn-mini btn-outline-secondary',
+                'href': 'javascript:void(0);',
+                'onclick': `editDescuento('${data.id}', '${data.porcentaje}','${data.valor_descuento}','${data.valor_final}','${data.aplicavigencia}','${data.fechainicio}','${data.fechafin}')`,
+                'html': `<i class="fa fa-edit"></i>`
+            })).append($('<a>', {
+                'class': 'btn btn-mini btn-outline-danger',
+                'href': 'javascript:void(0);',
+                'onclick': `eliminarajaxl('${data.id}', '${data.valor_final}','deldescuento')`,
+                'html': `<i class="fa fa-trash"></i>`
+            })),
+        ));
+        total += 1
+        iter = true
+        $('#total').text(`${total}`)
+        $('#id_requisitos tr .dataTables_empty').hide()
+        $('.errorMessage').empty()
+        CheckActivation()
+        $("#nuevo").trigger('click')
+        $('.box_0').empty()
+    }
+
+    function editDescuento(id,porcentaje,valor_descuento,valor_final,vigencia,inicio,fin){
+        $("#id_action").val('editdescuento')
+        $("#id_descuento").val(id)
+        $("#nuevo").removeClass('d-none')
+        actualizarInputs(porcentaje,valor_descuento,valor_final,vigencia,inicio,fin)
+        $('.box_').removeClass('table-warning')
+        $(`#box_${id}`).addClass('table-warning')
+    }
+
+    function addNew(){
+        limpiarInputs()
+        $("#id_action").val('adddescuento')
+        $("#nuevo").addClass('d-none')
+        var aplica= document.querySelector('#id_aplicavigencia');
+        aplica.checked = false;
+        aplica.dispatchEvent(new Event('change'));
+        $('.box_').removeClass('table-warning')
+    }
+
+</script>

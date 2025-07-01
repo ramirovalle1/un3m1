@@ -1,0 +1,602 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <script type="text/javascript">
+
+        function actualizarmodelo(instructor, evento) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}",
+                data: {'action': 'actualizar_modelo_moodle_pos', 'id': instructor, 'evento': evento},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Modelo evaluativo actualizado correctamente',
+                            type: 'success',
+                        });
+                    } else {
+                        Swal.fire({
+                            type: 'warning',
+                            icon: 'error',
+                            title: data.mensaje,
+                        });
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeWarning("Error al obtener los datos");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+            $(".tl").tooltip({position: "center up"});
+            $("#boton_exportarmoodle").click(function () {
+                bloqueointerface();
+                var idinstructor = $('#idinstructor').val();
+
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'listadoexportarmoodle', 'idinstructor': idinstructor},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#recalcularexportarmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            var indice = 0;
+                            var cantidad = parseInt(data.cantidad);
+                            var listacurso = data.listacurso;
+                            console.log(listacurso, indice, (cantidad - 1), idinstructor);
+                            recalculoexportar(listacurso, indice, (cantidad - 1), idinstructor);
+                        } else {
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#cancel_importarcancela").click(function () {
+                $('#modalexportarmoodle').modal('hide');
+            });
+
+            $(".visualizar_certificado").click(function () {
+
+                var id = $(this).attr('id');
+                $("#idinscripcion").val(id);
+                openwindow('POST', '{{ request.path }}', {
+                    action: 'ver_certificadoinstructor_pdf',
+                    'id': id
+                }, '_blank');
+            });
+
+            $(".enviar_certificado").click(function () {
+                var id = $(this).attr('id');
+                $("#idinscripcion").val(id);
+                console.log(id)
+
+                bloqueointerface();
+                $("#modalnotificacion").modal({backdrop: 'static', width: '600px'}).modal('show');
+                $.unblockUI();
+
+
+            });
+
+            $("#btn_aceptar").click(function () {
+
+                var idinscripcion = $("#idinscripcion").val();
+                console.log(idinscripcion)
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'enviar_certificadofacilitador_pdf', 'id': idinscripcion},
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $("#modalnotificacion").modal({backdrop: 'static', width: '600px'}).modal('hide');
+                            $.unblockUI();
+                            //location.reload();
+                            $("#lblenv_" + idinscripcion + "").html("&nbsp;SI&nbsp;");
+                            $("#lblenv_" + idinscripcion + "").attr("class", "label label-success");
+                            mensajeWarning('El certificado fue enviado al e-mail del participante');
+                        } else {
+                            $.unblockUI();
+                            mensajeWarning(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $("#btn_cancelar").click(function () {
+                $('#modalnotificacion').modal('hide');
+            });
+
+            $('.crearcursomoodle').click(function () {
+                id = $(this).attr('idp');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'crearcursomoodle', 'id': id},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            selectorinstructores = $(".selectorinstructores");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorinstructores:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalleads").html(`Instructores Seleccionados: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorinstructores.prop('checked', true);
+                } else {
+                    selectorinstructores.prop('checked', false);
+                }
+                actulizarvalor();
+            });
+
+            selectorinstructores.change(function () {
+                actulizarvalor();
+            });
+
+            selectorinstructores.prop("checked", false);
+
+        });
+
+        function exportarmoodle(idinstructor) {
+            $('#idinstructor').val(idinstructor);
+            bloqueointerface();
+            $("#modalexportarmoodle").modal({backdrop: 'static', width: '600px'}).modal('show');
+            $.unblockUI();
+        }
+
+        function recalculoexportar(lista, elemento, cantidad, idinstructor) {
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad)) * elemento + '%';
+            if (elemento > cantidad) {
+                terminarecalculo();
+            } else {
+                $("#recalcularexportarmodalprogresshint").html(inscrito.participante__apellido1 + ' ' + inscrito.participante__apellido2 + ' ' + inscrito.participante__nombres);
+                $("#progressbarexportar").css({'width': cp});
+                $("#progressbarexportar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {
+                        "action": "exportarinscrito",
+                        "inscrito": inscrito.id,
+                        "idinstructor": idinstructor,
+                        "contador": elemento
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            intentos = 0;
+                            recalculoexportar(lista, elemento + 1, cantidad, idinstructor);
+                        } else {
+                            alert(data.mensaje)
+                            falloimportar();
+
+                        }
+                    },
+                    error: function () {
+                        intentos += 1;
+                        if (intentos >= 100) {
+                            fallorecalculo();
+                        } else {
+                            recalculoexportar(lista, elemento, cantidad, idinstructor);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+        function terminarecalculo() {
+            $("#recalcularmodal").modal("hide");
+            bloqueointerface();
+            location.reload();
+        }
+
+        function falloimportar() {
+            $.unblockUI();
+            $("#recalcularexportarmodal").modal("hide");
+            mensajeWarning("Fallo al crear grupo en el aula virtual");
+        }
+
+        function consultar(accion, nombre, ocultarcerrar = false) {
+            var ids;
+            var seleccionados = $(".selectorinstructores:checked");
+            const listaId = [];
+            seleccionados.each(function () {
+
+                listaId.push($(this).attr('rid'));
+
+            });
+            if (!listaId.length > 0 ) {
+                alertaDanger("Debe seleccionar al menos un instructor");
+            }else {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {'action': accion, 'ids': listaId},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true) {
+                            if (ocultarcerrar === true) {
+                                $('#footerModalView').hide();
+                            }
+                            $('.modal-body').html(data.data)
+                            $('#modalConsulta').modal({"backdrop": "static", "width": "450px"}).modal("show");
+                        } else {
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        mensajeWarning("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=planificacion&id={{ eventoperiodo.periodo.id }}{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Periodo: {{ eventoperiodo.periodo }}</h6>
+                <h6>Planificación: {{ eventoperiodo.capevento }}</h6>
+                <h6>Fecha: {{ eventoperiodo.fechainicio|date:"d-m-Y" }} - {{ eventoperiodo.fechafin|date:"d-m-Y" }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+
+        <div class='row'>
+            <div class="col-lg-6 col-md-4 col-12">
+                <a class="btn btn-success"
+                   href="{{ request.path }}?action=addinstructor&id={{ eventoperiodo.id }}"><i
+                        class="fa fa-plus"></i> Adicionar</a>
+                <a class="btn  btn-info" href="{{ request.path }}?action=notas&id={{ eventoperiodo.id }}"><i
+                        class="fa fa-table"></i> Modelos Evaluativos</a>
+
+                <a class="btn  btn-warning" href="javascript:void(0);"
+                                   onclick="consultar('crearmasivocursomoodle', 'Envio masivo al moodle', true)"><i
+                        class="fa fa-send"></i> Enviar Masivo a Moodle</a>
+
+            </div>
+            <p><b id="totalleads">Instructores Seleccionados: 0</b></p>
+        </div>
+
+
+        <div class='card mb-4'>
+            <div class='card-body border-top border-6 rounded-3 border-dark-info'>
+                <table class='tabla_responsive table table-bordered table-striped'>
+                    <thead>
+                    <tr>
+                        <th style="text-align: center; width: 25px"><input type="checkbox" id="todos"></th>
+                        <th style="width: 50px;text-align: center">Cédula</th>
+                        <th style="width: 250px;">Instructor</th>
+                        <th style="width: 250px;">Curso</th>
+                        <th style="width: 250px;">Descripción</th>
+                        <th style="width: 250px;text-align: center">Tipo</th>
+                        <th style="width: 20px;text-align: center">Principal</th>
+                        <th style="width: 10px; text-align: center; vertical-align: middle" title="Certificado enviado">
+                            C.E
+                        </th>
+                        <th style="width: 60px; text-align:center ">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for per in instructor %}
+                        <tr>
+                            <td style="text-align: center;">
+                                {% if per.idcursomoodle == 0 %}
+                                <input type="checkbox" class="selectorinstructores" rid="{{ per.id }}">
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">{{ per.instructor.cedula }}</td>
+                            <td>{{ per.instructor }}
+                                <br>
+                                {% if per.idcursomoodle > 0 %}
+                                    <label class="label label-info">Migrado a moodle</label><br>
+                                {% endif %}
+                            </td>
+                            <td>{{ per.nombrecurso }}
+                                <br>
+                                {% if persona.usuario.is_superuser %}
+                                    <label class="label label-warning">id moodle: {{ per.idcursomoodle }}</label><br>
+                                {% endif %}
+                            </td>
+                            <td>{{ per.descripcion }}</td>
+                            <td style="text-align: center">{{ per.get_tipo_display }}</td>
+                            <td style="text-align: center">
+                                {% if per.instructorprincipal %}
+                                    <i class="fa fa-check"></i>
+                                {% else %}
+                                    <i class="fa fa-remove"></i>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                {% if per.notificado %}
+                                    <span id="lblenv_{{ cab.id }}" class="label label-success">&nbsp;SI&nbsp;</span>
+                                {% else %}
+                                    <span id="lblenv_{{ cab.id }}" class="label label-warning">&nbsp;NO&nbsp;</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">
+                                <div class="btn-group dropleft">
+                                    <button type="button" class="btn btn-default dropdown-toggle"
+                                            data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        Acciones <i class="fa fa-angle-down"></i>
+                                    </button>
+                                    <ul class="dropdown-menu" x-placement="right-start">
+                                        <li class="dropdown-item"><a
+                                                href="{{ request.path }}?action=editinstructor&id={{ per.id }}"><i
+                                                class="fa fa-edit"></i> Editar</a></li>
+                                        <li class="dropdown-item"><a class="eliminacionmodal" href="javascript:;"
+                                                                     nhref="{{ request.path }}?action=delinstructor&id={{ per.id }}"><i
+                                                class="fa fa-remove"></i> Eliminar</a></li>
+                                        {% if per.nombrecurso %}
+                                            <li></li>
+                                            {% if per.idcursomoodle == 0 %}
+                                                {#                                                <li><a href='{{ request.path }}?action=crearcursomoodle&id={{ per.id }}'><span#}
+                                                {#                                                    class="fa fa-share-alt-square"></span>#}
+                                                {#                                                    Crear curso moodle</a></li>#}
+                                                <li class="dropdown-item"><a class="crearcursomoodle tu" href="javascript:void(0)"
+                                                                             idp="{{ per.id }}"><i
+                                                        class="fa fa-share-alt-square"></i> Crear curso moodle</a></li>
+                                            {% endif %}
+
+                                            {% if per.idcursomoodle > 0 %}
+                                                <li class="dropdown-item">
+                                                    <a href='#'
+                                                       onclick="exportarmoodle({{ per.id }})"><span
+                                                            class="fa fa-share-alt-square"></span>Actualizar curso
+                                                        moodle</a>
+                                                </li>
+                                            {% endif %}
+
+                                        {% endif %}
+                                        <li class="dropdown-item"><a href="#"
+                                                                     onclick="actualizarmodelo('{{ instructor.0.id }}', '{{ eventoperiodo.id }}')"
+                                        ><span
+                                                class="fa fa-share-alt-square"></span>
+                                            Actualizar modelo </a></li>
+                                        {% if per.idcursomoodle > 0 %}
+                                            <li class="dropdown-item"><a
+                                                    href="{{ request.path }}?action=notasmoodle&id={{ per.id }}"><i
+                                                    class="fa fa-star"></i> Calificaciones de moodle</a></li>
+                                            <li class="dropdown-item">
+                                                <a href="{{ per.capeventoperiodo.periodo.urlmoodle }}/course/view.php?id={{ per.idcursomoodle }}"
+                                                   target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                    al curso de moodle</a></li>
+                                        {% endif %}
+                                        <li class="dropdown-item"><a href="javascript:;" id="{{ per.id }}"
+                                                                     class="visualizar_certificado"><i
+                                                class="fa fa-print"></i> Vista Previa Certificado </a></li>
+                                        <li class="dropdown-item"><a href="javascript:;" id="{{ per.id }}"
+                                                                     class="enviar_certificado"><i
+                                                class="fa fa-envelope"></i> Enviar Certificado </a></li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="10" style="text-align: center">NO EXISTEN FICHAS REGISTRADAS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+
+
+
+
+    {#    <div class="modal fade static" id="modalexportarmoodle" style="display: none;">#}
+    {#        <div class="modal-header">#}
+    {#            <h4 id="paneltitle">Crear o actualizar curso en moodle</h4>#}
+    {#        </div>#}
+    {#        <div class="modal-body importarbody">#}
+    {#            <p style="margin-top: 16px;">Esta seguro(a) de realizar acción?</p>#}
+    {#            <input type="hidden" id="idinstructor" name="idinstructor">#}
+    {#        </div>#}
+    {#        <div class="modal-footer">#}
+    {#            <p style="text-align: right; margin-bottom: 0">#}
+    {#                <a href="javascript:;" id="boton_exportarmoodle" class='btn btn-success'> Exportar</a>#}
+    {#                <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a>#}
+    {#            </p>#}
+    {#        </div>#}
+    {#    </div>#}
+
+
+
+    <div class="modal fade static" id="modalexportarmoodle" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">Crear o actualizar curso en moodle</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body importarbody">
+                    <p style="margin-top: 16px;">Esta seguro(a) de realizar acción?</p>
+                    <input type="hidden" id="idinstructor" name="idinstructor">
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="boton_exportarmoodle" class='btn btn-success'> Exportar</a>
+                        <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="recalcularexportarmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><b class="paneltitle">Exportando moodle</b></h3>
+                </div>
+                <div class="modal-body">
+                    <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                         class="progress progress-striped active">
+                        <div class="bar" style="font-weight: bold; width: 0;" id="progressbarexportar"
+                             aria-valuenow="25"></div>
+                    </div>
+                    <div id="recalcularexportarmodalprogresshint"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    {#    <div class="modal static" id="recalcularexportarmodal" style="display: none;">#}
+    {#        <div class="modal-header">#}
+    {#            <h3>Exportando moodle</h3>#}
+    {#        </div>#}
+    {#        <div class="modal-body">#}
+    {#            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'#}
+    {#                 class="progress progress-striped active">#}
+    {#                <div class="bar" style="font-weight: bold; width: 0;" id="progressbarexportar" aria-valuenow="25"></div>#}
+    {#            </div>#}
+    {#            <div id="recalcularexportarmodalprogresshint">#}
+    {#            </div>#}
+    {#        </div>#}
+    {#    </div>#}
+
+
+
+    {#    <div class="modal fade static" id="modalnotificacion" style="display: none;">#}
+    {#        <div class="modal-header">#}
+    {#            <h4 id="paneltitle">Enviar certificado por e-mail</h4>#}
+    {#            <h4 id="idnombrespostulante"></h4>#}
+    {#        </div>#}
+    {#        <div class="modal-body notificacionbody">#}
+    {#            <p style="margin-top: 16px;">¿Esta seguro(a) que desea enviar el certificado por e-mail?</p>#}
+    {#            <input type="hidden" id="idinscripcion" name="idinscripcion">#}
+    {#        </div>#}
+    {#        <div class="modal-footer">#}
+    {#            <p style="text-align: right; margin-bottom: 0">#}
+    {#                <a href="javascript:;" id="btn_aceptar" class='btn btn-success'> Enviar certificado</a>#}
+    {#                <a href="javascript:;" id="btn_cancelar" class='btn btn-default'> Cancelar</a>#}
+    {#            </p>#}
+    {#        </div>#}
+    {#    </div>#}
+
+
+    <div class="modal fade static" id="modalnotificacion" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">Enviar certificado por e-mail</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body notificacionbody">
+                    <p style="margin-top: 16px;">Esta seguro(a)que desea enviar el certificado por e-mail?</p>
+                    <input type="hidden" id="idinstructor" name="idinstructor">
+                    <input type="hidden" id="idinscripcion" name="idinscripcion">
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+
+                        <a data-bs-toggle="modal" href="javascript:;" role="button" id="btn_aceptar"
+                           class='btn btn-success'>Enviar</a>
+
+                        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                        <!--   <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a> -->
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="modalConsulta" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">Envio masivo al moodle</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <form action="{{ request.path }}" method="POST">
+                    {% csrf_token %}
+                     <div class="modal-body ">
+
+
+                     </div>
+                    <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+
+                        <button data-bs-toggle="modal" type="submit" id="btn_aceptar"
+                           class='btn btn-success'>Enviar</button>
+
+                        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                        <!--   <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a> -->
+                    </p>
+                </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}
+

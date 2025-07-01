@@ -1,0 +1,688 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <style>
+        .parpadea {
+            animation-name: parpadeo;
+            animation-duration: 1s;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+
+            -webkit-animation-name:parpadeo;
+            -webkit-animation-duration: 1s;
+            -webkit-animation-timing-function: linear;
+            -webkit-animation-iteration-count: infinite;
+        }
+
+        @-moz-keyframes parpadeo{
+            0% { opacity: 1.0; }
+            50% { opacity: 0.0; }
+            100% { opacity: 1.0; }
+        }
+
+        @-webkit-keyframes parpadeo {
+            0% { opacity: 1.0; }
+            50% { opacity: 0.0; }
+            100% { opacity: 1.0; }
+        }
+
+        @keyframes parpadeo {
+            0% { opacity: 1.0; }
+            50% { opacity: 0.0; }
+            100% { opacity: 1.0; }
+        }
+    </style>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript">
+        $(function () {
+
+            $("select").select2({width: "100%", minimumResultsForSearch: 2});
+
+            var valoridm;
+
+            {% if not materia.cerrado %}
+                cierre_materia = function () {
+                    var self = $(this);
+                    if (!$(this).hasClass("disabled")) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/pro_evaluaciones",
+                            data: {'action': 'cerrarmateria', 'mid': '{{ materia.id|encrypt }}'},
+                            success: function (data) {
+                                if (data.result == 'ok') {
+                                    location.href = "/pro_evaluaciones?materiaid={{ materiaid|encrypt }}";
+                                } else {
+                                    if (data.result == 'bad') {
+                                        $.unblockUI();
+                                        if (data.mensaje) {
+                                            NotificationJG.error(data.mensaje);
+                                        } else {
+                                            NotificationJG.error("Error al cerrar la materia");
+                                        }
+
+                                    }
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeWarning("Error al cerrar la materia.");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                    return false;
+                };
+
+                abrir_materia = function () {
+                    var self = $(this);
+                    if (!$(this).hasClass("disabled")) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/pro_evaluaciones",
+                            data: {'action': 'abrirmateria', 'mid': '{{ materiaid|encrypt }}'},
+                            success: function (data) {
+                                $.unblockUI();
+                                var cmi;
+                                if (data.result == 'ok') {
+                                    cmi = $("#materiassel").val();
+                                    location.href = "/pro_evaluaciones?materiaid={{ materiaid|encrypt }}";
+                                } else {
+                                    $.unblockUI();
+                                    mensajeWarning("Error al abrir la materia.");
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeWarning("Error al abrir la materia.");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                    return false;
+                };
+
+                actualizar_observacion = function () {
+                    modalobservaciones = $("#observaciones");
+                    var obs = $(this).attr("obs");
+                    var id = $(this).attr("mid");
+                    modalobservaciones.find("#contenido_observacion").attr({"ids": id}).val(obs);
+                    $("#error").html("");
+                    modalobservaciones.modal("show");
+                };
+
+                cierre_materia_asignada = function () {
+                    var maid = $(this).attr("maid");
+                    var cerrado = $(this).hasClass("btn-danger");
+                    var elemento = $(this);
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {
+                            'action': 'cerrarmateriaasignada',
+                            'maid': maid,
+                            'cerrado': ((cerrado) ? "true" : "false")
+                        },
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                materiaasignada = $("#maestado" + data.maid);
+                                elemento.removeClass("btn-danger");
+                                materiaasignada.html(data.estado);
+                                if (data.estadoid == 1) {
+                                    materiaasignada.css({"color": "#006400"});
+                                }
+                                if (data.estadoid == 2) {
+                                    materiaasignada.css({"color": "#ff0000"});
+                                }
+                                if (data.estadoid == 3) {
+                                    materiaasignada.css({"color": "#000000"});
+                                }
+                                if (data.estadoid == 4) {
+                                    materiaasignada.css({"color": "#FFA500"});
+                                }
+                                if (data.cerrado) {
+                                    elemento.addClass("btn-danger");
+                                    elemento.html("Abrir");
+                                    $("#materiaasignadarow" + data.maid + " input").attr("disabled", "disabled");
+                                } else {
+                                    elemento.html("Cerrar");
+                                    if (data.importadeuda && data.tienedeuda) {
+                                        $("#materiaasignadarow" + data.maid).find(".campoactivo").attr("disabled", "disabled");
+                                    } else if (!data.valida) {
+                                        $("#materiaasignadarow" + data.maid).find(".campoactivo").attr("disabled", "disabled");
+                                    } else {
+                                        $("#materiaasignadarow" + data.maid).find(".campoactivo").removeAttr("disabled");
+                                    }
+                                }
+                                if (data.materiasabiertas > 0) {
+                                    $("#cierremateria").removeClass("btn-danger").hide();
+                                } else {
+                                    $("#cierremateria").addClass("btn-danger").show();
+                                }
+                            } else {
+                                if (data.result == 'bad') {
+                                    $.unblockUI();
+                                    if (data.mensaje) {
+                                        NotificationJG.error(data.mensaje);
+                                    } else {
+                                        NotificationJG.error("Error al cerrar la materia");
+                                    }
+
+                                }
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeWarning("Error al cerrar la materia asignada.");
+                        },
+                        dataType: "json"
+                    });
+                    return false;
+                };
+
+                $("#btn-guardarobservacion").click(function () {
+                    contenidoobservacion = $("#contenido_observacion");
+                    var observacion = contenidoobservacion.val();
+                    var id = contenidoobservacion.attr("ids");
+                    $("#observaciones").modal("hide");
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'observaciones', 'id': id, 'observacion': observacion},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#obs_" + id).attr({"obs": observacion});
+                            } else {
+                                $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                                $("#observaciones").modal("show");
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                            $("#observaciones").modal("show");
+                        },
+                        dataType: "json"
+                    });
+                });
+            {% endif %}
+
+            actualizar_selector = function () {
+                var selector = $(this).attr("sid");
+                var codigo = $(this).val();
+                var materia = $(this).attr('mid');
+                bloqueointerface();
+                $.post("/pro_evaluaciones", {
+                    'action': 'codigo',
+                    'sel': selector,
+                    'cod': codigo,
+                    'materia': materia
+                }, function (data) {
+                    $.unblockUI();
+                    if (data.result == "ok") {
+                        $("#codn" + selector).html("COD-" + data.codigo);
+                    }
+                }, "json");
+            };
+
+            $('#envioclave').click(function () {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_evaluaciones",
+                    data: {'action': 'envioclave', 'id': '{{ profesor.id|encrypt }}'},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            mensajeSuccess("Se ha generado y enviado correctamente la clave para ingreso de notas.");
+                        } else {
+                            mensajeWarning("Error al generar la clave.");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al generar la clave.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $('#ingresoclave').click(function () {
+                bloqueointerface();
+                clave = $('#clave').val();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_evaluaciones",
+                    data: {'action': 'verificacionclave', 'id': '{{ profesor.id|encrypt }}', 'clave': clave},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            location.href = '/pro_evaluaciones';
+                        } else {
+                            $.unblockUI();
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al verificar la clave.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            {% if not materia.cerrado %}
+                actualizar_nota = function () {
+                    var elemento = $(this);
+                    var valor;
+                    var maid = elemento.attr("maid");
+                    var sel = elemento.attr("sel");
+                    bloqueointerface();
+                    numerico(elemento, 0, 100, 2);
+                    valor = elemento.val();
+                    elemento.css({"background-color": "white"});
+                    $.post("/pro_evaluaciones", {
+                        'action': 'nota',
+                        'maid': maid,
+                        'sel': sel,
+                        'val': valor
+                    }, function (data) {
+                        if (data.result == "ok") {
+                            elemento.css({"background-color": "rgba(148, 255, 183, 0.23)"});
+                        } else {
+                            elemento.css({"background-color": "rgba(240, 128, 128, 0.21)"});
+                        }
+                        if (data.result == "ok" || data.result == "bad") {
+                            $.unblockUI();
+                            $("#materiaasignada" + maid).html(data.nota_final);
+                            $("#maestado" + maid).html(data.estado);
+                            if (data.estadoid == 1) {
+                                $("#maestado" + maid).css({"color": "#006400"});
+                            }
+                            if (data.estadoid == 2) {
+                                $("#maestado" + maid).css({"color": "#ff0000"});
+                            }
+                            if (data.estadoid == 3) {
+                                $("#maestado" + maid).css({"color": "#000000"});
+                            }
+                            if (data.estadoid == 4) {
+                                $("#maestado" + maid).css({"color": "#FFA500"});
+                            }
+                            elemento.val(data.valor);
+                            if (data.hasOwnProperty('nota_parcial')) {
+                                $("#materiaasignada" + maid + "nota_parcial").html(data.nota_parcial);
+                            }
+                            if (data.hasOwnProperty('nota_parcial_1')) {
+                                $("#materiaasignada" + maid + "nota_parcial_1").html(data.nota_parcial_1);
+                            }
+                            if (data.hasOwnProperty('nota_parcial_2')) {
+                                $("#materiaasignada" + maid + "nota_parcial_2").html(data.nota_parcial_2);
+                            }
+                            if (data.hasOwnProperty('promedio')) {
+                                $("#materiaasignada" + maid + "promedio").html(data.promedio);
+                            }
+                            if (data.hasOwnProperty('porctfinal')) {
+                                $("#materiaasignada" + maid + "porctfinal").html(data.porctfinal);
+                            }
+                            if (data.hasOwnProperty('momento1')) {
+                                $("#materiaasignada" + maid + "momento1").html(data.momento1);
+                            }
+                            if (data.hasOwnProperty('momento2')) {
+                                $("#materiaasignada" + maid + "momento2").html(data.momento2);
+                            }
+                            if (data.hasOwnProperty('porctfinal')) {
+                                $("#materiaasignada" + maid + "porctfinal").html(data.porctfinal);
+                            }
+                            if (data.hasOwnProperty('nota_final')) {
+                                $("#materiaasignada" + maid + "nota_final").html(data.nota_final);
+                            }
+                            if (data.hasOwnProperty('dependientes')) {
+                                for (i = 0; i < data.dependientes.length; i++) {
+                                    elementonombre = data.dependientes[i][0];
+                                    elementovalor = data.dependientes[i][1];
+                                    $("#materiaasignada" + maid + elementonombre).html(parseFloat(elementovalor).toFixed(2));
+                                }
+                            }
+                        }
+                    }, "json");
+                };
+
+
+                exportar_materia = function () {
+                    bloqueointerface();
+                    var materia = $(this).attr('mid');
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_evaluaciones",
+                        data: {'action': 'exportar', 'id': materia},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#enlacefichero").attr('href', 'media/notas/' + data.archivo);
+                                $("#ficheromodal").modal({'width': '350px'}).modal('show');
+                            } else {
+                                mensajeWarning(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeWarning("Error al generar los datos.");
+                        },
+                        dataType: "json"
+                    });
+                };
+            {% endif %}
+
+            $("#ficheromodal .btn-cerrar").click(function () {
+                $("#ficheromodal").modal('hide');
+            });
+
+            $("#enlacefichero").click(function () {
+                $("#ficheromodal").modal('hide');
+            });
+
+            conectacontroles = function () {
+                $(".selectorcod").change(actualizar_selector);
+                {% if not materia.cerrado %}
+                    $(".guardar_masivo").change(actualizar_lista);
+                    $(".nota").change(actualizar_nota);
+                    $(".nota").blur(actualizar_nota);
+                    $(".cierremateriaasignada").click(cierre_materia_asignada);
+                    $("#cierremateria").click(cierre_materia);
+                    $("#abrirmateria").click(abrir_materia);
+                    $("#exportar").click(exportar_materia);
+                    $(".btn-observacion").click(actualizar_observacion);
+                    $(".viewhtml").click(auditorianota);
+                {% endif %}
+                $(".btn-form").click(bloqueointerface);
+                tooltips();
+            };
+
+            actualizar_lista = function () {
+                bloqueointerface();
+                location.reload();
+            };
+
+            $(".btn-cerrar").click(function () {
+                $("#observaciones").modal("hide");
+            });
+
+            actualizaevaluaciones = function (id) {
+                showWaiting("Calculando Evaluaciones", "Espere unos segundos por favor...");
+                $.get("/pro_evaluaciones", {'action': 'segmento', 'id': id}, function (data) {
+                    $("#segmento").html(data);
+                    hideWaiting();
+                    conectacontroles();
+                    conectar_reporte();
+                }, 'html');
+            };
+
+            $("#materiassel").change(function () {
+                bloqueointerface()
+                var id = $(this).val();
+                location.href = '/pro_evaluaciones?materiaid=' + id;
+            });
+
+            $(".selectorcod").change(function () {
+                actualizar_selector();
+            });
+            {% if mensaje_bloqueo %}
+                mensajeWarning("{{ mensaje_bloqueo }}");
+            {% endif %}
+            {% if not materia.cerrado %}
+
+
+                $(".nota").blur(function () {
+                    actualizar_nota();
+                });
+            {% endif %}
+            {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones %}
+                $('#tablaingreso').hide();
+            {% endif %}
+
+            {% if habilitado_ingreso_calificaciones %}
+                actualizaevaluaciones('{{ materiaid|encrypt }}');
+            {% endif %}
+
+            auditorianota = function () {
+                var mid = $(this).attr('mid');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_evaluaciones",
+                    data: {'action': 'viewauditoria', 'id': mid},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#selectauditoria-body").html(data.data);
+                            $('#selectauditoria').modal({'width': 800}).modal('show');
+                        } else {
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeDanger("Error al generar los datos.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $("#selectauditoria .btn-cerrar").click(function () {
+                $("#selectauditoria").modal('hide');
+            });
+
+
+        });
+
+        $(document).ready(function () {
+            $(".fancybox").fancybox();
+        });
+
+        function formModal(id, text, action, footer = true, dimension) {
+            $('.panelbodyreasigna').empty();
+            $('.panelbody1').empty();
+            $('.panelbodyproceso').empty();
+            $('.panelbodyform').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal1').hide();
+                        }
+                        $('.panelbody1').html(data.data);
+                        $('#itemspanel .paneltitle1').html(text);
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class="col">
+            <div class='headtitle'>
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Calificaciones de estudiantes según la materia seleccionada. </h6>
+            </div>
+        </div>
+    </div>
+    {% if utiliza_validacion_calificaciones and not habilitado_ingreso_calificaciones %}
+        <div class='row'>
+            <div class='col-12'>
+                <div class="alert alert-danger">
+                    <div class="form-horizontal">
+                        <b>Clave:</b> <input class="input-control input-small" id="clave" type="text" value="">
+                        <a href="javascript:;" class="btn btn-info tu" id="ingresoclave" title="Ingreso de clave"><i
+                                class="fa fa-key"></i></a>
+                        <span style="margin-left: 20px">Debe generar una clave para poder ingresar calificaciones cada vez que ingrese al sistema, la misma sera enviada a su correo electronico registrado en su hoja de vida.
+                            <a href="javascript:;" class="btn btn-success btn-mini tu" id="envioclave"
+                               title="Envio de clave al correo"><i class="fa fa-envelope"></i> Generar</a>
+                            </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="container-fluid">
+        <div class="card mb-3">
+            <div class="card-body pb-4 pt-2">
+                <form>
+                    <div class="row">
+                        <div class="col-sm-8">
+                            <label for=""><i class="fa fa-book"></i> Materia: </label>
+                            <select id='materiassel'>
+                                {% for materia in materias %}
+                                    <option value='{{ materia.id|encrypt }}'
+                                            {% if materiaid == materia.id %}selected="selected"{% endif %}>{{ materia.nombre_completo }}
+                                        {% if materia.nivel.sede %} - {{ materia.nivel.sede }}{% endif %}
+                                        {% if materia.nivel.carrera %} -
+                                            {{ materia.nivel.carrera.alias }}{% endif %}
+                                        {% if materia.nivel.paralelo %} -{{ materia.nivel.paralelo }}{% endif %}
+                                        {% if materia.cerrado %} -(CERRADA){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    <div class="col-sm-4">
+                        <div class="btn-group" style="margin-top: 22px; float: right">
+                        <button id="btnAcciones" type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-cogs"></i> Acciones
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="btnAcciones" style="">
+                            <li><a class="dropdown-item" href="{{ request.path }}?action=reporteactuaciones&id={{ materia.id|encrypt }}" id="informeactuaciones"><span class="fa fa-list" aria-hidden="true"></span>&nbsp; Informe de actuaciones</a></li>
+                            <li><a class="dropdown-item" href="{{ request.path }}?action=reporteobservaciones&id={{ materia.id|encrypt }}" id="informeobservaciones"><span class="fa fa-list" aria-hidden="true"></span>&nbsp; Informe de observaciones</a></li>
+{#                            {% if materia.fechacierre %}#}
+{#                                <li><a class="dropdown-item" href="?action=listainformes&id={{ materia.pk }}"><span class="fa fa-file-pdf text-danger" aria-hidden="true"></span>&nbsp; Informe de cierre del periodo académico.</a></li>#}
+{#                            {% endif %}#}
+                        </ul>
+                </div>
+                    </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+            <div class='card'>
+                <div class='card-body border-6 rounded-3'>
+                    {% if materia %}
+                    <div id="tablaingreso">
+                        <div id='segmento'>
+                            <div class="text-center">
+                                <span class="parpadea"><h4>Cargando...</h4></span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="modal fade static" data-keyboard="true" data-backdrop="static" id="observaciones"
+             style="display: none;">
+            <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="paneltitle1"> Observaciones</h3>
+                    </div>
+                    <div class="modal-body">
+                        <div id="error"></div>
+                        <textarea id="contenido_observacion" style="width: 100%;"
+                                  {% if materia.cerrado %}disabled="disabled"{% endif %} rows="3"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        {% if not materia.cerrado %}
+                            <a href="javascript:;" id="btn-guardarobservacion" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</a>
+                        {% endif %}
+                        <a href="javascript:;" class="btn btn-cerrar btn-default" data-bs-dismiss="modal" ><i class="fa fa-times"></i> Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal fade static" id="selectauditoria" style="display: none;">
+            <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4 id="paneltitle">Vista de Auditoria</h4>
+                    </div>
+                    <div class="modal-body" id="selectauditoria-body">
+                    </div>
+                    <div class="modal-footer">
+                        <div style="float: right">
+                            <a class="btn btn-danger btn-cerrar">Cerrar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    <div class="modal fade static" id="itemspanelverdetalleppl" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Detalle de PPL</h3>
+                </div>
+                <div class="modal-body panelbodydetalleppl">
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td><a href="javascript:;" class="btn btn-cerrar btn-info cerrardetalleppl">Cerrar</a></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle1">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row-fluid panelbody1">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal1">
+                    <a href="javascript:;" class="btn btn-default" data-bs-dismiss="modal"><i
+                            class="fa fa-window-close"></i>
+                        Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,425 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+
+    <script type="text/javascript">
+
+        function actualizarmodelo(instructor, evento) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/adm_capeventoperiodoipec",
+                data: {'action': 'actualizar_modelo_moodle_pos', 'id': instructor, 'evento':evento},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        smoke.alert(`Modelo evaluativo actualizado correctamente`);
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al obtener los datos");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+            $(".tl").tooltip({position: "center up"});
+            $(".activarprincipal").click(function () {
+                var id = $(this).attr('idper');
+                smoke.confirm("¿Está seguro que quiere cambiar el instructor principal?", function (e) {
+                    if (e) {
+                        $.blockUI({message: null});
+                        $.post("/adm_capacitacioneventoperiodoipec", {'action': 'cambiarinstructorprincipal', 'id': id}, function (data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                if (data.valor == 1) {
+                                    $("#estadop_" + vigente).html('<i class="fa fa-check" style="color: green"></i>');
+                                } else {
+                                    $("#estadop_" + vigente).html('<i class="fa fa-remove" style="color: red"></i>');
+                                }
+                            } else {
+                                alert('error');
+                            }
+                        }, "json");
+                    }
+                }, {
+                    ok: "SI,SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+            $(".mostrardetalle_view").click(function () {
+                var idi = $(this).attr('idi');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_capeventoperiodoipec",
+                    data: {'action': 'verdetalle', 'idi': idi},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#itemspanel .btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+            $(".certificado_view_pdf").click(function () {
+                var id = $(this).attr('idi');
+                {% if eventoperiodo.instructor_principal %}
+                    openwindow('POST', '/adm_capeventoperiodoipec', {action: 'reporte_certificadopreviofacilitador', 'id': id}, '_blank');
+                {% else %}
+                    smoke.alert("No puede abrir, elija un instructor principal");
+                {% endif %}
+
+            });
+            $("#boton_notificacionaprobada").click(function () {
+                var idinscripcion = $('#idinscripcion').val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_capeventoperiodoipec",
+                    data: {'action': 'reporte_certificado_facilitador', 'id': idinscripcion},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $("#modalnotificacion").modal({backdrop: 'static', width: '600px'}).modal('hide');
+                            $.unblockUI();
+                            smoke.alert('El certificado fue generado y enviado al email');
+                            {#location.reload();#}
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+            $("#cancel_notoficacioncancela").click(function () {
+                $('#modalnotificacion').modal('hide');
+            });
+            $("#cancel_importarcancela").click(function () {
+                $('#modalexportarmoodle').modal('hide');
+            });
+
+            $("#boton_exportarmoodle").click(function () {
+                bloqueointerface();
+                var idinstructor = $('#idinstructor').val();
+
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_capeventoperiodoipec",
+                    data: {'action': 'listadoexportarmoodle', 'idinstructor': idinstructor},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#recalcularexportarmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            var indice = 0;
+                            var cantidad = parseInt(data.cantidad);
+                            var listacurso = data.listacurso;
+                            console.log(listacurso, indice, (cantidad - 1), idinstructor);
+                            recalculoexportar(listacurso, indice, (cantidad - 1), idinstructor);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+
+        function mostrarenvio(idinscripcion) {
+            $('#idinscripcion').val(idinscripcion);
+
+            //bloqueointerface();
+            $("#modalnotificacion").modal({backdrop: 'static', width: '600px'}).modal('show');
+            $.unblockUI();
+        }
+
+        function exportarmoodle(idinstructor) {
+            $('#idinstructor').val(idinstructor);
+            bloqueointerface();
+            $("#modalexportarmoodle").modal({backdrop: 'static', width: '600px'}).modal('show');
+            $.unblockUI();
+        }
+
+        function terminarecalculo() {
+            $("#recalcularmodal").modal("hide");
+            bloqueointerface();
+            location.reload();
+        }
+
+        function recalculoexportar(lista, elemento, cantidad, idinstructor) {
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad)) * elemento + '%';
+            if (elemento > cantidad) {
+                terminarecalculo();
+            } else {
+                $("#recalcularexportarmodalprogresshint").html(inscrito.participante__apellido1 + ' ' + inscrito.participante__apellido2 + ' ' + inscrito.participante__nombres);
+                $("#progressbarexportar").css({'width': cp});
+                $("#progressbarexportar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_capeventoperiodoipec",
+                    data: {
+                        "action": "exportarinscrito",
+                        "inscrito": inscrito.id,
+                        "idinstructor": idinstructor,
+                        "contador": elemento
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            intentos = 0;
+                            recalculoexportar(lista, elemento + 1, cantidad, idinstructor);
+                        } else {
+                            {#intentos += 1;#}
+                            {#if (intentos >= 100) {#}
+                            falloimportar();
+                            {# } else {#}
+                            {#    recalculoexportar(lista, elemento, cantidad, idinstructor);#}
+                            {# }#}
+                        }
+                    },
+                    error: function () {
+                        intentos += 1;
+                        if (intentos >= 100) {
+                            fallorecalculo();
+                        } else {
+                            recalculoexportar(lista, elemento, cantidad, idinstructor);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_capeventoperiodoipec?action=planificacion&id={{ eventoperiodo.periodo.id }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Periodo: {{ eventoperiodo.periodo }}</h5>
+            <h5>Planificación: {{ eventoperiodo.capevento }}</h5>
+            <h5>Fecha: {{ eventoperiodo.fechainicio|date:"d-m-Y" }} - {{ eventoperiodo.fechafin|date:"d-m-Y" }}</h5>
+
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            <a class="btn  btn-success" href="/adm_capeventoperiodoipec?action=addinstructor&id={{ eventoperiodo.id }}"><i class="fa fa-plus"></i> Adicionar</a>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-striped table-bordered'>
+                <thead>
+                <tr>
+                    <th style="width: 80px;text-align: left">Cédula</th>
+                    <th>Instructor</th>
+                    <th style="width: 200px;text-align: left">Curso</th>
+                    <th style="width: 200px;text-align: left">Usuario</th>
+                    <th style="width: 200px;text-align: left">Email</th>
+                    <th style="width: 200px;text-align: center">Teléfono</th>
+                    <th style="width: 100px;text-align: center">Principal</th>
+                    <th style="width: 120px; text-align: center">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for per in instructor %}
+                    <tr>
+                        <td style="text-align: center">{{ per.instructor.cedula }} ({{ per.id }})
+                        </td>
+                        <td>{{ per.instructor }}
+                            <br>
+                            {% if per.idcursomoodle > 0 %}
+                                <label class="label label-info">Migrado a moodle</label><br>
+                            {% endif %}
+                        </td>
+                        <td>{{ per.nombrecurso }}
+                            <br>
+                            {% if persona.usuario.is_superuser %}
+                                <label class="label label-warning">id moodle: {{ per.idcursomoodle }}</label><br>
+
+
+                            {% endif %}
+
+                        </td>
+                        {% if per.instructor.usuario.is_superuser %}
+                            <td>NO DISPONIBLE</td>
+                        {% else %}
+                            <td>{{ per.instructor.usuario.username }}</td>
+                        {% endif %}
+                        <td style="text-align: left">{{ per.instructor.email }}<br>{% if per.instructor.emailinst %}{{ per.instructor.emailinst }}{% endif %}</td>
+                        <td style="text-align: center">{{ per.instructor.telefono }}</td>
+                        <td style="text-align: center;">
+                            {% if not per.tiene_asistencia_calificacion %}
+                                <a style="width: 30px;" href="javascript:;" nhref="/adm_capeventoperiodoipec?action=cambiarinstructorprincipal&id={{ per.id }}" class="confirmacionmodal">
+                            {% endif %}
+                            {% if per.instructorprincipal %}
+                                <i class="fa fa-check tu" title="Es principal" style="color: green"></i>
+                            {% else %}
+                                <i class="fa fa-remove tu" title="No es principal" style="color: red"></i>
+                            {% endif %}
+                            {% if not per.tiene_asistencia_calificacion %}
+                                </a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right" style="text-align: left">
+                                    <li><a href="/adm_capeventoperiodoipec?action=editinstructor&id={{ per.id }}" title="Cambiar"><i class="fa fa-refresh"></i> Editar Instructor</a></li>
+                                    <li><a class=" eliminacionmodal" title="Eliminar" href="javascript:;" nhref="/adm_capeventoperiodoipec?action=delinstructor&id={{ per.id }}"><i class="fa fa-remove"></i> Eliminar</a></li>
+                                    <li><a title="Editar" href="/adm_capeventoperiodoipec?action=editpersona&id={{ per.id }}&tipo=1"><i class="fa fa-edit"></i> Editar Datos</a></li>
+                                    <li>
+                                        {% if not per.tiene_perfilusuario and per.instructorprincipal %}
+                                            <a class="confirmacionmodal" title="Crear perfil" href="javascript:;" nhref="/adm_capeventoperiodoipec?action=crearperfil&id={{ per.id }}&tipo=1"><i class="fa fa-user"></i> Crear Perfil </a>
+                                        {% endif %}
+                                    </li>
+                                    {#                                    {% if not per.rutapdf %}#}
+                                    <li><a title="Certificado" href="#" onclick="mostrarenvio({{ per.id }})"> <span class="fa fa-mail-forward "></span> Generar certificado</a></li>
+                                    {#                                    {% endif %}#}
+                                    <li><a class="certificado_view_pdf" title="Certificado" href="javascript:;" idi="{{ per.id }}"><span class="fa fa-print"></span> Vista previa certificado</a></li>
+                                    {% if per.rutapdf %}
+                                        <li><a class="tl" target="_blank" href="{{ per.download_link }}"><span class="fa fa-print"> </span> Descargar certificado </a></li>
+                                    {% endif %}
+                                    {% if perms.sga.puede_resetear_clave_docente %}
+                                        <li><a class="confirmacionmodal" href="javascript:;" nhref="/adm_capeventoperiodoipec?action=resetear&id={{ per.id }}&insid={{ eventoperiodo.id }}"><span class="fa fa-key"></span> Resetear Clave Usuario</a></li>
+                                    {% endif %}
+                                    {% if per.nombrecurso %}
+                                        <li><a href='#'
+                                               onclick="exportarmoodle({{ per.id }})"><span
+                                                class="fa fa-share-alt-square"></span>
+                                            {% if per.idcursomoodle > 0 %}Actualizar{% else %}
+                                                Crear{% endif %} curso moodle</a></li>
+                                    {% endif %}
+                                    <li><a href="#" onclick="actualizarmodelo('{{ instructor.0.id }}', '{{ eventoperiodo.id }}')"
+                                           ><span
+                                            class="fa fa-share-alt-square"></span>
+                                        Actualizar modelo </a></li>
+                                    {% if per.idcursomoodle %}
+                                        <li>
+                                            <a href="{{ per.capeventoperiodo.periodo.urlmoodle }}/course/view.php?id={{ per.idcursomoodle }}"
+                                               target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                al curso de moodle</a></li>
+                                    {% endif %}
+                                </ul>
+
+                            </div>
+
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10" style="text-align: center">NO EXISTEN INSTRUCTORES REGISTRADO</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Mostrar detalles del solicitud</h3>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalnotificacion" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Generar certificado y envío de email</h4>
+            <h4 id="idnombrespostulante"></h4>
+        </div>
+        <div class="modal-body notoficacionbody">
+            {#        <div class="alert alert-danger">#}
+            {#            <h4 class="alert-heading">ALERTA</h4>#}
+            {#            Al dar clic en Aceptar, se eliminará la inscripción en la cual aplicó.#}
+            {#        </div>#}
+            <p style="margin-top: 16px;">Esta seguro(a) que desea enviar email?</p>
+            <input type="hidden" id="idinscripcion" name="idinscripcion">
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="boton_notoficacionaprobada" class='btn btn-success'> Generar certificado y enviar email</a>
+                <a href="javascript:;" id="cancel_notoficacioncancela" class='btn btn-default'> Cancelar</a>
+            </p>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalexportarmoodle" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Crear o actualizar curso en moodle</h4>
+        </div>
+        <div class="modal-body importarbody">
+            <p style="margin-top: 16px;">Esta seguro(a) de realizar acción?</p>
+            <input type="hidden" id="idinstructor" name="idinstructor">
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="boton_exportarmoodle" class='btn btn-success'> Exportar</a>
+                <a href="javascript:;" id="cancel_importarcancela" class='btn btn-default'> Cancelar</a>
+            </p>
+        </div>
+    </div>
+    <div class="modal static" id="recalcularexportarmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Exportando moodle</h3>
+        </div>
+        <div class="modal-body">
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                 class="progress progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbarexportar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularexportarmodalprogresshint">
+            </div>
+        </div>
+    </div>
+    <div class="modal static" id="recalcularmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Enviando email masivo</h3>
+        </div>
+        <div class="modal-body">
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                 class="progress progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularmodalprogresshint">
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+

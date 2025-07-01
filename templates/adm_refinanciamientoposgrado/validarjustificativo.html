@@ -1,0 +1,233 @@
+{% load sga_extras %}
+{% load humanize %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+{#    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>#}
+{#    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>#}
+    <script>
+        $(function(){
+
+            //$("select").select2({minimumResultsForSearch: 5 });
+
+            var mostrarboton = '{% if permite_modificar %}S{% else %}N{% endif %}';
+
+            $("#estadosolicitud").addClass("validate[required]");
+
+            $('#estadosolicitud').change(function() {
+                var control = $(this);
+                $("#observacion").val("");
+                valor = control.val();
+
+                if(valor == '2' || valor == ''){
+                    $("#observacion").prop('disabled', true).removeClass("validate[required]");
+                }
+                else{
+                    $("#observacion").prop('disabled', false).addClass("validate[required]");
+                }
+            });
+
+            $("#estadosolicitud").val('').trigger("change");
+
+            {% if not permite_modificar %}
+                $("#guardar").css('display','none');
+            {% else %}
+                $("#guardar").css('display','inline-block');
+            {% endif %}
+
+
+            $('#guardar').click(function () {
+                $("#formulario").validationEngine('attach',{ scroll: false });
+                var valid = $("#formulario").validationEngine('validate', { scroll: false });
+
+                if(valid){
+                    bloqueointerface();
+                    var formdata = new FormData($("#formulario")[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_refinanciamientoposgrado",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                //$.unblockUI();
+                                //$('#itemspanelvalidarsolicitud').modal('hide');
+                                //elaborarpropuesta("'"+$("#id").val()+"'");
+                                //location.href = "/rec_devoluciondinero?estadodocumento={{ estadodocumento }}";
+                                location.href = "/adm_refinanciamientoposgrado";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+
+            $('.nav-tabs a').on('shown.bs.tab', function(event){
+                var x = $(event.target).parent().index();        // active tab
+                if(x == 0 && mostrarboton == 'S')
+                    $("#guardar").css('display','inline-block');
+                else
+                    $("#guardar").css('display','none');
+            });
+
+            if(mostrarboton == 'S')
+                $("#guardar").css('display','inline-block');
+            else
+                $("#guardar").css('display','none');
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class="tabbable">
+        <ul class="nav nav-tabs">
+            <li class="active"><a class="tabs" href="#1" data-toggle="tab"><i class="fa fa-check-square"></i> Revisión y Validación</a></li>
+            <li><a class="tabs" href="#2" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> {{ titulo1 }}</a></li>
+            {% if cantidadjustificativo > 1 %}
+                <li><a class="tabs" href="#3" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> {{ titulo2 }}</a></li>
+            {% endif %}
+        </ul>
+        <div class="tab-content" style="overflow: inherit">
+            <div class="tab-pane active" id="1">
+                {% if permite_modificar %}
+                    <form name="formulario" id="formulario">
+                        <table class="table table-bordered table-striped" >
+                            <tbody>
+                                <tr>
+                                    <td colspan="4"><strong>Datos de la Solicitud</strong>
+                                        <input type='hidden' name='id' id='id' value='{{ ids|encrypt }}' />
+                                        <input type='hidden' name='action' value='validarjustificativo' />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>N° Solicitud / Fecha:</strong></td>
+                                    <td colspan="3"><span class="label label-success">{{ solicitud.id|stringformat:"05d" }}</span> <span class="label label-info">{{ solicitud.fecha_creacion|date:"Y-m-d" }}</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Solicitante:</strong></td>
+                                    <td colspan="3">{{ solicitud.persona.nombre_completo_inverso }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Programa/Cohorte:</strong></td>
+                                    <td colspan="3">{{ solicitud.matricula.inscripcion.carrera.nombre }} /
+                                        {{ solicitud.matricula.nivel.periodo.nombre }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Motivo Refinanciamiento:</strong></td>
+                                    <td colspan="3" style="text-align: justify">
+                                        {% if solicitud.motivo != 5 %}
+                                            {{ solicitud.get_motivo_display }}
+                                        {% else %}
+                                            {{ solicitud.otromotivo }}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Total Pendiente:</strong></td>
+                                    <td colspan="3">$ {{ solicitud.pendiente|floatformat:2|intcomma }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="4"><strong>Aprobación/Rechazo Solicitud</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Estado:</strong></td>
+                                    <td colspan="3">
+                                        <select id="estadosolicitud" name="estadosolicitud" style="width: 300px">
+                                            <option value="" selected>---------</option>
+                                            {% for estadosol in estadossolicitud %}
+                                                <option value="{{ estadosol.valor }}">{{ estadosol.observacion }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Observaciones:</strong></td>
+                                    <td colspan="3">
+                                        <textarea id="observacion" name="observacion" value="" style="width: 95%; text-transform: uppercase"></textarea>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                {% else %}
+
+                    <table class="table table-bordered table-striped" >
+                        <tbody>
+                            <tr>
+                                <td colspan="4"><strong>Datos de la Solicitud</strong></td>
+                            </tr>
+                            <tr>
+                                <td width="20%"><strong>N° Solicitud / Fecha:</strong></td>
+                                <td colspan="3"><span class="label label-success">{{ solicitud.id|stringformat:"05d" }}</span> <span class="label label-info">{{ solicitud.fecha_creacion|date:"Y-m-d" }}</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Solicitante:</strong></td>
+                                <td colspan="3">{{ solicitud.persona.nombre_completo_inverso }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Programa/Cohorte:</strong></td>
+                                <td colspan="3">{{ solicitud.matricula.inscripcion.carrera.nombre }} /
+                                    {{ solicitud.matricula.nivel.periodo.nombre }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Motivo Refinanciamiento:</strong></td>
+                                <td colspan="3" style="text-align: justify">
+                                    {% if solicitud.motivo != 5 %}
+                                        {{ solicitud.get_motivo_display }}
+                                    {% else %}
+                                        {{ solicitud.otromotivo }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Pendiente:</strong></td>
+                                <td colspan="3">$ {{ solicitud.pendiente|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4"><strong>Aprobación/Rechazo Solicitud</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Estado:</strong></td>
+                                <td colspan="3"><span class="{{ solicitud.estado.clase }}">{{ solicitud.estado.observacion }}</span> </td>
+{#                                <td><strong>Monto a Devolver $:</strong></td>#}
+{#                                <td>{% if solicitud.montodevolver %}<span class="label label-info" >{{ solicitud.montodevolver|floatformat:2|intcomma }}</span>{% endif %}</td>#}
+                            </tr>
+                            <tr>
+                                <td><strong>Observaciones:</strong></td>
+                                <td colspan="3" style="text-align: justify">{{ solicitud.observacion }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+
+            <div class="tab-pane" id="2">
+                <iframe border=0 frameborder=0 height=600px width=770 src="{{ evidencia1 }}"></iframe>
+            </div>
+            {% if cantidadjustificativo > 1 %}
+                <div class="tab-pane" id="3">
+                    <iframe border=0 frameborder=0 height=600px width=770 src="{{ evidencia2 }}"></iframe>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

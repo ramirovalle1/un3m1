@@ -1,0 +1,240 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script>
+        $(function(){
+            $('[data-bs-toggle="tooltip"]').tooltip();
+            
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            {% if obligatorio == 'S' %}
+                $("#anexos_aux").addClass("validate[required]");
+            {% endif %}
+
+            {% if citaasesoria.anexos_solicitante %}
+                $("#anexos_aux").val("S");
+            {% endif %}
+
+            let nf_anexo = secuenciaanexo = {{ citaasesoria.anexos_solicitante|length }};
+
+            lista_items1 = []; // Filas que tienen archivos de presupesto
+            lista_items2 = []; // Ids registros de presupesto borrados
+            
+            $(".agregaanexo").click(function() {
+                if(datosAnexoCompleto()){
+                    nf_anexo += 1;
+                    secuenciaanexo += 1;
+
+                    borrarFilaDefaultAnexo();
+
+                    nueva = `<tr class="detalleanexos" id="filaanexo_${nf_anexo.toString()}">`+
+                            `<td style="text-align: center">${secuenciaanexo.toString()}</td>`+
+                            `<td> <input type="hidden" id="idreganexo${nf_anexo.toString()}" name="idreganexo[]" value="0"> <input type="hidden" id="nfila_anexo[]" name="nfila_anexo[]" value="${nf_anexo.toString()}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" class="descripcionanexo" id="descripcion_anexo${nf_anexo.toString()}" name="descripcion_anexo[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td>&nbsp;</td>` +
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaanexo_${nf_anexo.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivosanexo" idf="${nf_anexo.toString()}" id="archivo_anexo[]" name="archivo_anexo[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc${nf_anexo.toString()}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_anexo" idreg="0" idf="${nf_anexo.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_anexos").append(nueva);
+                    $("#detalle_anexos").find(".eliminaritem_anexo").tooltip();
+                    $("#descripcion_anexo"+nf_anexo.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_anexo.toString()).addClass("validate[required]");
+                    $(".eliminaritem_anexo").unbind("click.eliminaritem_anexo");
+                    $(".eliminaritem_anexo").bind("click.eliminaritem_anexo", eliminarItemAnexo);
+
+                    conectarChangeFileinputAnexo();
+                }
+            });
+
+            eliminarItemAnexo = function() {
+                let id = $(this).attr("idf");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+                $("#filaanexo_"+id).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items2.push(item);
+                }
+
+                secuenciaanexo = 0;
+                $("#tbdetalleanexos tbody tr").each(function (index) {
+                    secuenciaanexo ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaanexo.toString());
+                    });
+                });
+
+                if(secuenciaanexo == 0)
+                    agregarFilaDefaultAnexo();
+
+                actualizarListaEvidenciaAnexo();
+            };
+
+            actualizarListaEvidenciaAnexo = function (){
+                lista_items1 = [];
+                cf = 1;
+                $('input[name="archivo_anexo[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputAnexo = function() {
+                $(".archivosanexo").unbind();
+                $(".archivosanexo").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgaanexo_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizarListaEvidenciaAnexo();
+                });
+            };
+
+            agregarFilaDefaultAnexo = function (){
+                filadefault = '<tr id="fila_default_anexo">'+
+                              '<td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS</td>'+
+                              '</tr>';
+                $("#detalle_anexos").append(filadefault);
+                $("#anexos_aux").val("");
+            };
+
+            borrarFilaDefaultAnexo = function (){
+                $("#fila_default_anexo").remove();
+                $("#anexos_aux").val("S");
+            };
+
+            datosAnexoCompleto = function (){
+                let c1e = true, c2e = true;
+
+                $('input[name="descripcion_anexo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+            agregarValidacionDetalleAnexos = function (){
+                $(".descripcionanexo").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+            };
+
+            agregarValidacionDetalleAnexos();
+            conectarChangeFileinputAnexo();
+            actualizarListaEvidenciaAnexo();
+            $(".eliminaritem_anexo").unbind("click.eliminaritem_anexo");
+            $(".eliminaritem_anexo").bind("click.eliminaritem_anexo", eliminarItemAnexo);
+        });
+    </script>
+{% endblock %}
+<form id="frmSubirAnexo" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    <input type='hidden' name='action' value='subiranexos'/>
+    <input type='hidden' name='id' value='{{ citaasesoria.id|encrypt }}'/>
+    <table class="table table-bordered pb-0">
+        <thead class="table-light">
+            <tr>
+                <th colspan="4">Datos de la Cita</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="width: 15%;"><b>Gestión:</b></td>
+                <td style="width: 35%;">{{ citaasesoria.servicio.gestion.nombre }}</td>
+                <td style="width: 15%;"><b>Servicio:</b></td>
+                <td style="width: 35%;">{{ citaasesoria.servicio.nombre }}</td>
+            </tr>
+            <tr>
+                <td><b>Responsable:</b></td>
+                <td colspan="3">{{ citaasesoria.responsable.nombre_completo_inverso }}</td>
+            </tr>
+            <tr>
+                <td><b>Fecha:</b></td>
+                <td>{{ citaasesoria.fecha|date:"d-m-Y" }}</td>
+                <td><b>Modalidad:</b></td>
+                <td>{{ citaasesoria.get_modalidad_display }}</td>
+            </tr>
+            <tr>
+                <td><b>Hora inicio:</b></td>
+                <td>{{ citaasesoria.horainicio|date:"H:i" }}</td>
+                <td><b>Hora fin:</b></td>
+                <td>{{ citaasesoria.horafin|date:"H:i" }}</td>
+            </tr>
+            <tr>
+                <td><b>Motivo:</b></td>
+                <td colspan="3" style="text-align: justify">{{ citaasesoria.motivo }}</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="table-responsive-xxl">
+        <label>Anexos({% if obligatorio == 'S' %}Obligatorio{% else %}Opcional{% endif %}) - (Tipos permitidos: {{ tipoanexos }}, máximo {{ tamanio }}):</label>
+        <table class="table table-bordered table-striped mb-0" id="tbdetalleanexos">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 3%; text-align: center;">#</th>
+                    <th style="width: 67%; text-align: center;">Descripción</th>
+                    <th style="width: 5%; text-align: center;">...</th>
+                    <th style="width: 25%; text-align: center;">Archivo</th>
+                    <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaanexo" data-bs-toggle="tooltip" title="Agregar Anexo"><i class="fa fa-plus"></i> </a></th>
+                </tr>
+            </thead>
+            <tbody id="detalle_anexos">
+                {% for anexo in citaasesoria.anexos_solicitante %}
+                    <tr class="detalleanexos" id="filaanexo_{{ forloop.counter }}">
+                        <td style="text-align: center">{{ forloop.counter }}</td>
+                        <td>
+                            <input type="hidden" id="idreganexo{{ forloop.counter }}" name="idreganexo[]" value="{{ anexo.id }}">
+                            <input type="hidden" id="nfila_anexo[]" name="nfila_anexo[]" value="{{ forloop.counter }}">
+                            <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" class="descripcionanexo" id="descripcion_anexo{{ forloop.counter }}" name="descripcion_anexo[]" type="text" value="{{ anexo.descripcion }}" >
+                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                        </td>
+                        <td style="text-align: center;">
+                            {% if anexo.tipo_accion == 'preview' %}
+                                <a href="{{ anexo.archivo.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="anexo{{ anexo.id }}" data-caption="Anexo: {{ anexo.descripcion }}" data-bs-toggle="tooltip" data-placement="top" title="Ver anexo"><i class="fa fa-eye"></i> </a>
+                            {% else %}
+                                <a href="{{ anexo.archivo.url }}" target="_blank" class="btn btn-mini btn-info"  data-bs-toggle="tooltip" data-placement="top" title="Descargar anexo"><i class="fa fa-download"></i> </a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaanexo_{{ forloop.counter }}" class="badge">0</span><input type="file" style="color: transparent" class="archivosanexo" idf="{{ forloop.counter }}" id="archivo_anexo[]" name="archivo_anexo[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc{{ forloop.counter }}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                        </td>
+                        <td style="text-align: center">
+                            <a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_anexo" idreg="{{ anexo.id }}" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr id="fila_default_anexo">
+                        <td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div>
+            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="anexos_aux" value="">
+            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+        </div>
+    </div>
+</form>

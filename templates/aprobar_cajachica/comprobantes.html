@@ -1,0 +1,244 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script>
+        $(function() {
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/aprobar_cajachica?action=comprobantes&?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $(".cerrarview").click(function() {
+                $("#vistaprevia").modal("hide");
+                return false;
+            });
+
+            $(".mostrarview").click(function() {
+                document.getElementById('pdfview_permi').src = $(this).attr("url");
+                $("#vistaprevia").modal({backdrop:'static', width: $(window).width()-100, height: '400px'}).modal('show');
+            });
+
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            $("#itemspanel .btn-aprobarcerrar").click(function() {
+                var id = $("#id_permiso").val();
+                var obse = $("#id_observacion").val();
+                var esta = $("#id_estadosolicitud").val();
+                if(obse==""){
+                    smoke.alert("Ingrese una observación.");
+                    $("#id_observacion").focus();
+                    return false;
+                }
+                if(esta=="0"){
+                    smoke.alert("Selecione el estado de la aprobación.");
+                    $("#id_estadosolicitud").focus();
+                    return false;
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/aprobar_cajachica",
+                    data: {'id': id, 'obse': obse, 'esta': esta, 'action': 'addaprobacioncomprobante'},
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            $("#itemspanel").modal("hide");
+                            location.href = '/aprobar_cajachica?action=comprobantes&';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert("Problemas al guardar la solicitud.");
+                        }
+                    },
+                    error: function() {
+                        desbloqueoUi();
+                        smoke.alert("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+
+            });
+
+            $(".mostrardetalle").click(function() {
+                $("#aprobarcerrar").css('display', 'block');
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/aprobar_cajachica",
+                    data: {'action': 'verdetallecomprobanteaprobar', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".mostrardetalle_view").click(function() {
+                $("#aprobarcerrar").css('display', 'none');
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/aprobar_cajachica",
+                    data: {'action': 'verdetallecomprobante', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/aprobar_cajachica{% endblock %}
+{% block canvas %}
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row-fluid'>
+            <div class='span12'>
+                <h4>{{ title }}</h4>
+            </div>
+        </div>
+        <div class='row-fluid'>
+            <div class='span6'>
+                <a href="/aprobar_cajachica" class='btn btn-info'><span class="fa fa-money" ></span> Solicitudes Fondo</a>
+            </div>
+            <div class="span6">
+                <form class="form-search" onsubmit="return busqueda()">
+                    <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                    <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span> Buscar</a>
+                    {% if search or ids %}
+                        <a href="/aprobar_cajachica?action=comprobantes" id='allresults' class='btn btn-info'><span class="fa fa-refresh "></span> Todos</a>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        <div class="row-fluid">
+            <div class='span12'>
+                <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                    <thead>
+                    <tr>
+                        <th style="width:110px; text-align: center">No. Comprobante</th>
+                        <th style="width:80px; text-align: center">Valor</th>
+                        <th style="width:200px; text-align: center">Caja</th>
+                        <th style="width:100px;">Fecha</th>
+                        <th style="width:80px; text-align: center">Estado</th>
+                        <th >Concepto</th>
+                        <th style="width:80px; text-align: center">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for comp in comprobantes %}
+                        <tr>
+                            <td style="text-align: center"><b>{{ comp.secuencia }}</b></td>
+                            <td style="text-align: center"><b>{{ comp.valor }}</b></td>
+                            <td style="text-align: center"><b>{{ comp.cajachica.descripcion }}</b></td>
+                            <td style="text-align: left">{{ comp.fechasolicitud  |date:'d-m-Y' }}</td>
+                            <td >
+                                {% if comp.estadosolicitud == 1 %}<label class="label label-warning label-mini">{{ comp.get_estadosolicitud_display }}</label>{% endif %}
+                                {% if comp.estadosolicitud == 2 %}<label class="label label-info label-mini">{{ comp.get_estadosolicitud_display }}</label>{% endif %}
+                                {% if comp.estadosolicitud == 3 %}<label class="label label-success label-mini">{{ comp.get_estadosolicitud_display }}</label>{% endif %}
+                                {% if comp.estadosolicitud == 4 %}<label class="label label-important label-mini">{{ comp.get_estadosolicitud_display }}</label>{% endif %}
+                            </td>
+                            <td style="text-align: justify">{{ comp.concepto }}</td>
+                            <td style="text-align: center">
+                                {% if comp.estadosolicitud == 1 %}
+                                    <a class="btn btn-mini btn-success mostrardetalle tu" href="javascript:;" idr="{{ comp.id }}"><i class="fa fa-edit"></i> Aprobar o Rechazar</a>
+                                {% else %}
+                                    <a class="btn btn-mini btn-warning mostrardetalle_view tu" title="Ver Detalle" href="javascript:;" idr="{{ comp.id }}"><i class="fa fa-list"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">NO EXISTEN DATOS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/aprobar_cajachica?action=comprobantes&page=1">1</a></li>
+                        <li><a href="/aprobar_cajachica?action=comprobantes&page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/aprobar_cajachica?action=comprobantes&page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/aprobar_cajachica?action=comprobantes&page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/aprobar_cajachica?action=comprobantes&page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/aprobar_cajachica?action=comprobantes&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+        <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Mostrar detalles de solicitud</h3>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="vistaprevia" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Vista previa</h3>
+        </div>
+        <div class="modal-body">
+            <iframe src="" align="center" height="380px" width="99%" id="pdfview_permi"></iframe>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info cerrarview">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

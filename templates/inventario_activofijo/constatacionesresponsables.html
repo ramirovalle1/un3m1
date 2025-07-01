@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block atras %}{{ request.path }}?action=periodoconstatacion{% endblock %}
+{% block heading %}
+{% endblock %}
+{% block extraJs %}
+ <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script>
+        $(function () {
+            $("select").select2({width: '100%'})
+            let responsable = $("#id_responsable")
+            let constatador = $("#id_constatador")
+            let tipo = $("#id_tipo")
+            tipoChange(tipo)
+            tipo.on('select2:select', function (e) {
+                tipoChange($(this))
+            });
+            constatador.select2({width: '100%', placeholder: 'Todos o seleccione uno o varios constatadores según requiera.'})
+            buscarPersona(responsable, 'distributivos')
+        });
+    </script>
+    <script>
+        $(function () {
+            
+            $("#id_formato").val(1).trigger('change').prop('disabled', true)
+            
+            $('input[name="daterange"]').daterangepicker({
+                    startDate: moment("{{ desde }}", "YYYY/MM/DD"),
+                    endDate: moment("{{ hasta}}", "YYYY/MM/DD"),
+                    locale: {
+                        format: 'DD/MM/YYYY',
+                        "customRangeLabel": "Rango personalizado",
+                        applyLabel: '<i class="fas fa-check"></i> Selecionar',
+                        "cancelLabel": "Cancelar",
+                        "daysOfWeek": [
+                            "Do",
+                            "Lu",
+                            "Ma",
+                            "Mi",
+                            "Ju",
+                            "Vi",
+                            "Sa"
+                        ],
+                        "monthNames": [
+                            "Enero",
+                            "Febrero",
+                            "Marzo",
+                            "Abril",
+                            "Mayo",
+                            "Junio",
+                            "Julio",
+                            "Agosto",
+                            "Septiembre",
+                            "Octubre",
+                            "Noviembre",
+                            "Diciembre"
+                        ],
+                        "firstDay": 1
+                    },
+                    applyButtonClasses: 'btn-primary',
+                    cancelButtonClasses: 'btn-ligth',
+                },
+                function (start, end, label) {
+                    bloqueointerface()
+                    window.location.href = "{{ request.path }}?action=reporteconstatacion&id={{ idp|encrypt }}&desde=" + start.format("YYYY-MM-DD") + "&hasta=" + end.format("YYYY-MM-DD");
+                });
+
+        });
+        function formModalReporte(id, text, action) {
+            $("#id_obj_r").val(id)
+            $("#id_action_r").val(action)
+            $('#itemspanelrepote .paneltitle-reporte').html(text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
+            $("#itemspanelrepote").modal({backdrop: 'static'}).modal('show');
+        }
+        function tipoChange(tipo){
+            let valTipo = tipo.val()
+            if(valTipo == 1){
+                {#$("#id_formato").val(1).trigger('change').prop('disabled', true)#}
+                $("#col_responsable").show()
+                $("#id_label_constatador").text('Constatador')
+                $("#id_constatador").select2({width: '100%', placeholder: 'Todos o seleccione uno o varios constatadores segun requiera.'})
+                {#$("#id_constatador").removeAttr('required')#}
+                $("#id_formato").val(1).trigger('change')
+                $("#id_agrupado").val('').trigger('change').prop('disabled', true)
+            }else{
+                {#$("#id_formato").prop('disabled', false)#}
+                $("#id_responsable").val('').trigger('change')
+                $("#col_responsable").hide()
+                $("#id_label_constatador").text('Responsables de firmar reporte')
+                $("#id_constatador").select2({width: '100%', placeholder: 'Seleccione uno o varios responsables de firmar reporte segun requiera.'})
+                {#$("#id_constatador").attr('required', true)#}
+                $("#id_formato").val(2).trigger('change')
+                $("#id_agrupado").val(1).trigger('change').prop('disabled', false)
+            }
+        }
+
+        $('#submit_generar').on('click', function (e) {
+            e.preventDefault()
+            if ($("#id_tipo").val() == 2) {
+                if ($('#id_agrupado').val() == 1 && ($('#id_estado').val() == null || $('#id_estado').val() == '')) {
+                    alertaDanger('Debe seleccionar un estado')
+                    return false
+                } else if ($('#id_agrupado').val() == 2 && ($('#id_item').val() == null || $('#id_item').val() == '')) {
+                    alertaDanger('Debe seleccionar un detalle')
+                    return false
+                } else if ($("#id_constatador").val() == null || $("#id_constatador").val() == '') {
+                    alertaDanger('Debe seleccionar al menos un responsable de firmar reporte')
+                    return false
+                } else {
+                    bloqueointerface();
+                    e.target.form.submit()
+                }
+            }else{
+                bloqueointerface();
+                e.target.form.submit()
+            }
+        })
+        
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Consulte los resultados de constatación por fechas según el responsable asignado</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <a href="javascript:void(0)"
+                   onclick="formModalReporte('{{ idp|encrypt }}','Reporte de constataciones','reportconstatacion')"
+                   class="btn btn-cian-opacity"><i class="fa fa-print"></i> Reportes de constatación</a>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-header mb-0 pt-2 pb-0 px-1">
+                    <form method="GET" id="form-filters" enctype="multipart/form-data" class="form-row text-center pb-0">
+                             <input type="hidden" name="action" value="{{ action }}"/>
+                        <div class="col-12">
+                            <h5 for="" class="mb-0 pb-1 "><i class="bi bi-calendar-week " title="Hasta"></i>  Desde - Hasta
+                                {% if url_vars %}
+                                    | <a href="{{ request.path }}?action=reporteconstatacion&id={{ idp|encrypt }}"
+                                       title="Reiniciar fechas"
+                                       data-bs-toggle="tooltip"
+                                       id='allresults' class='btn btn-mini btn-primary-old align-self-end bloqueo_pantalla p-1'>
+                                        <i class="fa fa-refresh"></i> Reiniciar Fechas</a>
+                                {% endif %}
+                            </h5>
+                            <div class="input-group">
+                                <div class="input-group-prepend" style="margin-right: 1px">
+                                    <a title="Fechas anteriores"
+                                       href="{{ request.path }}?action=reporteconstatacion&id={{ idp|encrypt }}&before={{ desde }}"
+                                       id='allresults'
+                                       class='bloqueo_pantalla btn btn-primary-old rounded-0 rounded-start align-self-end{% if lenbefore <= 0 %} disabled{% endif %}'
+                                       role='button'
+                                       aria-disabled='{% if lenbefore <= 0 %}true{% else %}false{% endif %}'><span
+                                            class="fas fa-arrow-left"></span></a>
+                                </div>
+                                 <div class="w-50 w-md-25 w-lg-20 text-center">
+                                      <input style="font-size:13px;"
+                                             class="text-center"
+                                             type="text" name="daterange"
+                                                value="{{ desde }}-{{ hasta }}"/>
+                                 </div>
+                                <div class="input-group-append">
+                                    <a title="Fechas siguientes"
+                                       href="{{ request.path }}?action=reporteconstatacion&id={{ idp|encrypt }}&after={{ hasta }}"
+                                       id='allresults'
+                                       class='bloqueo_pantalla btn btn-primary-old align-self-end{% if lenafter <= 0 %} disabled{% endif %}'
+                                       role='button'
+                                       aria-disabled='{% if lenafter <= 0 %}true{% else %}false{% endif %}'><span
+                                            class="fas fa-arrow-right"></span></a>
+                                </div>
+                             </div>
+
+                        </div>
+                     </form>
+            </div>
+            <div class="card-body rounded-3 pt-1">
+
+                <div class="table-responsive-xxl">
+                    <table class="table table-bordered table_primary">
+                        <thead>
+                        <tr>
+                            <th style="vertical-align: middle; padding-left: 10px">RESPONSABLE</th>
+                            {% for fecha in fechas %}
+                                <th data-date="{{ fecha }}" class="vertical-text"
+                                    style="text-align: center; rotate: 180deg;  height: 100px; writing-mode: vertical-rl; vertical-align: middle;">
+                                    {{ fecha|date:'d-m-Y' }}</th>
+                            {% endfor %}
+                            <th class="vertical-text"
+                                style="text-align: center; rotate: 180deg;  height: 100px; writing-mode: vertical-rl; vertical-align: middle;">
+                                Total
+                            </th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for respon in respons %}
+                            <tr>
+                                <td style="padding-left: 10px">{{ respon }}</td>
+                                {% for fecha in fechas %}
+                                    <td style="text-align: center">
+                                        {% with cantidad=respon|args:fecha|args:idp|call:"constataciones_por_responsable_af" %}
+                                            {{ cantidad|default_if_none:"" }}
+                                        {% endwith %}
+                                    </td>
+
+                                {% endfor %}
+                                <th style="text-align: center">
+                                    {% with total=respon|args:desde|args:hasta|args:idp|call:"total_constataciones_por_responsable_af" %}
+                                        {{ total|default_if_none:"" }}
+                                    {% endwith %}
+                                </th>
+                            </tr>
+                        {% endfor %}
+                        <tr>
+                            <th style="padding-left: 10px">Total</th>
+                            {% for t in totalporfecha %}
+                                <th style="text-align: center; "> {% if totalporfecha %} {{ t }} {% else %}
+                                    0 {% endif %} </th>
+                            {% endfor %}
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanelrepote" style="display: none;">
+            <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+                <div class="modal-content" style="border-radius: 17px!important;">
+                    <div class="modal-header">
+                        <h4><i class="fa fa-download" id="title-icon"></i> <b class="paneltitle-reporte"> FORMULARIO</b>
+                        </h4>
+                        <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                                data-bs-dismiss="modal" aria-label="Close">X
+                        </button>
+                    </div>
+                    <div class="modal-body panelbody-reporte">
+                        <form class="form-horizontal form-modal" autocomplete="off" method="get"
+                              enctype="multipart/form-data" action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="row mb-3">
+                                <div class="col-12">
+                                    <div class="alert alert-default-info p-0">
+                                        <i class="fa fa-info-circle"></i> Estimad{% if persona.es_mujer %}a{% else %}o{% endif %}
+                                        <b>{{ persona.un_nombre_dos_apellidos }}</b>,
+                                        <br>Le recordamos que, si desea generar un reporte con todos los responsables,
+                                        no es necesario seleccionar ningún nombre en la casilla de responsables de activo.
+                                        Lo mismo aplica para la casilla de constatador.
+                                    </div>
+                                </div>
+                                <input type="hidden" value="" name="action" id="id_action_r">
+                                <input type="hidden" value="" name="id_obj" id="id_obj_r">
+                                <div class="col-lg-6">
+                                    <label class="fw-semi-bold">Tipo de reporte: <b class="text-danger">*</b></label>
+                                    <select name="tipo" id="id_tipo">
+                                        <option value="1" selected>GENERAL</option>
+                                        <option value="2">AGRUPADO</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-6">
+                                    <label class="fw-semi-bold">Formato: <b class="text-danger">*</b></label>
+                                    <select name="formato" id="id_formato">
+                                        <option value="1">EXCEL</option>
+                                        <option value="2" >PDF</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-12">
+                                    <label class="fw-semi-bold">Agrupar por: <b class="text-danger">*</b></label>
+                                    <select name="agrupado" id="id_agrupado">
+                                        <option value="1" selected>Estado</option>
+                                        <option value="2" >Detalle</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-lg-6">
+                                    <label class="fw-semi-bold">Estado: <b class="text-danger">*</b></label>
+                                    <select name="estado" id="id_estado">
+                                        <option value="">Todos</option>
+                                        {% for tc in estados %}
+                                            <option {% if tc.id == estado %}selected{% endif %}
+                                                    value="{{ tc.id }}">{{ tc.nombre }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-lg-6">
+                                    <label class="fw-semi-bold">Detalle: <b class="text-danger">*</b></label>
+                                    <select name="item" id="id_item">
+                                        <option value="">Todos</option>
+                                        <option value="1">Encontrado</option>
+                                        <option value="5">No Encontrado</option>
+                                        <option value="2">En uso</option>
+                                        <option value="6">En desuso</option>
+                                        <option value="3">Requiere traspaso</option>
+                                        <option value="4">Requiere dar de baja</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-12">
+                                    <label class="fw-semi-bold">Constatación: <b class="text-danger">*</b></label>
+                                    <select name="constatacion" id="id_constatacion">
+                                        <option value="">Todos</option>
+                                        <option value="1">Constatados</option>
+                                        <option value="2">Por constatar</option>
+                                    </select>
+                                </div>
+                            
+                                <div class="col-lg-12" id="col_responsable">
+                                    <label class="fw-semi-bold">Responsable de activo: <b class="text-danger">*</b></label>
+                                    <select name="responsable" id="id_responsable" multiple>
+                                    </select>
+                                </div>
+                                <div class="col-lg-12">
+                                    <label class="fw-semi-bold" ><span id="id_label_constatador">Constatador:</span>  <b class="text-danger">*</b></label>
+                                    <select name="constatador" id="id_constatador" multiple>
+                                        {% for c in constatadores %}
+                                            <option value="{{ c.0 }}">{{ c.1|title }} {{ c.2|title }} {{ c.3|title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                            </div>
+
+                            <div class="row">
+                                <div class="col-12 text-end">
+                                    <button type="submit" class="btn btn-orange fs-5" id="submit_generar"><i
+                                            class="fa fa-download"></i> Generar
+                                    </button>
+                                    <a href="javascript:;" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"
+                                       aria-label="Close"><i class="fa fa-remove"></i> Cancelar</a>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}

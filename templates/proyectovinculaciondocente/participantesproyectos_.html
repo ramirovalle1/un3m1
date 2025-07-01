@@ -1,0 +1,1059 @@
+{% extends "ajaxform.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/dataTables.buttons.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.bootstrap.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.colVis.min.js"></script>
+    <link href="https://gitcdn.github.io/bootstrap-toggle/2.2.2/css/bootstrap-toggle.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/2.5.0/jszip.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/pdfmake.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/vfs_fonts.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.flash.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.html5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/i18n/es.js"></script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <link href="/static/widget_ppp.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="/static/eventostyle.css">
+    <link rel="stylesheet" href="/static/eventoframework.css">
+
+    <style>
+        .btn_seleccionado{
+            background: #0a677e !important;
+            {#color: #0c0c0c !important;#}
+        }
+        .bordecaja {
+            border: .07em solid rgba(0, 0, 0, .2);
+            color: white;
+        !important;
+        }
+        .course-path-card {
+            background-color: #0b2f44;
+        }
+        .bordestabla {
+            border: .07em solid rgba(0, 0, 0, .1);
+            color: #000000;
+            box-shadow: 1px 1px 3px #999;
+        !important;
+        }
+        .course-path-card-footer {
+            justify-content: normal;
+        !important;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $("#cancel_eliminarparticipantes").click(function(){
+                $('#modalpregntadel').modal('hide');
+            });
+            $("#delparticipantes").click(function(){
+                var idproyecto = {{ proyecto.id }}
+                    bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/proyectovinculaciondocente",
+                    data: {'action': 'delparticipantesproyectos', 'idproyecto': idproyecto },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $("#modalpregntadel").modal({backdrop:'static', width: '600px'}).modal('hide');
+                            location.href = '/proyectovinculaciondocente?action=participantesproyectos&id={{ proyecto.id }}'
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+            $('.registrarhorasblur').blur(function (){
+               let elemento = $(this);
+               let participante;
+               let valoranterior = elemento.attr("valante");
+               let horas = elemento.val();
+               if(horas!=valoranterior){
+                   let duracionproyecto = elemento.attr("duracion");
+                   if((parseInt(horas)<=parseInt(duracionproyecto)) && parseInt(horas)>0){
+                       participante = elemento.attr("idpar");
+                       //alert(participante, duracionproyecto, valoranterior, horas);
+                       bloqueointerface();
+                       $.post("/proyectovinculaciondocente",{'action':'updatehoras','indi':participante, 'valor':horas}, function (data){
+                           $.unblockUI();
+                           if(data.result==='ok'){
+                               elemento.attr({'va': data.valor});
+                               elemento.val(data.valor);
+                               elemento.hide();
+                               console.log(elemento.parent());
+                               $('#horascumplidas_'+participante).text(data.valor);
+                           }else{
+                               elemento.val(valoranterior);
+                               smoke.alert(data.mensaje);
+                           }
+                       }).error(function () {
+                           $.unblockUI();
+                           elemento.val(valoranterior);
+                           smoke.alert("Fallo al registrar horas");
+                       })
+                   }else{
+                       smoke.alert("Las horas ingresadas deben ser menor o igual a la duración del proyecto.");
+                   }
+               }
+            });
+            $('.horas').blur(function(){
+                var elemento = $(this);
+                var indi;
+                var valoranterior = elemento.attr("valante");
+                var valoractual = elemento.val();
+                if (valoractual!=valoranterior){
+                    indi = elemento.attr("indi");
+                    bloqueointerface();
+                    $.post("/proyectovinculaciondocente", {'action': 'updatehoras', 'indi': indi, 'valor': valoractual}, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            elemento.attr({'va': data.valor});
+                            elemento.val(data.valor);
+                        } else {
+                            elemento.val(valoranterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function(){
+                        $.unblockUI();
+                        elemento.val(valoranterior);
+                        smoke.alert("Fallo al cambiar el cupo");
+                    });
+                }
+
+            });
+            $('.tipodocente').change(function(){
+                var elemento = $(this);
+                var cadena = elemento.val().split("_");
+                var tipoparticipante = cadena[0];
+                var idparticipante = cadena[1];
+                bloqueointerface();
+                $.post("/proyectovinculaciondocente", {'action': 'updatetipoparticipante', 'tipoparticipante': tipoparticipante, 'idparticipante': idparticipante}, function(data) {
+                    $.unblockUI();
+                    if (data.result=='ok') {
+                        bloqueointerface();
+                        location.href = 'proyectovinculaciondocente?action=participantesproyectos&id={{ proyecto.id }}';
+                    } else {
+                        {#                        elemento.val(valoranterior);#}
+                        smoke.alert(data.mensaje);
+                    }
+                }).error(function(){
+                    $.unblockUI();
+                    elemento.val(valoranterior);
+                    smoke.alert("Fallo al cambiar el cupo");
+                });
+
+            });
+            /*$('.registrarhoras').click(function () {
+                let idparticipacion = $(this).attr('idparticipacion');
+                let idproyecto = $(this).attr('idproyecto');
+                let idparticipante = $(this).attr('idparticipante');
+                //alert(idparticipacion, idproyecto);
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/proyectovinculaciondocente",
+                    data: {
+                        'action': 'registrarhoras',
+                        'idparticipacion': idparticipacion,
+                        'idproyecto': idproyecto,
+                        'idparticipante': idparticipante
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyhoras").html(data.data);
+                            $("#paneltitlehoras").html(data.titulo);
+                            $("#itemspanelhoras").modal({backdrop: 'static', width: '300px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                })
+            });*/
+
+        });
+        $(function() {
+            busqueda = function(){
+                var term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length>0){
+                    location.href = "proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&s="+term;
+                }
+            };
+
+            $("#search").click(function(){
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+        });
+        function eliminarparticipantes(idproyecto) {
+            bloqueointerface();
+            $("#modalpregntadel").modal({backdrop:'static', width: '600px'}).modal('show');
+            $.unblockUI();
+        }
+
+        function firmaModal(id){
+            bloqueointerface();
+            $.ajax({
+                type:"GET",
+                url:'/proyectovinculaciondocente',
+                data:{'action':'informeafirmar','id':id},
+                success:function(data){
+                    $.unblockUI();
+                    if (data.result===true){
+                        console.log("dentro de la respuesta")
+                        $("#firmamodal .panelbodyfirma").html(data.data);
+                        $("#firmamodal").modal({
+                            backdrop: 'static',
+                            width: '90%',
+                            height: '580px'
+                        }).modal('show');
+                    }else{
+                        smoke.alert("Error a visualizar el archivo a firmar");
+                    }
+                },
+                error:function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexion.");
+                },
+                dataType: "json"
+            });
+        };
+
+        function formModal(id, participante, text, action, footer = true) {
+            $('.panelbody_').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'participante': participante
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody_').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '85%'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function registrarHoras(idproyecto, idparticipacion, idparticipante, text, action) {
+            $('.panebodyhoras').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'idparticipacion': idparticipacion,
+                    'idproyecto': idproyecto,
+                    'idparticipante': idparticipante
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        $.unblockUI();
+                        /*if (footer === true) {
+                            $('#footermodal').hide();
+                        }*/
+                        $('.panelbodyhoras').html(data.data);
+                        $('#itemspanelhoras .paneltitlehoras').html(text);
+                        $("#itemspanelhoras").modal({backdrop: 'static', width: '400'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function revisarFirma(id) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: '{{ request.path }}',
+                data: {
+                    'id': id,
+                    'action': 'verificarfirmas'
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    console.log("Dentro de la revision")
+                    console.log(data)
+                    if (data.result === true) {
+                        ActualizarTabla(data.context)
+                        $("#itemspanelrevisarfirma").modal({
+                            backdrop: 'static',
+                            width: '90%',
+                            height: '580px'
+                        }).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje)
+                    }
+
+                },
+                error: function (data) {
+                    smoke.alert("Error al verificar documento")
+                },
+                dataType: "json"
+            });
+        };
+
+        function ActualizarTabla(data) {
+            $('#tabla_verify tbody tr').empty()
+            if (data.certificado) {
+                data.certificado.forEach(function (dato) {
+                    $('.tabla_paginada tbody').prepend($('<tr>', {
+                        'id': `box_${dato.cedula}`,
+                        'rol': 'row',
+                        'class': 'odd'
+                    }).append(
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.cedula}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.emitidoPara}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.emitidoPor}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.fechaFirma}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append(function () {
+                            if (dato.certificadoDigitalValido) {
+                                return $('<p>', {
+                                    'class': 'text-valido',
+                                    'text': 'Válido',
+                                });
+                            } else {
+                                return $('<p>', {
+                                    'class': 'text-invalido',
+                                    'text': 'Inválido',
+                                });
+                            }
+                        }),
+                    ));
+                });
+            } else {
+                $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_`, 'rol': 'row', 'class': 'odd'}).append(
+                    $('<td>', {'class': 'text-center align-middle', 'colspan': '6'}).append($('<h4>', {
+                        'class': 'text-secondary text-danger',
+                        'text': `${data.error}`,
+                    }))
+                ));
+            }
+
+        };
+
+        $(function (){
+            $('.btntabla').click(function () {
+                let panel =$(this).attr('panel');
+                let idproy = $(this).attr('proyecto');
+                console.log(panel);
+                switch (panel) {
+                    case '2':
+                        let sp2 ='';
+                        console.log('ingreso en caso 2');
+                        location.href = `proyectovinculaciondocente?action=participantesproyectos_&panel=${panel}&id=${idproy}`;
+                        break
+                    case '3':
+                        console.log('ingreso en caso 3');
+                        location.href = `proyectovinculaciondocente?action=participantesproyectos_&panel=${panel}&id=${idproy}`;
+                        break
+                    default:
+                        let sp1= ''//$();
+                        location.href = `proyectovinculaciondocente?action=participantesproyectos_&s=${sp1}&id=${idproy}`;
+                        break
+                }
+            });
+        });
+
+
+
+    </script>
+    <script>
+        $(document).ready(function () {
+            console.log("Documento listo")
+            $("#form_firmar_documento_vinculacion").off("submit");
+            //separa el formulario de eventos anteriores, conflictos con ajaxform.html
+            $("#form_firmar_documento_vinculacion").on("submit", function (event) {
+                event.preventDefault();
+                console.log("Evitando el default");
+                //var formfirma_= document.getElementById('form_firmar_documento_vinculacion');
+                var _formulario = new FormData(this);
+
+                $.ajax({
+                    type: "POST",
+                    url: $(this).attr('action'),
+                    data: _formulario,
+                    processData: false,
+                    contentType: false,
+                    success: function (data) {
+                        $.unblockUI();
+                        console.log(data)
+                        if (data.result === true) {
+                            console.log("dentro del if")
+                            NotificationJG.success('DOCUMENTO FIRMADO', 'Aviso!', 10000);
+                            $('#firmamodal').modal('hide');
+                        } else {
+                            smoke.alert("Error al firmar el documento");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+    </script>
+
+{% endblock %}
+{% block atras %}/proyectovinculaciondocente?action=listadoproyectos&id={{ proyecto.id }}{% endblock %}
+{% block canvas %}
+
+    <div class="modal fade static" id="itemspanelhoras" tabindex="-1" aria-labelledby="itemspanelhorasLabel"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-list"></i> <b class="paneltitlehoras">FORMULARIO MODAL</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form action="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">{% csrf_token %}
+                        <div class="row panelbodyhoras"></div>
+                    </form>
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody_">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="firmamodal" tabindex="-1" aria-labelledby="firmamodalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="firmamodalLabel"><i class="fa fa-list"></i> <b class="paneltitle">FIRMAR
+                        DOCUMENTO</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}" id="form_firmar_documento_vinculacion">
+                        {% csrf_token %}
+                        <div class="row panelbodyfirma">
+
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalfirma">
+                    <a href="javascript:;" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelrevisarfirma" tabindex="-1" aria-labelledby="itemspanelrevisarfirmaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title paneltitlerevisarfirma" id="itemspanelrevisarfirmaLabel">Revisar Documento</h5>
+                    <button type="button" class="btn-close cerrar2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                        <div class="row panelbodyrevisarfirma">
+                        </div>
+                        <div class="col-12">
+                            <table class="table table-bordered tabla_paginada" id="tabla_verify">
+                                <thead class="table-light">
+                                <tr>
+                                    <th colspan="6" class="text-center">RESULTADOS DE LA VERIFICACIÓN DE
+                                                    ARCHIVO FIRMADO ELECTRÓNICAMENTE
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>Cédula</th>
+                                    <th>Nombres</th>
+                                    <th>Entidad Certificadora</th>
+                                    <th>Fecha Firmado</th>
+                                    <th>Firma</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Seleccione su documento y
+                                                    verifique.
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <div class="tabbable panelvinculacion row">
+                <div class='col-2' style="margin: 5px;">
+                    {#            PARTICIPANTES MATRICES - ESTUDIANTES #}
+                    <a class="tabs btntabla {% if not panel %}active{% endif %}" href="javascript:;"
+                       proyecto="{{ proyectoid }}" data-bs-toggle="tabs">
+                        <div class="course-path-card  uk-width-1-1 transition-3d-hover bordecaja {% if not panel %}btn_seleccionado{% endif %}"
+                             style="cursor:pointer;">
+                            <div class="course-path-card-contents">
+                                <h4><b style="color: white">ESTUDIANTES</b></h4>
+                                <div style="text-align: left; font-size: 11px; color: white; !important;">
+                                    <b><i class="fa fa-sort-numeric-asc"></i> <span
+                                            class="badge bg-success">{{ cantidad_estudiantes }}</span></b>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <div class='col-2' style="margin: 5px;">
+                    {#            PARTICIPANTES MATRICES - PROMOTORES Y LIDERES #}
+                    <a class="tabs btntabla {% if panel == '2' %}active{% endif %}" href="javascript:;" panel="2"
+                       proyecto="{{ proyectoid }}" data-bs-toggle="tabs">
+                        <div class="course-path-card  uk-width-1-1 transition-3d-hover bordecaja {% if panel == '2' %}btn_seleccionado{% endif %}"
+                             style="cursor:pointer;">
+                            <div class="course-path-card-contents">
+                                <h4><b style="color: white">DOCENTES</b></h4>
+                                <div style="text-align: left; font-size: 11px; color: white; !important;">
+                                    <b><i class="fa fa-sort-numeric-asc"></i> <span
+                                            class="badge bg-info">{{ cantidad_docentes }}</span></b>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <div class='col-2' style="margin: 5px;">
+                    <a class="tabs btntabla {% if panel == '3' %}active{% endif %}" href="javascript:;" panel="3"
+                       proyecto="{{ proyectoid }}" data-bs-toggle="tabs">
+                        <div class="course-path-card  uk-width-1-1 transition-3d-hover bordecaja {% if panel == '3' %}btn_seleccionado{% endif %}"
+                             style="cursor:pointer;">
+                            <div class="course-path-card-contents">
+                                <h4><b style="color: white">ADMINISTRATIVOS</b></h4>
+                                <div style="text-align: left; font-size: 11px; color: white; !important;">
+                                    <b><i class="fa fa-sort-numeric-asc"></i> <span
+                                            class="badge bg-warning">{{ cantidad_administrativos }}</span></b>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <br>
+            <div class="row">
+                <div class="btn-group">
+                    <a class="btn dropdown-toggle" data-bs-toggle="dropdown" href="javascript:;"> Acciones</a>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a class="dropdown-item"
+                               href="/proyectovinculaciondocente?action=excelparticipanteproyecto&idproyecto={{ proyecto.id }}"><i
+                                    class="fa fa-list "></i> Descargar Excel</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="tab-content {% if not panel %}active{% endif %}">
+                <div class="tab-pane {% if not panel %}active{% endif %}" id="1">
+                    <div id="no-more-tables">
+
+                            <div class="row">
+                                <div class="alert alert-warning col-12">
+                                    <strong><i class="fa fa-warning"></i> ¡IMPORTANTE! </strong><br>
+                                    <strong> Una vez registradas las horas de cumplimiento del estudiante no se podrán
+                                        realizar modificaciones en la mismas.</strong>
+                                </div>
+                            </div>
+
+                        <div class='row'>
+                            <div class='col-lg-12'>
+                                <div class="headtitle">
+                                    <h3>
+                                        {{ title }}
+                                    </h3>
+                                    <h6>{{ proyecto }}</h6>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class='row mb-2'>
+                            <div class="col-6">
+                                <form class="form-search row g-2 align-items-center">
+                                    <div class="col-8">
+                                        <input class="searchinput form-control" type="text" id="searchinput"
+                                               value="{{ search }}" autocomplete="off">
+                                    </div>
+                                    <div class="col-2">
+                                        <button type="button" id="search" class="btn btn-info"><span
+                                                class="fa fa-search"></span> Buscar
+                                        </button>
+                                    </div>
+                                    {% if search or ids %}
+                                        <div class="col-2">
+                                            <a href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}"
+                                               id="allresults" class="btn btn-info">
+                                                <span class="fa fa-refresh"></span> Todos
+                                            </a>
+                                        </div>
+                                    {% endif %}
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class='row'>
+                            <div class='col-12'>
+                                <table class='table table_primary table-striped'>
+                                    <thead>
+                                    <tr>
+                                        <th colspan="12" class="text-center">Participantes (Estudiantes)</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: center;"><i class="fa fa-user"></i> Datos del Estudiante
+                                        </th>
+                                        <th style="text-align: center;"><i class="fa fa-graduation-cap"></i> Carrera
+                                        </th>
+                                        <th style="text-align: center;"><i class="fa fa-tag"></i> Tipo</th>
+                                        <th style="text-align: center;" colspan="2">
+                                            <iclass
+                                            ="fa fa-american-sign-language-interpreting"></i> Datos de
+                                            Participación
+                                        </th>
+                                        <th style="text-align: center;">Acciones</th>
+                                    </tr>
+                                    </thead>
+
+                                    <tbody>
+                                    {% for participante in participantes %}
+                                        <tr>
+                                            <td>
+                                                <b><i class="fa fa-id-card"></i> Cédula:
+                                                </b>{{ participante.inscripcion.persona.cedula|default_if_none:"" }}<br>
+                                                <b><i class="fa fa-user"></i> Nombres:
+                                                </b> {{ participante.inscripcion|default_if_none:"" }} <br>
+                                                <b><i class="fa fa-envelope"></i> Email:
+                                                </b> {{ participante.inscripcion.persona.emailinst }} <br>
+                                                <b><i class="fa fa-mobile-phone"></i> Celular:
+                                                </b> {{ participante.inscripcion.persona.telefono }}
+                                            </td>
+
+                                            <td style="text-align: justify;">
+                                                {{ participante.inscripcion.carrera }}
+                                            </td>
+
+                                            <td style="text-align: center; vertical-align: middle">
+                                                {% if participante.inscripcion %}
+                                                    <b
+                                                          data-original-title="Estudiante"> ESTUDIANTE</b>
+                                                {% endif %}
+                                            </td>
+
+                                            <td style="text-align: left; vertical-align: middle">
+                                                {% if participante.puede_registrar_horas %}
+                                                    {% if not participante.horas %}
+                                                        {#                                                        {% if participante.puede_registrar_horas %}#}
+                                                        <input class="form-imput input-mini registrarhorasblur"
+                                                               idpar="{{ participante.id }}"
+                                                               duracion="{{ participante.proyecto.horas }}"
+                                                               valante="{{ participante.horas }}"
+                                                               value="{{ participante.horas|default_if_none:"0" }}"
+                                                               type="text"><br>
+                                                        {#                                                        {% endif %}#}
+                                                    {% endif %}
+                                                {% endif %}
+
+                                                <b><i class="fa fa-clock-o"></i> Horas Cumplidas: <span
+                                                    class="text-info"
+                                                    id="horascumplidas_{{ participante.id }}">{{ participante.horas }}</span></b><br>
+                                                {% if participante.horas %}
+                                                    <b><i class="fa fa-user"></i> Usuario
+                                                        Modificación: {{ participante.usuario_modificacion }}</b><br>
+                                                    <b><i class="fa fa-calendar"></i> Fecha Modificación:
+                                                        {{ participante.fecha_modificacion|date:'Y-m-d H:i' }}</b>
+                                                {% endif %}
+
+                                            </td>
+                                            <td>
+                                                <b><i class="fa fa-file"></i> Informes:</b><br>
+                                                <b style="vertical-align: middle"><i
+                                                        class="fa fa-chevron-circle-right"></i>
+                                                    Cargados: <span
+                                                    class="text-info"> {{ participante.cantidad_informes_cargados }}</span></b> <br>
+                                                <b style="vertical-align: middle"><i
+                                                        class="fa fa-chevron-circle-right"></i>
+                                                    Aprobados: <span
+                                                    class="text-success"> {{ participante.cantidad_informes_aprobados }}</span></b> <br>
+                                                <b style="vertical-align: middle"><i
+                                                        class="fa fa-chevron-circle-right"></i>
+                                                    Rechazados: <span
+                                                    class="text-danger"> {{ participante.cantidad_informes_rechazados }}</span></b>
+                                            </td>
+
+                                            <td style="text-align: center;">
+                                                <div class="dropdown dropstart">
+                                                    <a class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                                       data-bs-toggle="dropdown"
+                                                       href="javascript:;" data-offset="-140" aria-haspopup="true"
+                                                       aria-expanded="false">
+                                                        <i class="fa fa-ellipsis-v"></i>
+                                                    </a>
+                                                    <div class="dropdown-menu ">
+                                                        <a href="javascript:void(0);"
+                                                           onclick="formModal('{{ participante.id }}','{{ participante.inscripcion.pk }}', 'Ver Informes de Cumplimiento de {{ participante.inscripcion }}', 'revisarinformes', true)"
+                                                           class="dropdown-item revisararchivos"><i class="fa fa-files-o"></i>
+                                                            Revisar Informes</a>
+
+                                                        {#                                                {% if participante.registrohorasdesde %}#}
+                                                        {#                                                    {% if not participante.horas %}#}
+                                                        {#                                                        {% if participante.puede_registrar_horas %}#}
+                                                        {#                                                            <li><a#}
+                                                        {#                                                                    href="javascript:void(0);"#}
+                                                        {#                                                                    onclick="registrarHoras('{{ participante.proyecto.id }}',#}
+                                                        {#                                                                            '{{ participante.id }}',#}
+                                                        {#                                                                            '{{ participante.inscripcion.id }}',#}
+                                                        {#                                                                            'REGISTRAR HORAS',#}
+                                                        {#                                                                            'registrarhoras')"#}
+                                                        {#                                                                    style="text-align: left"#}
+                                                        {#                                                            ><i class="fa fa-clock-o"></i> Registrar Horas</a></li>#}
+                                                        {#                                                        {% endif %}#}
+                                                        {#                                                    {% endif %}#}
+                                                        {#                                                {% endif %}#}
+                                                        {#                                                <li>#}
+                                                        {#                                                    <a class="eliminacionmodal" style="text-align: left"#}
+                                                        {#                                                       href="javascript:;"#}
+                                                        {#                                                       nhref='/proyectovinculaciondocente?action=deleteparticipanteproyecto&idproyecto={{ participante.proyecto.id }}&id={{ participante.id }}&tipo=2'><i#}
+                                                        {#                                                        class="fa fa-close"></i> Eliminar</a></li>#}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% if not participantes %}
+                                        <tr>
+                                            <td colspan="5" class="text-center">
+                                                NO SE REGISTRAN PARTICIPANTES ESTUDIANTES
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class='row'>
+                            <div class="col-12">
+                                {% if paging.num_pages > 20 %}
+                                    <div>
+                                        <ul class="pagination">
+                                            {% if paging.primera_pagina %}
+                                                <li class="page-item">
+                                                    <a class="page-link" href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&{% if search %}s={{ search }}&{% endif %}page=1">1</a>
+                                                </li>
+                                                <li class="page-item">
+                                                    <a href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}"
+                                                       class="page-link active">...</a></li>
+                                            {% endif %}
+                                            {% for pagenumber in paging.paginas %}
+                                                <li {% if pagenumber == page.number %}class='page-item active'{% endif %}><a class="page-link"
+                                                        href="/proyectovinculaciondocente?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a>
+                                                </li>
+                                            {% endfor %}
+                                            {% if paging.ultima_pagina %}
+                                                <li class="page-item">
+                                                    <a href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}"
+                                                       class="page-link active">...</a></li>
+                                                <li class="page-item">
+                                                    <a href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}" class="page-link">{{ paging.num_pages }}</a>
+                                                </li>
+                                            {% endif %}
+                                        </ul>
+                                    </div>
+                                {% else %}
+                                    <div>
+                                        <ul class="pagination">
+                                            {% for pagenumber in paging.page_range %}
+                                                <li {% if pagenumber == page.number %}class='page-item active'{% endif %}><a
+                                                        href="/proyectovinculaciondocente?action=participantesproyectos_&id={{ proyecto.id }}&{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}" class="page-link">{{ pagenumber }}</a>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {#            ================================================================== DOCENTES ======================================================#}
+                <div class="tab-pane {% if panel == '2' %}active{% endif %}" id="2">
+                    <div id="no-more-tables">
+                        <div class='row'>
+                            <div class='col-lg-12'>
+                                <div class="headtitle">
+                                    <h3>
+                                        {{ title }}
+                                    </h3>
+                                    <h6>{{ proyecto }}</h6>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class='row'>
+                            <div class='col-12'>
+                                <table class='table table_primary table-striped'>
+                                    <thead>
+                                    <tr>
+                                        <th colspan="12" class="text-center">Participantes (Docentes)</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: center;"><i class="fa fa-user"></i> Datos del Personal
+                                        </th>
+                                        <th style="text-align: center;"><i class="fa fa-graduation-cap"></i> Carrera
+                                        </th>
+                                        <th style="text-align: center;"><i class="fa fa-tag"></i> Tipo</th>
+                                        <th style="text-align: center;">Acciones</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for participante in personal_docente %}
+                                        <tr>
+                                            <td>
+                                                {% if participante.profesor %}
+                                                    <b><i class="fa fa-id-card"></i> Cédula:
+                                                    </b>{{ participante.profesor.persona.cedula|default_if_none:"" }}
+                                                    <br>
+                                                    <b><i class="fa fa-user"></i> Nombres:
+                                                    </b> {{ participante.profesor|default_if_none:"" }} <br>
+                                                    <b><i class="fa fa-envelope"></i> Email:
+                                                    </b> {{ participante.profesor.persona.emailinst }} <br>
+                                                    <b><i class="fa fa-mobile-phone"></i> Celular:
+                                                    </b> {{ participante.profesor.persona.telefono }}
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center">
+                                                {{ participante.profesor.coordinacion }}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <select class="form-control tipodocente" id="tipodocente"
+                                                        name="tipodocente">
+                                                    {% for tipopar in tipoparticipante %}
+                                                        <option {% if tipopar.id == participante.tipoparticipante.id %}
+                                                            selected {% endif %}
+                                                            value="{{ tipopar.id }}_{{ participante.id }}">{{ tipopar }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <div class="dropdown dropstart">
+                                                    <a class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                                       data-bs-toggle="dropdown"
+                                                       href="javascript:;" data-offset="-140" aria-haspopup="true"
+                                                       aria-expanded="false">
+                                                        <i class="fa fa-ellipsis-v"></i>
+                                                    </a>
+                                                    {#                                            <ul class="dropdown-menu pull-right">#}
+                                                    {#                                                <li><a class="eliminacionmodal" style="text-align: left" href="javascript:;" nhref='/proyectovinculaciondocente?action=deleteparticipanteproyecto&idproyecto={{ participante.proyecto.id }}&id={{ participante.id }}&tipo=1'><i class="fa fa-close"></i> Eliminar</a></li>#}
+                                                    {#                                            </ul>#}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% if not personal_docente %}
+                                        <tr>
+                                            <td colspan="4" class="text-center">
+                                                NO SE REGISTRAN DOCENTES
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+                {#            ================================================================== ADMINISTRATIVOS ======================================================#}
+                <div class="tab-pane {% if panel == '3' %}active{% endif %}" id="3">
+                    <div id="no-more-tables">
+                        <div class='row'>
+                            <div class='col-12'>
+                                <div class="headtitle">
+                                    <h4>
+                                        {{ title }}
+                                    </h4>
+                                    <h6>{{ proyecto }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class='row'>
+                            <div class='col-12'>
+                                <table class='table table_primary table-striped'>
+                                    <thead>
+                                    <tr>
+                                        <th colspan="8" class="text-center">Participantes (Administrativos)</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: center;"><i class="fa fa-user"></i> Datos del Personal
+                                        </th>
+                                        <th style="text-align: center;"><i class="fa fa-tag"></i> Tipo</th>
+                                        <th style="text-align: center;">Acciones</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for participante in personal_administrativo %}
+                                        <tr>
+                                            <td>
+                                                {% if participante.profesor %}
+                                                    <b><i class="fa fa-id-card"></i> Cédula:
+                                                    </b>
+                                                    {{ participante.administrativo.persona.cedula|default_if_none:"" }}
+                                                    <br>
+                                                    <b><i class="fa fa-user"></i> Nombres:
+                                                    </b> {{ participante.administrativo|default_if_none:"" }} <br>
+                                                    <b><i class="fa fa-envelope"></i> Email:
+                                                    </b> {{ participante.administrativo.persona.emailinst }} <br>
+                                                    <b><i class="fa fa-mobile-phone"></i> Celular:
+                                                    </b> {{ participante.administrativo.persona.telefono }}
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <span class="text-succes" data-original-title="Administrativo"> ADMINISTRATIVO</span>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <div class="dropdown dropstart">
+                                                    <a class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                                       data-bs-toggle="dropdown"
+                                                       href="javascript:;" data-offset="-140" aria-haspopup="true"
+                                                       aria-expanded="false">
+                                                        <i class="fa fa-ellipsis-v"></i>
+                                                    </a>
+                                                    <div class="dropdown-menu">
+                                                        <a class="dropdown-item eliminacionmodal" style="text-align: left"
+                                                               href="javascript:;"
+                                                               nhref='/proyectovinculaciondocente?action=deleteparticipanteproyecto&idproyecto={{ participante.proyecto.id }}&id={{ participante.id }}&tipo=3'><i
+                                                                class="fa fa-close"></i> Eliminar</a>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% if not personal_administrativo %}
+                                        <tr>
+                                            <td colspan="4" class="text-center">
+                                                NO SE REGISTRA PERSONAL ADMINISTRATIVO
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="modalpregntadel">
+        <div class="model-dialog">
+            <div class="model-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="paneltitle">Eliminar participantes</h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body panelbody">
+                    <div class="alert alert-danger">
+                        <h4 class="alert-heading">CONFIRMACIÓN</h4>
+                        Al dar clic en eliminar se borrará todo el listado de
+                        participantes(estudiantes,docente,administrativos)
+                    </div>
+                    <p style="margin-top: 16px;">Esta seguro(a) que desea eliminar participantes?</p>
+                    <input type="hidden" id="idepregunta" name="idepregunta">
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="delparticipantes" class='btn btn-danger'> Eliminar</a>
+                        <a href="javascript:;" id="cancel_eliminarparticipantes" class='btn btn-default' data-bs-dismiss="modal"> Cancelar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+
+

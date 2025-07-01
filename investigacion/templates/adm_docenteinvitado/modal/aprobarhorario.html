@@ -1,0 +1,198 @@
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').tooltip();
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+            $("#estado").addClass("validate[required]");
+
+            $('#estado').change(function(){
+                $("#observacion").val("");
+                if($(this).val() === '5'){
+                    desbloquearObservacion();
+                }else{
+                    bloquearObservacion();
+                }
+            });
+
+            bloquearObservacion = function (){
+                $("#observacion").removeClass("validate[required]");
+                $("#observacion").prop("disabled", true);
+            };
+
+            desbloquearObservacion = function (){
+                $("#observacion").addClass("validate[required]");
+                $("#observacion").prop("disabled", false);
+            }
+
+            $('#listafunciones a').on('click', function (e) {
+                e.preventDefault()
+                $(this).tab('show');
+                let idh = $(this).attr("idh");
+                let idf = $(this).attr("idf");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_docenteinvitado",
+                    data: {'action': 'detallehorario', 'idh': idh, 'idf': idf},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".horariofuncion").html(data.data);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            {% if puedeaprobar %}
+                $("#itemspanelaprobarhorario .guardar").show();
+                {% if horario.estado == 3 %}
+                    $('#estado').val('').trigger('change');
+                {% elif horario.estado == 4 %}
+                    bloquearObservacion();
+                {% else %}
+                    desbloquearObservacion();
+                {% endif %}
+            {% else %}
+                $("#itemspanelaprobarhorario .guardar").hide();
+            {% endif %}
+
+        });
+    </script>
+{% endblock %}
+<form id="frmAprobarHorario" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+    <input type='hidden' name='action' value='aprobarhorario'/>
+    <input type='hidden' name='id' value='{{ horario.id|encrypt }}'/>
+    <table class="table table-bordered">
+        <thead class="table-light">
+            <tr>
+                <th colspan="6">Datos Generales</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="width: 10%;"><b>Docente:</b></td>
+                <td style="width: 23%; text-align: justify">{{ horario.docente.profesor.persona.nombre_completo_inverso }}</td>
+                <td style="width: 10%;"><b>Mes:</b></td>
+                <td style="width: 18%; text-align: justify">{{ horario.inicio.month|nombremes|title }}</td>
+                <td style="width: 15%;"><b>Horas planificadas:</b></td>
+                <td style="width: 24%; text-align: justify">{{ horario.horaplanificada }}</td>
+            </tr>
+            <tr>
+                <td colspan="6">
+                    <div class="row">
+                        <div class="col-md-5 col-xl-4 ">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="panelsStayOpen-heading{{ docente.id }}">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ docente.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ docente.id }}" disabled>
+                                    <span class="fa fa-list-ol"></span>&nbsp;Funciones o actividades&nbsp;
+                                    </button>
+                                </h2>
+                                <div id="panelsStayOpen-collapse{{ docente.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ docente.id }}">
+                                    <div class="accordion-body">
+                                        <div class="list-group" id="listafunciones" role="tablist">
+                                            {% for funcion in funciones %}
+                                                <a idh="{{ horario.id|encrypt }}" idf="{{ funcion.id|encrypt }}" class="list-group-item list-group-item-action {% if forloop.counter == 1 %}active{% endif %} d-flex justify-content-between align-items-center" data-toggle="list" href="#funcion{{ funcion.id }}" role="tab">{{ funcion.descripcion }} <span id="totalhorafuncion{{ funcion.id }}" class="badge badge-warning badge-pill">{{ funcion.totalhoras }}</span></a>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-7 col-xl-8">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="panelsStayOpen-heading{{ horario.id }}horario">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ horario.id }}horario" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ horario.id }}horario" disabled>
+                                    <span class="fa fa-table"></span>&nbsp;Horario&nbsp;
+                                    </button>
+                                </h2>
+                                <div id="panelsStayOpen-collapse{{ horario.id }}horario" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ horario.id }}horario">
+                                    <div class="accordion-body">
+                                        <div class="horariofuncion">
+                                            <div class="table-responsive-xxl">
+                                                <table class="table table-bordered table-striped" id="tbhorarios">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th class="text-center" style="width: 16%;">Turnos</th>
+                                                            {% for dia in diascab %}
+                                                                <th class="text-center" style="width: 12%;">{{ dia.nombre }}</th>
+                                                            {% endfor %}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for detalleturno in turnos %}
+                                                            <tr>
+                                                                <td class="text-center">{{ detalleturno.turno.comienza|date:"H:i" }} - {{ detalleturno.turno.termina|date:"H:i" }}</td>
+                                                                {% for dia in detalleturno.dias %}
+                                                                    <td class="text-center">{% if dia.marcado == 'S' %}<i class="fa fa-check text-success"></i>{% endif %}</td>
+                                                                {% endfor %}
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td><b>Estado:</b></td>
+                <td>
+                    {% if puedeaprobar %}
+                        <select id="estado" name="estado">
+                            {% for estado in estados %}
+                                {% if estado.0 != 1 and estado.0 != 2 and estado.0 != 3 %}
+                                    <option value="{{ estado.0 }}" {% if horario.estado == estado.0 %}selected{% endif %}>{{ estado.1 }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    {% else %}
+                        <span class="label label-{{ horario.color_estado }}">{{ horario.get_estado_display|title }}</span>
+                    {% endif %}
+                </td>
+                <td colspan="4">
+                    &nbsp;
+                </td>
+            </tr>
+            <tr>
+                <td><b>Observaciones:</b></td>
+                <td colspan="5">
+                    {% if puedeaprobar %}
+                        <textarea id="observacion" name="observacion" cols="40" rows="4" style="width: 100%;">{{ horario.observacion }}</textarea>
+                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    {% else %}
+                        {{ horario.observacion }}
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</form>

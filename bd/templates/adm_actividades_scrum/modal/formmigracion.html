@@ -1,0 +1,210 @@
+{% extends 'ajaxformmodal.html' %}
+{% load sga_extras %}
+{% block header_info %}
+    <div class="alert alert-default-info p-0 lh-15 mb-0">
+        <i class="fa fa-info-circle"></i> Estimad{% if persona.es_mujer %}a{% else %}o{% endif %}
+        <b>{{ persona.nombre_completo_minus }}</b>, tener en cuenta las siguientes consideraciones antes de migrar sus
+        actividades:
+        <div class="ms-3 mt-1">
+            1. Recuerde revisar sus actividades antes de proceder a migrar las actividades a bitácora.
+            <br>
+            2. En la tabla estan listadas las actividades y subactividades que seran migradas a bitacora como un
+            registro independiente.
+            <br>
+            3. Una vez migrado las actividades, si colocan subactividades en la actividad que se migro esta no sera
+            tomado en cuenta para una nueva migración
+        </div>
+    </div>
+{% endblock %}
+{% block block_form %}
+    <div class="row ps-3 pb-0 align-items-end">
+        <div class="col-lg-6">
+            {% if not mi_departamento %}
+                <p><b>Dirección <span class="text-danger">*</span>:</b></p>
+                <select name="departamento" id="id_departamento" required class="select2">
+                    {% for dep in departamentos %}
+                        <option value="{{ dep.id }}" {% if dep.id == 93 %}selected{% endif %}>{{ dep }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
+        </div>
+        <div class="col-lg-6 text-end">
+            <h5 class="mb-0">
+                <i class="fa fa-check-double text-success"></i>
+                Seleccionar todo: <input type="checkbox" name="checkall" id="check_all" class="checkall"> |
+                <i class="fa fa-sort-numeric-asc text-warning"></i>
+                Items seleccionados: <span class="items-seleccionados">0</span>
+            </h5>
+        </div>
+    </div>
+    <table class="table table_primary table_pagination px-3" id="id_tabla_registro">
+        <thead class="table-light">
+        <tr>
+            <th class="w-3 text-center">N°</th>
+            <th class="w-3 text-center">Migrar</th>
+            <th class="w-15">Fechas</th>
+            <th class="w-50">Detalle de actividad</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for incidencia in incidencias %}
+            <tr id_incidencia="{{ incidencia.id }}" fecha="{{ incidencia.inicio|date:"d-m-Y" }}">
+                <td class="text-center">{{ forloop.counter }}</td>
+                <td class="text-center">
+                    <input type="checkbox" class="migracion seleccion">
+                </td>
+                <td>
+                    <p><b>Inicio: </b>
+                        <input type="date" name="fechainicio" id="fechainicio" class="form-control w-75 fechainicio" value="{{ incidencia.inicio|date:'Y-m-d' }}" required>
+                    </p>
+                    <p class="mt-2"><b>Fin: </b>
+                        {% if incidencia.fin %}
+                            {{ incidencia.fin|date:'d-m-Y' }}
+                        {% else %}
+                            S/F
+                        {% endif %}
+                    </p>
+                </td>
+                <td>
+                    <div class="row">
+                        <div class="col-lg-3">
+                            <p class="fw-semi-bold">Sistema <span class="text-danger">*</span>: </p>
+                            <select name="" id="" class="tiposistema select2" required>
+                                {% for app in apps %}
+                                    <option value="{{ app.0 }}"
+                                            {% if app.0 == incidencia.app %}selected{% endif %}>{{ app.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-9">
+                            <p for="" class="fw-semi-bold">Título <span class="text-danger">*</span>:</p>
+                            <input type="text" name="titulo" class="titulo" value="{{ incidencia.titulo }}" required>
+                        </div>
+                        {% if tipoactividades %}
+                            <div class="col-lg-12">
+                                <p for="" class="fw-semi-bold">Actividad <span class="text-danger">*</span>:</p>
+                                <select name="" id="" class="tipoactividad" required>
+                                    {% for actividad in tipoactividades %}
+                                        <option value="{{ actividad.id }}"
+                                                {% if actividad.id == 300 %}selected{% endif %}>{{ actividad.descripcion|lower|capfirst }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        {% endif %}
+                        <div class="col-lg-12">
+                            <p for="" class="fw-semi-bold">Descripción <span class="text-danger">*</span>:</p>
+                            <textarea name="descripcion" id="descripcion" cols="3" rows="3" required
+                                      class="descripcion text-start">{{ incidencia.descripcion|clean_text_coma|lower|capfirst|safe }}</textarea>
+                        </div>
+                    </div>
+
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
+{% block extra_js %}
+    <script>
+        $(document).ready(function () {
+            var selectedItems = {};
+            let actividad = $(".tipoactividad")
+            {#actividad.select2({width: '600px'})#}
+            let tabla_paginada = $('.table_pagination').DataTable({
+                responsive: false,
+                scrollX: true,
+                ordering: false,
+                paging: true,
+                searching: false,
+                pageLength: 5,
+                bInfo: false,
+                dom: 'Bfrtip',
+                language: {
+                    "url": '/static/js/i18n/Spanish.json'
+                },
+                buttons: []
+            });
+            $('.table_pagination tbody').on('click', 'tr', function () {
+                var data = tabla_paginada.row(this).data();
+            });
+            $("#submit").click(function () {
+                lista_items1 = [];
+                let table = $('#id_tabla_registro').DataTable();
+
+                // Itera a través de todas las páginas
+                table.page.len(-1).draw(); // Establece el número de filas por página a -1 para mostrar todas las filas
+                for (let i = 0; i < table.page.info().pages; i++) {
+                    table.page(i).draw('page'); // Ve a la página actual sin redibujar
+                    table.rows({page: 'current'}).every(function (rowIdx, tableLoop, rowLoop) {
+                        let row = this.node();
+                        let migracion = $(row).find('td > input.migracion').is(":checked");
+                        if (migracion) {
+                            lista_items1.push({
+                                'id_incidencia': $(row).attr('id_incidencia'),
+                                'fecha': $(row).attr('fecha'),
+                                'tiposistema': $(row).find('td > div > div > select.tiposistema').val(),
+                                'titulo': $(row).find('td > div > div > input.titulo').val(),
+                                'tipoactividad': $(row).find('td > div > div > select.tipoactividad').val(),
+                                'descripcion': $(row).find('td > div > div > textarea.descripcion').val(),
+                                'fechainicio': $(row).find('td > p > input.fechainicio').val(),
+                            });
+                        }
+                    });
+                }
+
+                // Restaura el número de filas por página a su valor original
+                table.page.len(10).draw();
+
+                console.log(lista_items1);
+            });
+            // Marcar todos los checkboxes por defecto
+            tabla_paginada.rows().every(function (rowIdx, tableLoop, rowLoop) {
+                var id = $(this.node()).attr('id_incidencia');
+                selectedItems[id] = true;
+            });
+            $('.seleccion').prop('checked', true);
+            comprobarSeleccionDatatable();
+            $(document).on('change', '.seleccion', function () {
+                var id = $(this).closest('tr').attr('id_incidencia');
+                console.log(id)
+                selectedItems[id] = this.checked;
+                comprobarSeleccionDatatable();
+            });
+
+            // Evento de cambio para la casilla "checkall"
+            $(".checkall").change(function () {
+                var isChecked = $(this).is(":checked");
+                tabla_paginada.rows().every(function (rowIdx, tableLoop, rowLoop) {
+                    var id = $(this.node()).attr('id_incidencia');
+
+                    if (isChecked) {
+                        this.nodes().to$().find('.seleccion').prop('checked', true);
+                        selectedItems[id] = true;
+                    } else {
+                        this.nodes().to$().find('.seleccion').prop('checked', false);
+                        selectedItems[id] = false;
+                    }
+                    comprobarSeleccionDatatable();
+                });
+            });
+
+            function comprobarSeleccionDatatable() {
+                var cont = 0;
+                var allseleccion = true
+                $.each(selectedItems, function (id, selected) {
+                    if (selected) {
+                        cont++;
+                    } else {
+                        allseleccion = false
+                    }
+                });
+                if (!allseleccion) {
+                    $(".checkall").prop('checked', false);
+                } else {
+                    $(".checkall").prop('checked', true);
+                }
+                $(".items-seleccionados").text(cont);
+            }
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,853 @@
+{% extends 'base.html' %}
+{% load sga_extras %}
+{% block atras %}/pro_tutoriaposgrado?action=sustentaciones{% endblock %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <script type="text/javascript">
+        $(function () {
+
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+            $(".nota").hide();
+            $(".calficacion").change(function () {
+                var did = $(this).attr('did');
+                var nota = 0;
+                $("input[name=" + did + "]").each(function () {
+                    var nota = parseFloat($(this).val());
+
+                    if (isNaN(nota)) {
+                        $(this).val($(this).attr("av"));
+                        nota = $(this).attr("av")
+                    }
+                    if (nota > 100) {
+                        nota = 100;
+                        $(this).val(nota);
+                    }
+                    if (nota < 0) {
+                        nota = 0;
+                        $(this).val(nota);
+                    }
+                    actualizar_notas();
+                });
+
+            }).focusout(function () {
+                var vala = $(this).val();
+                var va = $(this).attr("av");
+                if (vala === "" || isNaN(vala)) {
+                    $(this).val(va);
+                }
+            });
+            actualizar_lista = function () {
+                bloqueointerface();
+                lista_notas = [];
+                var nota = 0;
+                $(".calficacion").each(function () {
+                    var id = $(this).attr('did');
+                    $("[did=" + id + "]").each(function () {
+                        nota = parseFloat($(this).val());
+                    });
+                    var item = {
+                        id: id,
+                        nota: nota
+                    };
+                    lista_notas.push(item);
+                });
+                $.post("/pro_tutoriaposgrado", {
+                        'action': 'notasustentacion',
+                        'datos': JSON.stringify(lista_notas)
+                    }, function (data) {
+                        if (data.result === "ok") {
+                            location.reload();
+                        } else {
+                            $(".calficacion").each(function () {
+                                var elemento = $(this);
+                                elemento.css({"background-color": "rgba(240, 128, 128, 0.21)"});
+                            });
+                            smoke.alert("Ocurrio un problema al guardar las calificaciones.");
+                        }
+                        $.unblockUI();
+                    }, "json"
+                );
+
+            };
+            actualizar_notas = function () {
+                $(".calficaciones").each(function () {
+                    var did = $(this).attr('did');
+                    var pt = parseFloat($("#pt" + did).attr('valu'));
+                    var pg = parseFloat($("#pg" + did).attr('valu'));
+                    var complexivo = 0;
+                    var grado = 0;
+                    var nota = parseFloat($("input[name=" + did + "]").val());
+                    {% if grupo.alternativa.tipotitulacion.tipo == 2 %}
+                        complexivo = ((pt + nota) / 2);
+                        grado = ((pg + complexivo) / 2);
+                        $("#notacomplexivo" + did).html(complexivo.toFixed(2));
+                    {% else %}
+                        grado = ((nota + pg) / 2);
+                    {% endif %}
+                    $("#notagrado" + did).html(grado.toFixed(2));
+                });
+            };
+            actualizar_observacion = function () {
+                modalobservaciones = $("#observaciones");
+                var obs = $(this).attr("obs");
+                var id = $(this).attr("did");
+                modalobservaciones.find("#contenido_observacion").attr({"value": obs, "ids": id});
+                $("#error").html("");
+                modalobservaciones.modal("show");
+            };
+            actualizar_notas();
+            $("#btn-guardarobservacion").click(function () {
+                contenidoobservacion = $("#contenido_observacion");
+                var observacion = contenidoobservacion.attr("value");
+                var id = contenidoobservacion.attr("ids");
+                $("#observaciones").modal("hide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {'action': 'observaciones', 'id': id, 'observacion': observacion},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#obs_" + id).attr({"obs": observacion});
+                        } else {
+                            $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                            $("#observaciones").modal("show");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        $("#error").html("<label hidden class='alert alert-error' >Error al guardar la observacion, intente de nuevo</label>");
+                        $("#observaciones").modal("show");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".btn-cerrar").click(function () {
+                $("#observaciones").modal("hide");
+            });
+            $(".btn-observacion").click(actualizar_observacion);
+            $("#itemspanel .btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+            $(".aprobarcorrecion").click(function () {
+                $("#itemspanelaprobarcorrecion").modal({backdrop: 'static', width: '500px'}).modal('show');
+            });
+            $(".btn-cerraraprobarcorrecion").click(function () {
+                $("#itemspanelaprobarcorrecion").modal('hide');
+            });
+            $(".btn-aprobarcorrecion").click(function () {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {'action': 'aprobarcorrecion', 'idg': {{ grupo.id }}},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            location.reload();
+                            $("#itemspanelaprobarcorrecion").modal('hide');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".calificar_propuesta").click(function () {
+                var idi = $(this).attr('idi');
+                var idg = $(this).attr('idg');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {'action': 'calificar_propuesta', 'idi': idi, 'idg': idg},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#idi").val(idi);
+                            $("#idg").val(idg);
+                            $("#itemspanel").modal({backdrop: 'static', width: '1000px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                {#$("#itemspanel").modal({backdrop:'static', width: '1000px'}).modal('show');#}
+            });
+            $(".btn-aprobar").click(function () {
+                var calpresidente = $("#id_presidente").val();
+                var calsecretaria = $("#id_secretaria").val();
+                var caldelegado = $("#id_delegado").val();
+                var idi = $("#idi").val();
+                var idg = $("#idg").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {
+                        'action': 'guardar_calificacion_propuesta',
+                        'idi': idi,
+                        'idg': idg,
+                        'calpresidente': calpresidente,
+                        'calsecretaria': calsecretaria,
+                        'caldelegado': caldelegado
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            location.reload();
+                            $("#itemspanel").modal("hide");
+                            return false;
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".graduar_cerrar_acta").click(function () {
+                var id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {'action': 'graduar_estudiante', 'id': id},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            smoke.alert(data.mensaje);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $(".nota").change(function () {
+                var nota = $(this).val();
+                var id = $(this).attr('did');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_tutoriaposgrado",
+                    data: {'action': 'addnotasustentacion_ind', 'id': id, 'not': nota},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $("#estado_" + id).removeClass();
+                            if (data.estado == 10) {
+                                $("#estado_" + id).html("<span class='label label-success'>APROBADO</span>");
+                            } else {
+                                $("#estado_" + id).html("<span class='label label-important'>REPROBADO</span>");
+                            }
+                            {#                            $("#notafinal_"+id).html("<span>"+data.notafinal+"</span>");#}
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert('error de solicitud');
+                    },
+                    dataType: "json"
+                });
+            })
+
+            $(".cerraactaposgrado").click(function () {
+                var idtematitulacion = $(this).attr('idtematitulacion');
+                var nommaestrante = $(this).attr('nommaestrante');
+                Swal.fire({
+                title: "¿Estás seguro de cerrar el acta?",
+                text: nommaestrante,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, cerrar acta!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    var id = idtematitulacion;
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_tutoriaposgrado",
+                        data: {'action': 'cerraactaposgrado','id':id },
+                    }).done(function (data) {
+                        if (data.result === "ok") {
+                            Swal.fire(
+                                'Acta cerrada correctamente!',
+                                '',
+                                'success'
+                            ).then(function () {
+                                location.reload();
+                            });
+                        } else {
+                            Swal.fire(data.mensaje);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        alert('Error al intentar conectar con el servidor');
+                    }).always(function () {
+                    });
+
+
+                }
+
+            })
+
+            });
+
+
+            $(".aprobararchivo").click(function () {
+                var iditem = $(this).attr('iditem');
+                Swal.fire({
+                title: "¿Estás seguro de aprobar el documento?",
+                text: "",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, aprobar!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    var id = iditem;
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_tutoriaposgrado",
+                        data: {'action': 'aprobararchivo','id':id },
+                    }).done(function (data) {
+                        if (data.result === "ok") {
+                            Swal.fire(
+                                'Archivo aprobado correctamente!',
+                                '',
+                                'success'
+                            ).then(function () {
+                                location.reload();
+                            });
+                        } else {
+                            Swal.fire(data.mensaje);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        alert('Error al intentar conectar con el servidor');
+                    }).always(function () {
+                    });
+
+
+                }
+
+            })
+
+            });
+        });
+
+
+
+
+        function pdfrubricacalificaciones(idparticipante) {
+            openwindow('POST', '/pro_tutoriaposgrado', {
+                action: 'pdfrubricacalificacionesposgrado',
+                'id': idparticipante
+            }, '_blank');
+        }
+
+        function metodo_firma(id, tipo_documento,title_metodo) {
+            $.get('/pro_tutoriaposgrado', {'action': 'verificar_turno_para_firmar', 'id': id,'tipo_documento':tipo_documento}, function (data) {
+                $.unblockUI();
+                if (data.result) {
+                    if (data.puede) {
+                        Swal.fire({
+                            title: 'Seleccione el tipo de método para firmar',
+                            text: "",
+                            showCancelButton: true,
+                            confirmButtonText: 'Firmar por archivo',
+                            cancelButtonText: 'Firmar por token',
+                            showCloseButton: true,
+                        }).then((result) => {
+                            if (result.value) {
+                                formModalFirma(id,tipo_documento,title_metodo, 'firmar_acta_sustentacion_certificacion_por_archivo', footer = false)
+                            } else if (result.dismiss == 'cancel') {
+                                formModalFirma(id,tipo_documento,title_metodo, 'firmar_acta_sustentacion_certificacion_por_token', footer = false)
+                            }
+                        })
+                    } else {
+                        mensajeDanger(data.mensaje);
+                    }
+
+                } else {
+                    mensajeDanger("Problemas en el informe");
+                }
+            })
+        }
+
+        function formModalFirma(id, tipo, text, action, footer = false) {
+            bloqueointerface();
+            footer && $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'tipo': tipo,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result === 'ok') {
+                        if (data.data) {
+                            $('#itemspanel2 .panelbody2').html(data.data);
+                            $('#itemspanel2 .paneltitle2').html(text.toUpperCase());
+                            $("#itemspanel2").modal({
+                                backdrop: 'static',
+                                width: '90%'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $(".panelbody").empty();
+                            });
+                        } else {
+                            location.reload();
+                        }
+                    } else {
+                        mensajeDanger(data.message + ' ' + data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const firmar_acta_sustentacion_posgrado  = (pk) => {
+            Swal.fire({
+                html: `¿Está seguro de firma el Acta sustentación?`,
+                text: "Esta acción notificará a la siguiente persona que debe firmar.",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    ACTA_SUSTENTACION_NOTA = 10
+                    metodo_firma(pk,ACTA_SUSTENTACION_NOTA,'FIRMAR ACTA DE SUSTENTACIÓN')
+                }
+            });
+        }
+
+        const firmar_certificacion_defensa_posgrado  = (pk) => {
+            Swal.fire({
+                html: `¿Está seguro de firma la certificación de la defensa?`,
+                text: "Esta acción notificará a la siguiente persona que debe firmar el informe.",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    CERTIFICACION_DEFENSA=9
+                    metodo_firma(pk, CERTIFICACION_DEFENSA, "FIRMAR CERTIFICADO DE LA DEFENSA")
+                }
+            });
+        }
+
+
+    </script>
+    <script>
+        function formModalDetalle(id, text, action) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspaneldetalle .paneltitle').html(text);
+                        $("#itemspaneldetalle").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+
+            });
+        }
+        function formModal(id, camposecundario, text, action) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'perid': camposecundario,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+
+            });
+        }
+    </script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Calificación del trabajo de titulación y defensa oral.</h6>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class='col-lg-12'>
+            {% if not integrante.califico %}
+                <div class="alert alert-success">
+                    <a href="javascript:;" class="close" data-bs-dismiss="alert">×</a>
+                    <h4 class="alert-heading">Aviso importante.</h4>
+                    Se le comunica que la opción de cerrar acta, se presentará una vez califiquen todo los miembros del
+                    tribunal.
+                </div>
+            {% endif %}
+            {% if not grupo.tematitulacionposgradomatricula.rubrica %}
+                <div class="alert alert-danger">
+                    <a href="javascript:;" class="close" data-bs-dismiss="alert">×</a>
+                    <h4 class="alert-heading">Configuración previa de rúbrica de titulación.</h4>
+                    El mecanismo de titulación no tiene rúbrica, favor comunicarse con coordinación del programa de
+                    maestría.
+                </div>
+
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <!-- card -->
+            <div class="card h-100">
+                <!-- card body -->
+                <div class="card-body">
+                    <!-- heading-->
+                    <div class="d-flex align-items-center justify-content-between">
+                        <!-- text-->
+                        <div>
+                            <h4 class="mb-0"><a href="#" title="Ver más información"  class="tu" data-bs-toggle="offcanvas" data-bs-target="#offcanvasRight" class="text-inherit"> <span class="fa fa-graduation-cap dropdown-item-icon"></span> {{ integrante.matricula.inscripcion }}</a></h4>
+                            <span class="text-muted fs-6">{{ grupo.tematitulacionposgradomatricula.mecanismotitulacionposgrado }}</span>
+                        </div>
+                        <!-- dropdown-->
+                        <div class="d-flex align-items-center">
+                            <div class="dropdown dropstart">
+                                {% if not integrante.actacerrada %}
+                                <a href="#" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                   id="dropdownProjectOne" data-bs-toggle="dropdown"
+                                   aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v"></i>
+                                </a>
+                                {% endif %}
+                                <div class="dropdown-menu" aria-labelledby="dropdownProjectOne">
+                                    <span class="dropdown-header">Acciones</span>
+                                    {% if grupo.tematitulacionposgradomatricula.rubrica %}
+                                        {% if not integrante.califico and not grupo.tematitulacionposgradomatricula.actacerrada %}
+                                            <a class="dropdown-item bloqueo_pantalla"
+                                               href="pro_tutoriaposgrado?action=calificarrubricasustentacion&id={{ integrante.id|encrypt }}&idg={{ grupo.id|encrypt }}&perid={{ perid|encrypt }}">
+                                                <i class="fa fa-edit dropdown-item-icon dropdown-item-icon"></i>Calificar defensa oral
+                                            </a>
+                                        {% endif %}
+                                    {% else %}
+                                       <div class="ml-5">
+                                       <label class="badge badge-danger ">Sin rúbrica</label>
+                                       </div>
+                                    {% endif %}
+
+{#                                    {% if  integrante.califico and not integrante.actacerrada %}#}
+{#                                        <a class="dropdown-item cerraactaposgrado"#}
+{#                                           idtematitulacion="{{ integrante.id }}"#}
+{#                                           nommaestrante="{{ integrante.matricula.inscripcion.persona.nombre_completo_inverso }}"#}
+{#                                           href="javascript:;"> <i#}
+{#                                                class="fa fa-graduation-cap dropdown-item-icon"></i>Cerrar acta#}
+{#                                        </a>#}
+{#                                    {% endif %}#}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- para-->
+                    <div class="mt-3 mb-4">
+                        <p class="mb-0">{{ grupo.subtema|default_if_none:'' }}</p>
+                        <p class="mb-0"><strong>Fecha defensa:</strong> {{ grupo.fechadefensa |date:"d-m-Y"}} - {{ grupo.horadefensa }}</p>
+                    </div>
+                    <!-- progress -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="">
+
+                            {% if grupo.tematitulacionposgradomatricula.actacerrada %}
+                                    <a onclick="pdfrubricacalificaciones({{ integrante.id }})" class="btn btn-info btn-mini" href="#"><i class="fa fa-group "></i> Ver calificación tribunal</a>
+
+                                 {% if grupo.tematitulacionposgradomatricula.archivo_acta_sustentacion != None %}
+                                      <br><br><a href='javascript:;' onclick="firmar_acta_sustentacion_posgrado({{ grupo.tematitulacionposgradomatricula.id }})" class="btn btn-sucess btn-mini" ><i class="fa fa-signature"></i> Firmar acta de sustentación</a>
+                                     <a class="btn btn-default btn-sm btn-hover gallerypdf tu" title="ACTA DE SUSTENTACIÓN CON NOTAS" data-fancybox-type="iframe" href="{{ grupo.tematitulacionposgradomatricula.get_documento_acta_sustentacion_nota.url }}"><img src="/static/images/pdf.png" width="18" height="18" align="absmiddle"></a></a>
+                            {% endif %}
+
+                                 {% if grupo.tematitulacionposgradomatricula.archivo_certificacion_defensa != None %}
+                                    <a href='javascript:;' onclick="firmar_certificacion_defensa_posgrado({{ grupo.tematitulacionposgradomatricula.id }})" class="btn btn-sucess btn-mini" ><i class="fa fa-signature"></i> Firmar certificación de la defensa</a>
+                                     <a class="btn btn-default btn-sm btn-hover gallerypdf tu" title="CERTIFICACIÓN DE LA DEFENSA" data-fancybox-type="iframe" href="{{ grupo.tematitulacionposgradomatricula.get_documento_certificacion_defensa.url }}"><img src="/static/images/pdf.png" width="18" height="18" align="absmiddle"></a></a>
+                            {% endif %}
+                            {% endif %}
+
+                        </div>
+
+
+
+                        <!-- text -->
+                        <div>
+                            {% if grupo.tematitulacionposgradomatricula.actacerrada %}
+                                <span class="badge bg-danger">Acta cerrada</span>
+                            {% else %}
+                                {% if integrante.califico and not integrante.actacerrada %}
+{#                                    <a class="btn btn-success cerraactaposgrado"#}
+{#                                       idtematitulacion="{{ integrante.id }}"#}
+{#                                       nommaestrante="{{ integrante.matricula.inscripcion.persona.nombre_completo_inverso }}"#}
+{#                                       href="javascript:;"><i class="fa fa-graduation-cap"></i> Cerrar acta</a>#}
+                                {% else %}
+                                    <span class="badge bg-success">En proceso</span>
+                                {% endif %}
+
+                            {% endif %}
+
+                        </div>
+                    </div>
+                </div>
+                <!-- card footer -->
+                <div class="card-footer bg-white p-0">
+                    <div class="d-flex justify-content-between ">
+                        <div class="w-50 py-3 px-4 ">
+                            <h6 class="mb-0 text-muted">Calificaciones:</h6>
+                            <p class="text-dark fs-6 fw-semi-bold mb-0">
+                                Calificaron: {{ integrante.numerotribunalcalifico }} / 3</p>
+                        </div>
+                        <div class="border-start w-50 py-3 px-4">
+                            <h6 class="mb-0 text-muted">Promedio general:</h6>
+                            <p class="text-dark fs-6 fw-semi-bold mb-0">
+                            <td style="text-align: center;vertical-align: middle;" id="pg{{ integrante.id }}"
+                                valu="{{ integrante.matricula.inscripcion.promedio_record }}">{{ integrante.matricula.inscripcion.promedio_record }}</td>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-white p-0">
+                    <div class="d-flex justify-content-between ">
+                        <div class="w-50 py-3 px-4 ">
+                            <h6 class="mb-0 text-muted">Nota tribunal:</h6>
+                            <p class="text-dark fs-6 fw-semi-bold mb-0">
+                            <td id="notagrado{{ integrante.id }}">{{ integrante.calificacion }}</td>
+                            </p>
+                        </div>
+                        <div class="border-start w-50 py-3 px-4">
+                            <h6 class="mb-0 text-muted">Nota final de grado:</h6>
+                            <p class="text-dark fs-6 fw-semi-bold mb-0">
+                                {% if grupo.tematitulacionposgradomatricula.actacerrada %}
+                                    {{ notalfinalgraduado }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Calificaciones</h3>
+        </div>
+        <input type='hidden' name='idi' id="idi"/>
+        <input type='hidden' name='idg' id="idg"/>
+        <div class="modal-body panelbody">
+
+        </div>
+        <div class="modal-footer" style="margin-top: -25px">
+            <a href="javascript:;" class="btn btn-aprobar btn-success"><i class="fa fa-save"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelaprobarcorrecion" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitleaprobarcorrecion">Aprobación final</h3>
+        </div>
+        <div class="modal-body panelbodyaprobarcorrecion">
+            Esta seguro de aprobar corrección?<br><br>
+        </div>
+        <div class="modal-footer" style="margin-top: -25px">
+            <a href="javascript:;" class="btn btn-aprobarcorrecion btn-success"><i class="fa fa-save"></i>
+                Guardar</a>
+            <a href="javascript:;" class="btn btn-cerraraprobarcorrecion btn-info"><i class="fa fa-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+    <!-- offcanvas -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasRight" style="width: 600px;">
+
+            <div class="offcanvas-body" data-simplebar>
+                <div class="offcanvas-header px-2 pt-0">
+                    <h3 class="offcanvas-title" id="offcanvasExampleLabel">Información general</h3>
+                    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"
+                            aria-label="Close"></button>
+                </div>
+
+                <!-- card body -->
+                <div class="container">
+                    <!-- form -->
+                    <div class="row">
+                        <!-- form group -->
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Periodo:</strong></label>
+                            <p>{{ grupo.tematitulacionposgradomatricula.matricula.nivel.periodo }}</p>
+                        </div>
+                        <hr>
+
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Programa:</strong></label>
+                            <p>{{ grupo.tematitulacionposgradomatricula.matricula.inscripcion.carrera }}</p>
+                        </div>
+                        <hr>
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Maestrante:</strong></label>
+                            <p> {{ integrante.matricula.inscripcion.persona.nombre_completo_inverso }} -
+                                CI: {{ integrante.matricula.inscripcion.persona.cedula }}</p>
+                        </div>
+                        <hr>
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Fecha defensa:</strong></label>
+                            <p> {{ grupo.fechadefensa |date:"d-m-Y"}} - {{ grupo.horadefensa }}</p>
+                        </div>
+
+                        <hr>
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Mecánismo de titulación:</strong></label>
+                            <p>{{ grupo.tematitulacionposgradomatricula.mecanismotitulacionposgrado }}</p>
+                        </div>
+                        <hr>
+                        <!-- form group -->
+                        <div class="mb-3 col-12">
+                            <label class="form-label"><strong>Tema:</strong></label>
+                            <p>{{ grupo.subtema|default_if_none:'' }}</p>
+                        </div>
+                        <p><strong><span class="fa fa-graduation-cap"></span> {{ integrante.matricula.inscripcion.persona.nombre_completo_inverso }} - CI: {{ integrante.matricula.inscripcion.persona.cedula }}</strong></p>
+                        <!-- form group -->
+                        <div class="mb-3 col-md-6 col-12">
+                            <label class="form-label"><strong>Calificaciones</strong></label>
+                            <p>Califican: {{ integrante.numerotribunalcalifico }} / 3</p>
+                        </div>
+                        <!-- form group -->
+                        <div class="mb-3 col-md-6 col-12">
+                            <label class="form-label"><strong>Promedio general</strong></label>
+                            <p>{{ integrante.matricula.inscripcion.promedio_record }}</p>
+                        </div>
+                        <!-- form group -->
+                        <div class="mb-3 col-md-6 col-12">
+                            <label class="form-label"><strong>Nota tribunal</strong></label>
+                            <p>{{ integrante.calificacion }}</p>
+                        </div>
+                        <!-- form group -->
+                        <div class="mb-3 col-md-6 col-12">
+                            <label class="form-label"><strong>Nota final de grado</strong></label>
+                            <p> {% if grupo.tematitulacionposgradomatricula.actacerrada %}
+                                {{ notalfinalgraduado }}
+                            {% endif %}
+                            </p>
+                        </div>
+                        <hr>
+                        <div class="col-md-8"></div>
+                        <!-- button -->
+                        <div class="text-end">
+                            <button type="button" class="btn btn-outline-primary ms-2 text-end"
+                                    data-bs-dismiss="offcanvas" aria-label="Close">Cerrar
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    <div class="modal fade static" id="itemspanel2" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle2">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="close btn-icon btn btn-ghost btn-sm rounded-circle"
+                            data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody2"></div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal" style="display:none;">
+                    <div style="float: right">
+                        <button type="button" class="btn btn-default" data-dismiss="modal"><i
+                                class="fa fa-window-close"></i> Cerrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

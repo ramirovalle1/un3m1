@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script src="/static/apexcharts/dist/apexcharts.min.js"></script>
+    <script src="/static/chart.js/dist/Chart.min.js"></script>
+    <script>
+        $(function () {
+            ListCarreras()
+            $('.select2').select2({'width': '100%'})
+            $('#id_facultad').change(function (){
+              ListCarreras($(this));
+            });
+            $('#id_modalidad').change(function (){
+              ListCarreras($(this));
+            });
+        });
+        $(function () {
+            var COLOR_BLUE = '#2196F3';
+            var COLOR_GREEN = '#007166';
+            var COLOR_BLUE_TRANSPARENT = 'rgba(33, 150, 243, 0.5)';
+            var COLOR_GREEN_TRANSPARENT = 'rgba(72, 201, 176, 0.5)';
+
+            {% if listado_meses_rubros %}
+                var rubrosPendientes = $('#rubrosPendientes').get(0).getContext('2d');
+                var lineChart = new Chart(rubrosPendientes, {
+                    type: 'bar', // bar, horizontalBar, pie, line, doughnut, radar, polarArea
+                    data: {
+                        labels: [{% for p in listado_meses_rubros %}'{{ p.fechavence__month }}/{{ p.fechavence__year }}',{% endfor %}],
+                        datasets: [
+                            {
+                                label: 'TOTAL',
+                                data: [
+                                    {% for p in listado_meses_rubros %} '{{ p.totaladeudado|force_escape|safe }}',{% endfor %},
+                                ],
+                                borderColor: COLOR_BLUE,
+                                pointBackgroundColor: COLOR_BLUE,
+                                backgroundColor: COLOR_BLUE_TRANSPARENT,
+                                pointRadius: 2,
+                                borderWidth: 2,
+                                hoverBorderWidth: 3,
+                            },
+                            {
+                                label: 'PAGADO',
+                                data: [
+                                    {% for p in listado_meses_rubros %} '{{ p.totalpagado|force_escape|safe }}',{% endfor %},
+                                ],
+                                borderColor: COLOR_GREEN,
+                                pointBackgroundColor: COLOR_GREEN,
+                                backgroundColor: COLOR_GREEN_TRANSPARENT,
+                                pointRadius: 2,
+                                borderWidth: 2,
+                                hoverBorderWidth: 3,
+                            },
+                        ],
+                    },
+                    options: {
+                        title: {
+                            display: false,
+                            text: 'Deuda Rubros',
+                            fontSize: 15
+                        },
+                    }
+                });
+            {% endif %}
+        })
+        function ListCarreras(control){
+          $('#id_carrera').empty().append('<option value="0">TODOS</option>').val(0).trigger("change");
+            var id = parseInt($("#id_facultad").val());
+            var modalidad =  parseInt($('#id_modalidad').val());
+            if (id > 0 || modalidad > 0) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {'action': 'listcarreras', 'id': id, 'idm':modalidad},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == true) {
+                            for (elemento in data.lista) {
+                                if (data.lista[elemento][0] == '{{ carrera }}' ){
+                                    $('#id_carrera').append('<option value="' + data.lista[elemento][0] + '" selected>' + data.lista[elemento][1] + '</option>').trigger('change');
+                                }else{
+                                    $('#id_carrera').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            }
+                        } else {
+                            control.val(0).trigger("change");
+                            mensajeDanger(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        control.val(0).trigger("change");
+                        mensajeWarning("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>{{ periodo_ }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-12">
+                <form method="GET" id="frmBusqueda">
+                    <input type="hidden" name="action" value="recaudacionmatriculaspregrado">
+                    <div class="form-row pb-0">
+                        <div class="col-md-4 col-sm-12">
+                            <label for="id_ejecutivo"> <i class="fa fa-calendar-check"></i> Periodo</label>
+                            <select name="periodosel" id="periodosel" class="select2" required>
+                                <option value="0">-----------------</option>
+                                {% for pl in periodos_pregrado %}
+                                    <option value="{{ pl.id }}" {% if periodosel == pl.id %}selected{% endif %}>{{ pl }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 col-sm-12">
+                            <label for="id_facultad"><i class="fa fa-university"></i> Facultad</label>
+                            <select name="facultad" id="id_facultad" class="select2">
+                                <option value="0">TODOS</option>
+                                {% for coordinacion in coordinaciones %}
+                                    <option value="{{ coordinacion.id }}" {% if facultad == coordinacion.id %}selected{% endif %}>{{ coordinacion }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 col-sm-12">
+                            <label for="id_modalidad"><i class="fa fa-circle-o-notch"></i> Modalidad</label>
+                            <select name="modalidad" id="id_modalidad" class="select2">
+                                <option value="0">TODOS</option>
+                                {% for mod in modalidades %}
+                                    <option value="{{ mod.id }}" {% if modalidad == mod.id %}selected{% endif %}>{{ mod }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 col-sm-12">
+                            <label for="id_carrera"><i class="fa fa-book"></i> Carrera</label>
+                            <select name="carrera" id="id_carrera" class="select2">
+                                <option value="0">TODOS</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 col-sm-12">
+                            <label for="id_ejecutivo"><i class="fa fa-sort-numeric-asc"></i> Nivel</label>
+                            <select name="nivel" id="id_nivel" class="select2">
+                                <option value="0">TODOS</option>
+                                {% for nv in nivelesdemallas %}
+                                    <option value="{{ nv.id }}" {% if nivel == nv.id %}selected{% endif %}>{{ nv }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 col-sm-12 mb-2">
+                            <div class="input-group-append mt-md-4">
+                                <button class="btn btn-warning btn-mini" type="submit" id="button-addon2"><i class="fa fa-search" aria-hidden="true"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            {% if periodo_ %}
+                <div class="col-lg-12">
+                 <a href="{{ request.path }}?action={{ action }}&exportar_excel&{{ url_vars }}"
+                    class="btn btn-cian-secondary nav-icon"
+                   data-bs-toggle="tooltip"
+                   target="_blank"
+                    title="Exportar reporte en excel dependiendo del filtro actual">
+                    <i class="fa fa-file-excel"></i> Exportar reporte | {{ total }}</a>
+                    <div class="card mt-2">
+                        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+
+                            <canvas id="rubrosPendientes" height="70%" style="height: 70%" data-render="chart-js"></canvas>
+
+                            <table class="table table-bordered">
+                                <thead class="table-light">
+                                <tr>
+                                    <th class="text-center">Fecha</th>
+                                    <th class="text-center">Total Rubros</th>
+                                    <th class="text-center">Total Pagado</th>
+                                    <th class="text-center">Pendiente</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for l in listado_meses_rubros %}
+                                    <tr>
+                                        <td class="text-center">{{ l.fechavence__month }}/{{ l.fechavence__year }}</td>
+                                        <td class="text-center">${{ l.totaladeudado }}</td>
+                                        <td class="text-center">${{ l.totalpagado }}</td>
+                                        <td class="text-center">${{ l.saldocalculado }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center">NO EXISTEN REGISTROS</td>
+                                    </tr>
+                                {% endfor %}
+                                {% if listado_meses_rubros %}
+                                     <tr>
+                                        <td class="text-center"><b>Total:</b></td>
+                                        <td class="text-center">${{ totalrubros }}</td>
+                                        <td class="text-center">${{ totalpagado }}</td>
+                                        <td class="text-center">${{ totalsaldo }}</td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

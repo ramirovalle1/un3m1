@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            let tg="";
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $(".agregaractividad").click(function() {
+                let idobj = $(this).attr('idobj');
+                let numobj = $(this).attr('numobj');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'addactividadcronograma', 'idobj': idobj, 'numobj': numobj, 'idp': '{{ proyecto.id|encrypt }}'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleagregaractividad").html(data.title);
+                            $(".panelbodyagregaractividad").html(data.data);
+                            $("#itemspanelagregaractividad").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelagregaractividad .guardar").click(function () {
+                tg = 'g';
+                enviarFormulario("/pro_proyectoinvestigacion", "addactividadcronograma");
+                return false;
+            });
+
+            $("#itemspanelagregaractividad .guardaryagregar").click(function () {
+                tg = 'ga';
+                enviarFormulario("/pro_proyectoinvestigacion", "addactividadcronograma");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action === 'addactividadcronograma'){
+                    $("#frmAddActividadCronograma").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAddActividadCronograma").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'editactividadcronograma'){
+                    $("#frmEditActividadCronograma").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmEditActividadCronograma").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'addactividadcronograma')
+                        formdata = new FormData($("#frmAddActividadCronograma")[0]);
+                    else if (action === 'editactividadcronograma')
+                        formdata = new FormData($("#frmEditActividadCronograma")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                $("#detalle_objetivo_"+data.idobj).html(data.data);
+                                $("#detalle_objetivo_"+data.idobj).find(".eliminardetalle").tooltip();
+                                $(".eliminardetalle").unbind("click.eliminardetalle");
+                                $(".eliminardetalle").bind("click.eliminardetalle", eliminarDetalle);
+                                $(".editaractividad").unbind("click.editaractividad");
+                                $(".editaractividad").bind("click.editaractividad", editarActividad);
+
+                                $("#totalactividades"+data.idobj).html(data.totalactividades);
+                                $("#totalobjetivo"+data.idobj).html(formatoPorcentaje(data.totalponderacion));
+                                $("#totalponderacion").html(formatoPorcentaje(data.ponderaciongeneral));
+
+                                {% if permisoedicion %}
+                                    if(parseFloat(data.ponderaciongeneral) === 100){
+                                        $("#mensajeedicion").html('Estimado docente, una vez que haya concluido con los cambios en el cronograma y la ponderación registrada del proyecto sea del 100 % usted debe dar click en <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del cronograma"><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                        $("#finalizaredicion").tooltip();
+                                        $(".finalizaredicion").unbind("click.finalizaredicion");
+                                        $(".finalizaredicion").bind("click.finalizaredicion", finalizarEdicion);
+                                    }else{
+                                        $("#mensajeedicion").html('Estimado docente, una vez que haya concluido con los cambios en el cronograma y la ponderación registrada del proyecto sea del 100 % usted debe dar click en <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del cronograma" disabled><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                    }
+                                {% endif %}
+
+                                if(tg === 'ga'){
+                                    limpiarFormulario();
+                                    $("#actividad").focus();
+                                }else{
+                                    if(action === 'addactividadcronograma')
+                                        $("#itemspanelagregaractividad").modal('hide');
+                                    else
+                                        $("#itemspaneleditaractividad").modal('hide');
+                                }
+
+                                $("#mensajenovedadcronograma").hide();
+                                $("#mensajecronograma").show();
+
+                                urlDestino = "";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            limpiarFormulario = function(){
+                $("#actividad").val("");
+                $("#ponderacion").val("");
+                $("#entregable").val("");
+                $("#fechainicio").val("{{ fecha|date:'Y-m-d' }}");
+                $("#fechafin").val("{{ fecha|date:'Y-m-d' }}");
+                $("#responsable").val("").trigger("change");
+            };
+
+            editarActividad = function() {
+                let id = $(this).attr('id');
+                let numobj = $(this).attr('dobj');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'editactividadcronograma', 'id': id, 'numobj': numobj},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleeditaractividad").html(data.title);
+                            $(".panelbodyeditaractividad").html(data.data);
+                            $("#itemspaneleditaractividad").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            }
+
+            $("#itemspaneleditaractividad .guardar").click(function () {
+                tg = 'g';
+                enviarFormulario("/pro_proyectoinvestigacion", "editactividadcronograma");
+                return false;
+            });
+
+            eliminarDetalle = function() {
+                let auxboton = $(this);
+                let id = $(this).attr('id');
+                let descripcion = $(this).attr('titulo');
+                let url = "/pro_proyectoinvestigacion";
+                let action = "delactividadcronograma";
+                let urlDestino = "";//Para que no redireccione
+
+                let idf = $(this).attr("idfila");
+                let idobj = $(this).attr("idobj");
+                let dobj = $(this).attr("dobj");
+
+                let titulo = "Eliminar Actividad del Cronograma de Proyecto";
+                let mensaje = "¿Está seguro de eliminar la actividad <b>"+descripcion+"</b> del objetivo <b>"+dobj+"</b>?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    auxboton.tooltip('hide');
+                                    $("#filadetalle_"+idf).remove();
+                                    $("#totalactividades"+idobj).html(data.totalactividades);
+                                    $("#totalobjetivo"+idobj).html(formatoPorcentaje(data.totalponderacion));
+                                    $("#totalponderacion").html(formatoPorcentaje(data.ponderaciongeneral));
+
+                                    {% if permisoedicion %}
+                                        $("#mensajeedicion").html('Estimado docente, una vez que haya concluido con los cambios en el cronograma y la ponderación registrada del proyecto sea del 100 % usted debe dar click en <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del cronograma" disabled><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                    {% endif %}
+
+                                    if($("#tbobjetivo_"+idobj+" tbody").children().length == 0 ){
+                                        let filadefault = '<tr id="fila_default_objetivo_'+idobj+'">'+
+                                                    '<td colspan="11" style="text-align: center">No existen detalles de actividades para el objetivo # '+dobj+'</td>'+
+                                                    '</tr>';
+                                        $("#detalle_objetivo_"+idobj).append(filadefault);
+                                    }else{
+                                        let secuencia = 0;
+                                        $("#tbobjetivo_"+idobj+" tbody tr").each(function (index) {
+                                            secuencia ++;
+                                            $(this).children("td").each(function (index2) {
+                                                if(index2 === 0)
+                                                    $(this).html("<b>"+secuencia.toString()+"</b>");
+                                            });
+                                        });
+                                    }
+
+                                    $("#mensajenovedadcronograma").hide();
+                                    $("#mensajecronograma").show();
+
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            };
+
+            formatoPorcentaje = function(valor){
+                let resultado = Number(parseFloat(valor).toFixed(2)).toLocaleString('en', {minimumFractionDigits: 2}) + " %";
+                return resultado;
+            };
+
+            $(".confirmar").click(function() {
+                let id = '{{ proyecto.id|encrypt }}';
+                let url = "/pro_proyectoinvestigacion";
+                let action = "confirmarcronograma";
+                let urlDestino = "";//Para que no redireccione
+                let titulo = "Confirmar Cronograma de Actividades";
+                let mensaje = "¿Está seguro de confirmar el cronograma de actividades del Proyecto de Investigación?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    $('#mensajecronograma').hide();
+                                    $('.agregaractividad').hide();
+                                    $('.editaractividad').hide();
+                                    $('.eliminardetalle').hide();
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            });
+
+            $(".finalizaredicion").click(function() {
+                finalizarEdicion();
+            });
+
+            finalizarEdicion = function (){
+                let id = '{{ proyecto.id|encrypt }}';
+                let url = "/pro_proyectoinvestigacion";
+                let action = "finalizaredicioncronograma";
+                let urlDestino = "/pro_proyectoinvestigacion?action=cronograma&id={{ proyecto.id|encrypt }}";
+                let titulo = "Finalizar Edición del Cronograma de Actividades";
+                let mensaje = "¿Está seguro de finalizar con la edición del cronograma de actividades del proyecto?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            };
+
+            $(".eliminardetalle").unbind("click.eliminardetalle");
+            $(".eliminardetalle").bind("click.eliminardetalle", eliminarDetalle);
+
+            $(".editaractividad").unbind("click.editaractividad");
+            $(".editaractividad").bind("click.editaractividad", editarActividad);
+
+            {% if proyecto.estadocronograma == 4 %}
+                $("#mensajecronograma").hide();
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Propuestas de Docentes (Convocatoria: {{ tituloconvocatoria }})</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {% if permisoedicion %}
+            <div class='row'>
+                <div class="col-sm-12">
+{#                    <div id="mensajeedicion" class="alert alert-warning" style="text-align: justify">#}
+                    <div class="alert alert-warning d-flex align-items-center" role="alert">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-info-circle-fill me-2" viewBox="0 0 16 16">
+                            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                        </svg>
+                        <div id="mensajeedicion">
+                            {% if permisoedicion.estado == 1 %}
+                                Estimado docente, usted tiene pendiente la edición del Cronograma de actividades del proyecto
+                            {% else %}
+                                Estimado docente, una vez que haya concluido con los cambios en el cronograma y la ponderación registrada del proyecto sea del 100 % usted debe dar click en
+                                <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del cronograma"
+                                    {% if ponderacion != 100 %}
+                                        disabled
+                                    {% endif %}>
+                                    <span class="fa fa-check" ></span> Finalizar Edición
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        <div class='row'>
+            <div class="col-lg-12">
+                Ponderación Registrada: <span id="totalponderacion" class="badge bg-primary tu" title="Registrado">{{ ponderacion|floatformat:2 }} %</span> |
+                Porcentaje Cumplimiento: <span class="badge bg-success tu" title="Cumplido">{{ cumplimiento|floatformat:2 }} %</span> |
+                Porcentaje por Cumplir: <span class="badge bg-warning tu" title="Por cumplir">{{ porcumplir|floatformat:2 }} %</span>
+            </div>
+        </div>
+        {# TITULO DEL PROYECTO #}
+        <div class='row'>
+            <div class="col-sm-12 mb-0">
+                <div class="alert alert-primary d-flex align-items-center" role="alert">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-info-circle-fill me-2" viewBox="0 0 16 16">
+                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                    </svg>
+                    <div>
+                        {{ proyecto.titulo }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# TITULO DEL PROYECTO #}
+        {# MENSAJE NOVEDAD CRONOGRAMA #}
+        {% if proyecto.estadocronograma == 4 %}
+            <div id="mensajenovedadcronograma" class='row'>
+                <div class="col-sm-12">
+                    <div class="alert alert-danger" style="text-align: justify">
+                        <strong>Atención!!! Existen novedades con el cronograma de actividades. Observaciones: {{ proyecto.observacion }} </strong>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {# MENSAJE NOVEDAD CRONOGRAMA #}
+        {# MENSAJE CRONOGRAMA EDICIÓN #}
+        {% if puedeeditar and proyecto.estado.valor == 18 %}
+            <div id="mensajecronograma" class='row'>
+                <div class="col-sm-12">
+                    <div class="alert alert-warning" style="text-align: justify">
+                        <strong>Estimado Docente, una vez actualizado el cronograma de actividades usted debe dar click en </strong><a href="javascript:;" class='btn btn-success confirmar' data-bs-toggle="tooltip" data-bs-placement="top" title="Confirmar cronograma de actividades"><span class="fa fa-check" ></span> Confirmar</a>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {# MENSAJE CRONOGRAMA EDICIÓN #}
+        {% if proyecto.estado.valor == 20 and not permisoedicion %}
+            {# FILA DE MENÚ #}
+            <div class='row'>
+                <div class="col-sm-12 pb-2">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item" href="/pro_proyectoinvestigacion?action=avancesactividades&idp={{ proyecto.id|encrypt }}"><i class="fa fa-signal"></i>&nbsp;Avances Mensuales</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {# FILA DE MENÚ #}
+        {% endif %}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="accordion" id="accordionPanelsStayOpenExample">
+                    {# ACORDIÓN POR OBJETIVO #}
+                    {% for objetivo in objetivos %}
+                        {% with detalles=proyecto|args:objetivo.id|call:"cronograma_detallado_objetivo" totales=proyecto|args:objetivo.id|call:"totales_detalle_objetivo" %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="panelsStayOpen-heading{{ objetivo.id }}">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ objetivo.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ objetivo.id }}">
+                                <b>{{ forloop.counter }}.</b>&nbsp;{{ objetivo.descripcion }}&nbsp;
+                                <span class="badge bg-primary" id="totalactividades{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total actividades">{{ totales.totalactividades }}</span>&nbsp;
+                                <span class="badge bg-success" id="totalobjetivo{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total ponderación objetivo">{{ totales.totalponderacion|floatformat:2|intcomma }} %</span>
+                                </button>
+                            </h2>
+                            <div id="panelsStayOpen-collapse{{ objetivo.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ objetivo.id }}">
+                                <div class="accordion-body">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table_primary table-bordered table-striped" id="tbobjetivo_{{ objetivo.id }}" style="margin-bottom: 1px">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width: 1%;" class="text-center">N°</th>
+                                                    <th style="width: 24%;" class="text-center">Actividad</th>
+                                                    <th style="width: 6%;" class="text-center">Pond. (%)</th>
+                                                    <th style="width: 6%;" class="text-center">F. Inicio</th>
+                                                    <th style="width: 6%;" class="text-center">F. Fin</th>
+                                                    <th style="width: 8%;" class="text-center">Avance</th>
+                                                    <th style="width: 10%;" class="text-center">Entregable</th>
+                                                    <th style="width: 10%;" class="text-center">Evidencia control informes</th>
+                                                    <th style="width: 10%;" class="text-center">Observaciones</th>
+                                                    <th style="width: 16%;" class="text-center">Responsables</th>
+                                                    <th style="width: 3%;" colspan="2" class="text-center">
+                                                        {% if puedeeditar %}
+                                                            <a href="javascript:;" id="btnagregaractividad{{ objetivo.id }}" idobj="{{ objetivo.id|encrypt }}" numobj="{{ forloop.counter }}" class="btn btn-success btn-mini agregaractividad" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Actividad para objetivo # {{ forloop.counter }}"><i class="fa fa-plus"></i> </a>
+                                                        {% else %}
+                                                            &nbsp;
+                                                        {% endif %}
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="detalle_objetivo_{{ objetivo.id }}">
+                                                {% if detalles %}
+                                                    {% for detalle in detalles %}
+                                                        <tr id="filadetalle_{{ objetivo.id }}{{ forloop.counter }}">
+                                                            <td class="text-end"><b>{{ forloop.counter }}</b></td>
+                                                            <td class="text-justify">{{ detalle.actividad }}</td>
+                                                            <td class="text-end">{{ detalle.ponderacion|floatformat:2 }} %</td>
+                                                            <td class="text-center">{{ detalle.fechainicio|date:"d-m-Y" }}</td>
+                                                            <td class="text-center">{{ detalle.fechafin|date:"d-m-Y" }}</td>
+                                                            <td class="text-center">
+                                                                {% with ultimo_avance_actividad=detalle.ultimo_avance_actividad %}
+                                                                    {% if ultimo_avance_actividad %}
+                                                                        <p><b>Estado:</b></p>
+                                                                        <span class="text-{{ ultimo_avance_actividad.color_estado }}">{{ ultimo_avance_actividad.get_estadoactual_display|title }}</span>
+                                                                        <p><b>Porcentaje:</b></p>
+                                                                        <p>{{ ultimo_avance_actividad.avanceactual|floatformat:2 }}</p>
+                                                                    {% else %}
+                                                                        <p><b>Estado:</b></p>
+                                                                        <span class="text-warning">Por Iniciar</span>
+                                                                        <p><b>Porcentaje:</b></p>
+                                                                        <p>0.00</p>
+                                                                    {% endif %}
+                                                                {% endwith %}
+                                                            </td>
+                                                            <td class="text-justify">
+                                                                {% if detalle.entregable %}
+                                                                    {{ detalle.entregable|truncatechars:'100' }}
+                                                                {% elif detalle.lista_entregables %}
+                                                                    {% for entregable in detalle.lista_entregables %}
+                                                                        {{ entregable.entregable }}<br>
+                                                                    {% endfor %}
+                                                                {% else %}
+                                                                    <span class="badge bg-warning">Falta entregable</span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td class="text-justify">
+                                                                <p>{{ detalle.evidenciacontrolinforme|truncatechars:'100' }}</p>
+                                                            </td>
+                                                            <td class="text-justify">
+                                                                <p>{{ detalle.observaciongeneral|truncatechars:'100' }}</p>
+                                                            </td>
+                                                            <td class="text-justify">
+                                                                {% for responsable in detalle.lista_responsables %}
+                                                                    <div class="arrow-content">
+                                                                        <i class="arrow-item" style="bottom: 1px"></i>
+                                                                        <div class="arrow-text" data-bs-toggle="tooltip">{{ responsable.persona.nombre_completo_inverso|title }}</div>
+                                                                    </div>
+                                                                {% endfor %}
+                                                            </td>
+                                                            <td class="text-center">
+                                                                {% if puedeeditar %}
+                                                                    <a href="javascript:;" class="btn btn-tini btn-info editaractividad" id="{{ detalle.id|encrypt }}" dobj="{{ forloop.parentloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar"><i class="fa fa-edit"></i></a>
+                                                                {% else %}
+                                                                    &nbsp;
+                                                                {% endif %}
+                                                            </td>
+                                                            <td class="text-center">
+                                                                {% if puedeeditar and not detalle.ultimo_avance_actividad %}
+                                                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminardetalle" id="{{ detalle.id|encrypt }}" titulo="{{ detalle.actividad }}" idobj="{{ objetivo.id }}" dobj="{{ forloop.parentloop.counter }}" idfila="{{ objetivo.id }}{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                                                {% else %}
+                                                                    &nbsp;
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <tr id="fila_default_objetivo_{{ objetivo.id }}">
+                                                        <td colspan="11" style="text-align: center">No existen detalles de actividades para el objetivo # {{ forloop.counter }}</td>
+                                                    </tr>
+                                                {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endwith %}
+                    {% endfor %}
+                    {# ACORDIÓN POR OBJETIVO #}
+                </div>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelagregaractividad" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-plus"></i>&nbsp;<span class="paneltitleagregaractividad">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyagregaractividad">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardaryagregar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar y Agregar Otro</button>
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspaneleditaractividad" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-edit"></i>&nbsp;<span class="paneltitleeditaractividad">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyeditaractividad">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

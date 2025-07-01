@@ -1,0 +1,421 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <style type="text/css">
+        .icon-success {
+            color: #5CB85C;
+        }
+        .icon-critical {
+            color: red;
+        }
+        .modal-header {
+            padding: 9px 15px;
+            border-bottom: 1px solid #ddd;
+            background-color: #eaf5e2;
+            color: #3f572c;
+            border-radius: 6px 6px 0 0;
+        }
+        .radio label,
+        .checkbox label {
+            display: inline-block;
+            cursor: pointer;
+            color: #0074D9;
+            position: relative;
+            padding: 5px 15px 5px 51px;
+            font-size: 1em;
+            border-radius: 5px;
+            -webkit-transition: all 0.3s ease;
+            -o-transition: all 0.3s ease;
+            transition: all 0.3s ease; }
+        .radio label:hover,
+        .checkbox label:hover {
+            background: rgba(255, 65, 54, 0.1); }
+        .radio label:before,
+        .checkbox label:before {
+            content: "";
+            display: inline-block;
+            width: 17px;
+            height: 17px;
+            position: absolute;
+            left: 15px;
+            border-radius: 50%;
+            background: none;
+            border: 3px solid #0074D9; }
+        input[type="radio"] {
+            display: none; }
+        input[type="radio"]:checked + label:before {
+            display: none; }
+        input[type="radio"]:checked + label {
+            padding: 5px 15px;
+            background: #0074D9;
+            border-radius: 2px;
+            color: #fff; }
+        .checkbox label:before {
+            border-radius: 3px; }
+        .checkbox input[type="checkbox"] {
+            display: none; }
+        .checkbox input[type="checkbox"]:checked + label:before {
+            display: none; }
+        .checkbox input[type="checkbox"]:checked + label {
+            background: #0074D9;
+            color: #fff;
+            padding: 5px 15px; }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+            lista_items1 = [];
+            var tipobecapermitido = parseInt({{ tipobecapermitido }});
+            var modalidad = '{{ modalidad }}';
+            {% for r in requisitos %}
+                lista_items1.push({'id': '{{ r.0 }}',
+                    'cumple': '{{ r.3 }}'
+                });
+            {% endfor %}
+
+            chequeaFormulario = function() {
+                if($("#aceptadeclaracion").is(':checked')) {
+                    $("#lblmensajeaplicar").css("display", "block");
+                }else{
+                    $("#lblmensajeaplicar").css("display", "none");
+                }
+            };
+
+            $('#btnsolicitar').click(function () {
+                if(datoscompletos()){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/alu_becas",
+                        data: {"action": "solicitarbeca",
+                            "lista_items1": JSON.stringify(lista_items1),
+                            "periodovalida": $("#cpv").val(),
+                            "tipobeca" : $("#tipobeca").val(),
+                            "necesidad": $("#necesidad").val()
+                        },
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#mensajebeca").modal({backdrop:'static'}).modal('show');
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+
+                }
+            });
+
+            $('#btncerrarmsg').click(function () {
+                bloqueointerface();
+                location.href = "/alu_becas";
+            });
+
+            $('#btncerrarmsgnocumple').click(function () {
+                $('#mensajerequisitosnocumple').modal('hide');
+            });
+
+            $('#btnregresar').click(function () {
+                bloqueointerface();
+                location.href = "/alu_becas";
+            });
+
+            datoscompletos = function () {
+                vtipobeca = parseInt($("#tipobeca").val());
+                vctr = $("#ctr").val();
+
+                if(vtipobeca == 0){
+                    smoke.alert("Seleccione el tipo de beca al que desea aplicar");
+                    return false;
+                }
+
+                if(vtipobeca == 19){
+                    if($("#dcd").val() == 'NO'){
+                        smoke.alert("Debe completar la información de su discapacidad");
+                        return false;
+                    }
+                }
+
+                vdeudor = $("#deudor").val();
+                vincumplido = $("#incumplido").val();
+                marcado = $("#aceptadeclaracion").is(":checked");
+                vnecesidad = $("#necesidad").val();
+
+                if(vnecesidad == '0'){
+                    smoke.alert("Seleccione su necesidad.")
+                    return false;
+                }
+
+                if(vdeudor == '0'){
+                    smoke.alert("Seleccione el valor del requisito: Mantiene obligaciones vencidas o glosas con instituciones públicas como deudor o garante");
+                    return false;
+                }
+
+                if(vincumplido == '0'){
+                    smoke.alert("Seleccione el valor del requisito: Contratista incumplido o adjudicatario fallido del Estado.");
+                    return false;
+                }
+
+                if(vdeudor == '1' || vincumplido == '1' || vctr == 'NO'){
+                    smoke.alert("Usted no cumple con todos los requisitos para aplicar a la Beca")
+                    return false;
+                }
+
+                if(!marcado) {
+                    smoke.alert("Marque la casilla de declaración de datos incorporados en este formulario")
+                    return false;
+                }
+                return true;
+            };
+
+            $("#aceptadeclaracion").click(chequeaFormulario);
+
+            $("#lblmensajeaplicar").css("display", "none");
+
+            listado_requisitos = function (tipobeca) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/alu_becas",
+                    data: {'action': 'mostrarrequisitos', 'tipobeca': tipobeca},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#listadorequisitos").html(data.data);
+
+                            $("#lblmensajedecalaracion").css("display", "");
+                            $("#lblmensajeaplicar").css("display", "none");
+                            $("#aceptadeclaracion").removeAttr('checked');
+
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $('#tipobeca').change(function() {
+                var control = $(this);
+                console.log(control);
+                valor = parseInt(control.val());
+                console.log(valor);
+                $("#lblmensajecompletar").css("display", "block");
+                $("#lblmensajesicumple").css("display", "none");
+                $("#lblmensajenocumple").css("display", "none");
+                $("#lblmensajedecalaracion").css("display", "none");
+                $("#lblmensajeaplicar").css("display", "none");
+                $("#aceptadeclaracion").removeAttr('checked');
+                $("#necesidad").val(0).trigger('change');
+                if(valor != 0){
+                    listado_requisitos(valor);
+                }else
+                {
+                    $("#listadorequisitos").html("");
+                }
+            });
+
+            $("#btnactualizadiscapacidad").click(function () {
+                {#var ids=$(this).attr('ids');#}
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/alu_becas",
+                    data: {'action': 'datosdiscapacidad'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodydiscapacidad").html(data.data);
+                            $(".paneltitlediscapacidad").html(data.title);
+                            $("#itemspaneldiscapacidad").modal({backdrop:'static', width: '400px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#cerrarpaneldiscapacidad").click(function () {
+                $('#itemspaneldiscapacidad').modal('hide');
+            });
+
+            if(tipobecapermitido != 0){
+                //var val1= parseInt({{ tipobecapermitido }})
+                console.log(tipobecapermitido);
+                $("#tipobeca").val(tipobecapermitido).trigger("change");
+                $("#tipobeca").prop('disabled', true);
+            }
+
+            if(modalidad == '3')
+                $("#necesidad").val('2').trigger('change');
+            else
+                $("#necesidad").val('1').trigger('change');
+
+            $("#necesidad").prop('disabled', true);
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    {#    <div id="no-more-tables"><!-- inicio no more tables-->#}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}<br>
+                {{ title2 }}
+            </h4>
+
+            {#                <div class="alert alert-info" style="text-align: justify" role="alert">#}
+            {#                    La emergencia sanitaria ocasionada por la pandemia de COVID-19 agrava la situación de vulnerabilidad  registrada en un segmento considerable de la población estudiantil,  en este sentido la Universidad Estatal de Milagro promueve mecanismos institucionales para que los estudiantes en <strong>situación económica vulnerable</strong> y <strong>con discapacidad</strong> continúen su formación.#}
+            {#                </div>#}
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+            {% if datoscompletosdiscapacidad == 'NO' %}
+                <div style="text-align: justify" id="lblmensajeactualizadiscapacidad" class="alert alert-danger" role="alert">
+                    <strong>Estimado estudiante usted debe completar la información de la discapacidad para poder solicitar la beca</strong>
+                </div>
+            {% endif %}
+            <table class='table table-bordered table-striped'>
+                <tr>
+                    <td width="10%" style="vertical-align: middle">
+                        <strong>Tipo de Beca:<input type="hidden" id="ctr" name="ctr" value="">
+                            <input type="hidden" id="cpv" name="cpv" value="{{ anterior.id }}">
+                            <input type="hidden" id="dcd" name="dcd" value="{{ datoscompletosdiscapacidad }}">
+                        </strong>
+                    </td>
+                    <td width="30%">
+                        {#                        {% for t in tipobeca %}#}
+                        {#                            <span>{{ t.id }} - {{ tipobecapermitido }}</span>#}
+                        {#                        {% endfor %}#}
+                        <select id="tipobeca" name="tipobeca" style="width: 100%;">
+                            <option value="0">---------</option>
+                            {% for t in tipobeca %}
+
+                                <option value="{{ t.id }}" {% if tipobecapermitido == t.id %}selected{% endif %}>{{ t.nombre|upper }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td width="20%" style="vertical-align: middle">
+                        {% if datoscompletosdiscapacidad == 'NO' %}
+                            <a href="javascript:;" class="btn btn-success btn-small" id="btnactualizadiscapacidad">Completar Datos Discapacidad</a>
+                        {% else %}
+                            <span></span>
+                            {#                                <strong>Seleccione su necesidad: </strong>#}
+                        {% endif %}
+                    </td>
+                    <td width="40%">
+                        {#                            {% if datoscompletosdiscapacidad != 'NO' %}#}
+                        {#                                <select id="necesidad" name="necesidad" style="width: 300px;">#}
+                        {#                                    <option value="0">---------</option>#}
+                        {#                                    <option value="1">TABLET + PLAN DE DATOS</option>#}
+                        {#                                    <option value="2">PLAN DE DATOS</option>#}
+                        {#                                </select>#}
+                        {#                            {% endif %}#}
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+            <div id="listadorequisitos">
+
+            </div>
+
+            <div id="lblmensajedecalaracion" class="alert alert-warning" role="alert" style="display: none; text-align: justify">
+                Por el presente declaro que los datos incorporados en este formulario tienen el carácter de declaración juramentada, asumiendo la responsabilidad ética y jurídica correspondiente en caso de determinarse falsedad. Por tanto, al aceptar la declaración de información confirmo lo registrado en el mismo como verdadero y fidedigno.
+                <span class="checkbox">
+                        <input type="checkbox" class="" name="aceptadeclaracion" id="aceptadeclaracion">
+                        <label for="aceptadeclaracion"><i class="fa fa-handshake-o"></i></label>
+                    </span>
+                {#<input type="checkbox" name="aceptadeclaracion" id="aceptadeclaracion">#}
+            </div>
+
+            <div id="lblmensajeaplicar" class="alert alert-success" role="alert" style="display: none; text-align: justify">
+                Una vez completados los requisitos y condiciones necesarias para aplicar a la Beca institucional en el semestre <strong>{{ periodo.nombre }}</strong>, serán verificados en el proceso de aprobación y legalización de la beca. Los beneficios considerados en la beca corresponden a su necesidad elegida.
+            </div>
+
+            <div id="lblmensajecompletar" class="alert alert-warning" role="alert" style="text-align: justify">
+                <strong>Estimado estudiante favor completar la información para verificar si cumple o no con todos los requisitos</strong>
+            </div>
+
+            <div style="display: none; text-align: justify" id="lblmensajesicumple" class="alert alert-success" role="alert">
+                Estimado estudiante usted <strong>SI</strong> cumple con todos los requisitos para solicitar una beca.
+            </div>
+
+            <div style="display: none; text-align: justify" id="lblmensajenocumple" class="alert alert-danger" role="alert">
+                <strong>Estimado estudiante usted NO cumple con todos los requisitos para solicitar una beca.</strong>
+            </div>
+
+            <div class='' style="text-align: center">
+                <a href="javascript:;" class="btn btn-success btn-small" id="btnsolicitar">Guardar Solicitud</a>
+                <a href="javascript:;" class="btn btn-danger btn-small" id="btnregresar">No deseo aplicar, Cancelar</a>
+            </div>
+            {#    </div><!-- Fin no more tables-->#}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="mensajebeca" style="display: none;">
+        <div class="modal-header">
+            <h4>Solicitud de Beca enviada</h4>
+        </div>
+        <div class="modal-body" style="min-height: 60px;">
+            <div id='confmattxt' style="text-align: justify">
+                Su solicitud de aplicación a la beca en el semestre <strong>{{ periodo.nombre }}</strong>, ha sido enviada, y le llegará una notificación a su correo electrónico.
+                <br><br>
+                <strong>
+                    NOTA: Los requisitos serán VERIFICADOS en el proceso de aprobación y legalización de la beca.
+                </strong>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="btncerrarmsg">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspaneldiscapacidad" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitlediscapacidad">Asignar Beca</h4></td>
+                    <td><a href="javascript:;" id="cerrarpaneldiscapacidad" title="Cerrar" class="btn btn-danger btn-mini pull-right"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodydiscapacidad">
+        </div>
+    </div>
+
+    <div class="modal fade static" id="mensajerequisitosnocumple" style="display: none;">
+        <div class="modal-header">
+            <h4>No cumple todos los requisitos</h4>
+        </div>
+        <div class="modal-bodyrequisitosnocumple" style="min-height: 60px;">
+            <div id='contenidorequisitosnocumple' style="text-align: justify; color: red">
+                Listado: {{ lista_nocumplen }}
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info" id="btncerrarmsgnocumple">Cerrar</a>
+        </div>
+    </div>
+
+{% endblock %}

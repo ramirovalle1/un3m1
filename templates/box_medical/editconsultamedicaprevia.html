@@ -1,0 +1,311 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function(){
+            //$("#id_medicacion, #id_grupo, #id_tipoatencion, #id_motivo, #id_diagnostico, #id_tratamiento, #id_accion").addClass("validate[required]");
+            $("#id_grupo, #id_tipoatencion, #id_motivo, #id_diagnostico, #id_accion").addClass("validate[required]");
+            $("#id_hora").timepicker({minuteStep: 1,appendWidgetTo: 'body', showSeconds: false, showMeridian: false, defaultTime: false});
+            $("#id_fecha").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fechaatencion").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            $("#id_fechaatencion").blur(function () {
+                fechavalida($(this));
+            });
+
+            //$('textarea').css({'text-transform': 'none'});
+            $(".datospaciente").click(function(){
+                var id = $(this).attr('idp');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/box_medical",
+                    data: {'action':'datospaciente', 'id': id },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#datospaciente_body").html(data.html);
+                            $("#datospaciente").modal({backdrop:'static', width: 1000, height: 600}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $("#datospaciente_cerrar").click(function(){
+                $("#datospaciente").modal("hide");
+            });
+
+            actualizar_lista_enfermedad = function () {
+                lista_items1 = [];
+                $("#id_enfermedad_select2 option:selected").each(function(){
+                    var id = $(this).attr('value');
+                    var item = {
+                        id: id
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }
+                else
+                if (item.text) {
+                    return $('<span>' + item.text + '</span>');
+                }
+                else{
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_enfermedad_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                multiple: true,
+                ajax: {
+                    url: function (params) {
+                        return "/box_medical?action=buscarenfermedad&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                //alert(evt.params.data.id);
+                //alert(evt.params.data.name);
+            });
+
+            $("#id_enfermedad_select2").on("change", function (e) {
+                actualizar_lista_enfermedad();
+            });
+
+            $("#id_enfermedad_select2").val(null).trigger("change");
+
+            {% if enfermedad %}
+                {% for e in enfermedad %}
+                    var data = {
+                        id: {{ e.id }},
+                        text: '{{ e.descripcion }}'
+                    };
+                    var newOption = new Option(data.text, data.id, true, true);
+                    $('#id_enfermedad_select2').append(newOption).trigger('change');
+                {% endfor %}
+            {% endif %}
+
+
+            $("#id_descripcionaccion").addClass("validate[required]");
+
+            $("#id_descripcionaccion").keypress(function(event) {
+                if (event.keyCode == 13) {
+                    event.preventDefault();
+                }
+            });
+
+            $("#add_accion").click(function () {
+                $("#id_descripcionaccion").val('');
+                $("#area").val('1');
+                $("#registromodalaccion").modal({backdrop:'static', width: '450px', height: '150px'}).modal('show');
+            });
+
+            cargaracciones = function(nuevoid){
+                eseleccionados = $('#id_accion').val();
+                if(eseleccionados != null)
+                    eseleccionados.push(nuevoid);
+                else
+                    eseleccionados = [nuevoid];
+
+                $('#id_accion').empty();
+                bloqueointerface();
+                $.ajax({
+                        type: "POST",
+                        url: "api",
+                        data: {'a': 'acciones', 'area': 1},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    marcado='';
+                                    if(eseleccionados != null){
+                                        for (var i=0, len=eseleccionados.length; i < len; i++) {
+                                            if(data.lista[elemento][0] == eseleccionados[i]){
+                                                marcado = 'selected';
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    $('#id_accion').append('<option '+marcado+' value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                                $('#id_accion').trigger("change");
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                });
+            }
+
+            $(".cerraraccion").click(function() {
+                $("#registromodalaccion").modal("hide");
+                return false;
+            });
+
+            $(".guardaraccion").click(function() {
+                envioformularioreg("/box_medical","agregaraccionconsulta", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                if(action == 'agregaraccionconsulta')
+                    var valid = $("#formulario2").validationEngine('validate');
+
+                if (valid){
+                    $('.bootstrap-timepicker-widget').css({"display": "none"});
+                    bloqueointerface();
+                    $('.controls input').each(function(){
+                        if ($(this).attr('type')=='text'){
+                            $(this).val($(this).val().trim());
+                        }
+                        if ($(this).attr('type')!='file'){
+                            if ($(this).css('text-transform')=='uppercase'){
+                                if ($(this).attr('type')!='password'){
+                                    $(this).val($(this).val().toUpperCase());
+                                }
+                            }
+                        }
+                    });
+
+                    if(action == 'agregaraccionconsulta')
+                        var formdata = new FormData($("#formulario2")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action : action,
+                        url: url,
+                        data:  formdata,
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                if(action == 'agregaraccionconsulta'){
+                                    cargaracciones(data.id);
+                                    $("#registromodalaccion").modal("hide");
+                                    $.unblockUI();
+                                }
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                } else {
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/box_medical?action=consultamedicaprevias&id={{ paciente.id }}{% endblock %}
+{% block formdestination %}/box_medical?action=consultamedicaprevias&id={{ paciente.id }}{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/box_medical{% endblock %}
+{% block pre_form %}
+    <a class="datospaciente btn btn-info tu" idp="{{paciente.id}}" href="javascript:;" title="Mostrar datos del paciente"><i class="fa fa-table"></i> Mostrar Datos</a>
+    <br>&nbsp;
+    <div class="modal fade static" id="registromodalaccion" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent;">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitlearchivo">Agregar Acciones</h3></td>
+                </tr>
+            </table>
+        </div>
+        <form id="formulario2" style="width: 100%; margin-bottom: 0px;padding-left: 15px;padding-top: 10px; padding-right: 15px; padding-bottom: 0px">
+            <input type='hidden' name='action' value='agregaraccionconsulta'/>
+            <input type='hidden' name='area' id='area' value=''/>
+            <div class="row-fluid">
+                {% for field in form2 %}
+                    {% if field.field.widget.attrs.separator %}
+                        <div style="width: 100%; height: 1px; float: left;"></div>
+                    {% endif %}
+                    <fieldset class="control-group nomargins" style="float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}">
+                        <label class="control-label" for="id_{{ field.name }}">{{ field.label }}</label>
+                        <div class="controls">
+                            {{ field }}
+                            <p class="help-text">{{ field.help_text }} </p>
+                        </div>
+                    </fieldset>
+                {% endfor %}
+            </div>
+        </form>
+        <div class="modal-footer">
+            <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-success guardaraccion"> Guardar</a></td>
+            <a href="javascript:;" class="btn btn-info cerraraccion">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editconsultamedicaprevia'/>
+    <input type='hidden' name='id' value="{{ consulta.id }}"/>
+    <div class="modal fade static" id="datospaciente" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">
+                Datos del Paciente
+            </h3>
+        </div>
+        <div class="modal-body" id="datospaciente_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <td><a href="javascript:;" id="datospaciente_cerrar" class="btn btn-info"> Cerrar</a></td>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block formback %}/box_medical?action=consultamedicaprevias&id={{ paciente.id }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

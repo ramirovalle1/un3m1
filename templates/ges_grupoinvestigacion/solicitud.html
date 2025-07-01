@@ -1,0 +1,640 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $(".fancybox").fancybox();
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            busqueda = function () {
+                let term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length > 0)
+                    location.href = `/pro_fgrupoinvestigacion?s=${$("#searchinput").val().toUpperCase()}&action=solicitudesgrupo&tipo=ms`;
+            };
+
+            $(".mostrarrecorrido").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': 'mostrarrecorrido', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".paneltitlerecorrido").html(data.title);
+                            $(".panelbodyrecorrido").html(data.data);
+                            $("#itemspanelrecorrido").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+                if(action == 'aprobacionocs'){
+                    $("#frmAprobacionOCS").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAprobacionOCS").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'firmarinforme'){
+                    $("#frmFirmarDocumento").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFirmarDocumento").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'validarinforme'){
+                    $("#frmValidarInforme").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmValidarInforme").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if (action == 'aprobacionocs')
+                        formdata = new FormData($("#frmAprobacionOCS")[0]);
+                    else if(action == 'firmarinforme')
+                        formdata = new FormData($("#frmFirmarDocumento")[0]);
+                    else if(action == 'validarinforme')
+                        formdata = new FormData($("#frmValidarInforme")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                if(action == 'firmarinforme')
+                                    urlDestino = "/ges_grupoinvestigacion?action=solicitudesgrupo&ids="+data.id+"&idi="+data.idi+"&tinf=cf";
+                                else
+                                    urlDestino = "/ges_grupoinvestigacion?action=solicitudesgrupo";
+
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            } else {
+                                $.unblockUI();
+                                if (data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".devolverrequerimiento").click(function() {
+                let id = $(this).attr('id');
+                let tipodest = $(this).attr('tipodest');
+                let action = 'devolverrequerimiento';
+                let url = '/ges_grupoinvestigacion';
+                let urlDestino = '/ges_grupoinvestigacion?action=solicitudesgrupo';
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: url,
+                    data: {
+                        action: action,
+                        csrfmiddlewaretoken: '{{ csrf_token }}',
+                        id: id,
+                        tipodest: tipodest
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            if (data.showSwal) {
+                                $.unblockUI();
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            } else {
+                                location.href = urlDestino;
+                            }
+                        } else {
+                            $.unblockUI();
+                            if (data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".imprimirinforme").click(function() {
+                let id=$(this).attr('id');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': 'generarinforme', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.href = "/ges_grupoinvestigacion?action=solicitudesgrupo&ids="+data.id+"&idi="+data.idi+"&tinf=sf";
+                        } else {
+                            mensajeErrorSwal("No se puede imprimir", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".firmardocumento").click(function() {
+                let id = $(this).attr('id');
+                let idper = $(this).attr('idper');
+                let tipofirma = $(this).attr('tipofirma');
+                let accion = $(this).attr('acc');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': accion, 'id': id, 'idper': idper, 'tipofirma': tipofirma},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyfirmardocumento").html(data.data);
+                            $(".paneltitlefirmardocumento").html(data.title);
+                            $("#itemspanelfirmardocumento").modal({backdrop:'static'}).modal('show');
+                            $("#itemspanelfirmardocumento .guardar").attr('accion', accion);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelfirmardocumento .guardar").click(function () {
+                envioformularioreg("/ges_grupoinvestigacion", $(this).attr('accion'), false);
+                return false;
+            });
+
+            $(".validarinforme").click(function() {
+                let id = $(this).attr('id');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': 'validarinforme', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyvalidarinforme").html(data.data);
+                            $(".paneltitlevalidarinforme").html(data.title);
+                            $("#itemspanelvalidarinforme").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelvalidarinforme .guardar").click(function () {
+                envioformularioreg("/ges_grupoinvestigacion", "validarinforme", false);
+                return false;
+            });
+
+            $(".descargarinformes").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ges_grupoinvestigacion",
+                    data: {"action": "descargarinformes"},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.href = data.archivo;
+                        } else {
+                            $.unblockUI();
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".marcarremitidocga").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ges_grupoinvestigacion",
+                    data: {"action": "marcarremitidocga"},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            urlDestino = "/ges_grupoinvestigacion?action=solicitudesgrupo";
+                            mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                        } else {
+                            $.unblockUI();
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".aprobacionocs").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/ges_grupoinvestigacion",
+                    data: {'action': 'aprobacionocs', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyaprobacionocs").html(data.data);
+                            $(".paneltitleaprobacionocs").html(data.title);
+                            $("#itemspanelaprobacionocs").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelaprobacionocs .guardar").click(function () {
+                envioformularioreg("/ges_grupoinvestigacion", "aprobacionocs", false);
+                return false;
+            });
+
+            {% if informe %}
+                Fancybox.show([
+                    {
+                        src: "{{ informe }}",
+                        width: 2048,
+                        height: 1365,
+                        caption:"{{ tipoinforme }}"
+                    }
+                ]);
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ enlaceatras }}{% endblock %}
+{% block canvas %}
+{#     TITULO PANTALLA#}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Formación de Grupos de Investigación</h6>
+            </div>
+        </div>
+    </div>
+{#     TITULO PANTALLA#}
+    {% if tipo == 'ms' %}
+        <div class='row mx-sm-n0'>
+            <div class="col px-sm-4">
+                <div class="alert alert-info" style="text-align: justify"><strong>Nota:</strong> Es requisito imprescindible que la persona que vaya a cumplir la función de Director de un Grupo de Investigación sea <b>profesor titular</b> a <b>tiempo completo</b> de la UNEMI, con <b>título de cuarto nivel</b>.</div>
+            </div>
+        </div>
+    {% endif %}
+{#     FILA DE FILTRO#}
+    <div class='row mx-sm-n0'>
+        <div class="col px-sm-4">
+            <a href="/ges_grupoinvestigacion" class='btn btn-success tu' title="Grupos de Investigación"><span class="fa fa-list" ></span> Grupos de Investigación</a>
+            {% if persona.es_vicerrector_investigacion or persona.es_tecnico_investigacion %}
+                {% if informeaprobado %}
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-warning dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Procesos <i class="fa fa-angle-down"></i></button>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item descargarinformes" href="javascript:;"><i class="fa fa-download"></i>&nbsp;Descargar Informes Aprobados</a>
+                            {% if informexremitir %}
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item marcarremitidocga" href="javascript:;"><i class="fa fa-share-square"></i>&nbsp;Marcar Solicitudes como Remitidas a CGA</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+        <div class="col px-sm-4">
+            <div class="input-group mb-2">
+                <input type="text" class="form-control" autocomplete="off" placeholder="Nombre del Grupo" aria-label="Buscar" id='searchinput' name="s" value="{{ s }}">
+                <div class="input-group-append">
+                    <button class="btn btn-primary" id="search" type="button"><i class="fa fa-search"></i></button>
+                    {% if url_vars %}
+                        {% if s or ids %}
+                            <a title="Ver todo" href="{{ request.path }}?action=solicitudesgrupo" class="btn btn-default tr"><i class="fas fa-sync-alt"></i></a>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{#     FILA DE FILTRO#}
+    <div class="container-fluid">
+{#         TABLA DE DATOS#}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive-xxl">
+                    <table class='table table-bordered table-striped'>
+                        <thead class="table-light cabecera-fija">
+                            <tr>
+                                <th style="text-align: center; width: 5%;">Fecha/N°Solic.</th>
+                                <th style="text-align: center; width: 25%;">Solicitante/Facultad/Carrera</th>
+                                <th style="text-align: center; width: 35%;">Nombre</th>
+                                <th style="text-align: center; width: 5%;">Logotipo</th>
+                                <th style="text-align: center; width: 10%;">Resoluciones</th>
+                                <th style="text-align: center; width: 10%;">Informe</th>
+                                <th style="text-align: center; width: 5%;">Estado</th>
+                                <th style="text-align: center; width: 5%;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for grupo in gruposinvestigacion %}
+                                <tr>
+                                    <td style="text-align: center">
+                                        {% if grupo.fechasolicitud %}
+                                            {{ grupo.fechasolicitud|date:"d-m-Y" }}<br>
+                                            <span class="label label-info">{{ grupo.numero|stringformat:"05d" }}</span>
+                                        {% else %}
+                                            <span class="label label-warning">POR DEFINIR</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: justify">
+                                        <b>{{ grupo.profesor.persona.nombre_completo_inverso }}</b><br>
+                                        {{ grupo.coordinacion.nombre }}<br>
+                                        <b>{{ grupo.carrera_grupo }}</b>
+                                    </td>
+                                    <td style="text-align: justify">
+                                        {{ grupo.nombre }}
+                                        {% if grupo.acronimo %}
+                                            <b>({{ grupo.acronimo }})</b>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        {% if grupo.logotipo %}
+                                            <a href="{{ grupo.logotipo.url }}" class="fancybox tu" title="Ver Logotipo"><i class="fa fa-camera"></i></a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center;">
+                                        {% if grupo.resolucion_facultad %}
+                                            <a href="{{ grupo.resolucion_facultad.archivo.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="resolucionfacultad{{ grupo.id }}" data-caption="Resolución Consejo Directivo de Facultad" data-bs-toggle="tooltip" data-placement="top" title="Ver Resolución de Facultad"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                        {% if grupo.resolucion_ocs %}
+                                            <a href="{{ grupo.resolucion_ocs.archivo.url }}" class="btn btn-mini btn-success" data-width="2048" data-height="1380" data-fancybox="resolucionocs{{ grupo.id }}" data-caption="Resolución OCS" data-bs-toggle="tooltip" data-placement="top" title="Ver Resolución de OCS"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        {% if grupo.informe.archivo %}
+                                            <a href="{{ grupo.informe.archivo.url }}" class="btn btn-mini btn-warning" data-width="2048" data-height="1380" data-fancybox="informe{{ grupo.id }}" data-caption="Informe Técnico de Grupo de Investigación" data-bs-toggle="tooltip" data-placement="top" title="Ver Informe"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                        {% if grupo.informe.archivofirmado %}
+                                            <a href="{{ grupo.informe.archivofirmado.url }}" class="btn btn-mini btn-success" data-width="2048" data-height="1380" data-fancybox="informefirmado{{ grupo.id }}" data-caption="Informe Técnico de Grupo de Investigación Firmado" data-bs-toggle="tooltip" data-placement="top" title="Ver Informe Firmado"><i class="fa fa-eye"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span class="{{ grupo.estado.clase }} tu" title="{{ grupo.estado.observacion }}">{{ grupo.estado.descripcion }}</span>
+                                        {% if grupo.observacion %}
+                                            <a href="javascript:;" data-bs-toggle="popover" data-bs-trigger="focus" title="Observaciones" data-bs-content="{{ grupo.observacion }}"><i class="fa fa-eye text-danger tu" title="Ver Observaciones"></i></a>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <div class="dropbottom" style="text-align: left">
+                                            <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Acciones <i class="fa fa-angle-down"></i></button>
+                                            <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                                <li class="dropdown-item"><a class="mostrarrecorrido" id="{{ grupo.id|encrypt }}" href="javascript:;"><i class="fa fa-list-ol"></i> Mostrar Recorrido</a></li>
+                                                <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=informacion&id={{ grupo.id|encrypt }}&mod=C"><i class="fa fa-info-circle"></i> Mostrar Información</a></li>
+                                                <div class="dropdown-divider"></div>
+                                                {% if persona.es_vicerrector_investigacion %}
+                                                    {% if grupo.puede_reasignar_a_coordinador %}
+                                                        <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=reasignarsolicitud&id={{ grupo.id|encrypt }}&tipodest=ci"><i class="fa fa-share"></i> Reasignar para análisis</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_devolver_a_solicitante %}
+                                                        <li class="dropdown-item"><a class="devolverrequerimiento" id="{{ grupo.id|encrypt }}" tipodest="sol" href="javascript:;"><i class="fa fa-reply"></i> Devolver Requerimiento</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_subir_resolucion_ocs %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="aprobacionocs" id="{{ grupo.id|encrypt }}"><i class="fa fa-upload"></i> Subir Resolución OCS</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if persona.es_coordinador_investigacion %}
+                                                    {% if grupo.puede_reasignar_a_analista %}
+                                                        <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=reasignarsolicitud&id={{ grupo.id|encrypt }}&tipodest=ai"><i class="fa fa-share"></i> Reasignar para análisis</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_devolver_a_vicerrector %}
+                                                        <li class="dropdown-item"><a class="devolverrequerimiento" id="{{ grupo.id|encrypt }}" tipodest="vi" href="javascript:;"><i class="fa fa-reply"></i> Devolver Requerimiento</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_firmar_informe_coordinador %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="firmardocumento" id="{{ grupo.informe.id|encrypt }}" idper="{{ grupo.informe.aprueba.id|encrypt }}" tipofirma="APR" acc="firmarinforme"><i class="fa fa-pencil-alt"></i> Firmar Informe</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if persona.es_tecnico_investigacion %}
+                                                    {% if grupo.puede_validar_solicitud %}
+                                                        <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=analizarsolicitud&id={{ grupo.id|encrypt }}"><i class="fa fa-check-square-o"></i> Analizar Solicitud</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_agregar_editar_informe %}
+                                                        {% if not grupo.informegen %}
+                                                            <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=addinforme&id={{ grupo.id|encrypt }}"><i class="fa fa-file-text"></i> Agregar Informe</a></li>
+                                                        {% else %}
+                                                            <li class="dropdown-item"><a href="/ges_grupoinvestigacion?action=editinforme&id={{ grupo.informe.id|encrypt }}"><i class="fa fa-file-text"></i> Editar Informe</a></li>
+                                                            {% if grupo.puede_imprimir_informe %}
+                                                                <li class="dropdown-item"><a href="javascript:;" class="imprimirinforme" id="{{ grupo.informe.id|encrypt }}"><i class="fa fa-print"></i> Generar Informe</a></li>
+                                                            {% endif %}
+                                                            {% if grupo.puede_firmar_informe %}
+                                                                <li class="dropdown-item"><a href="javascript:;" class="firmardocumento" id="{{ grupo.informe.id|encrypt }}" idper="{{ grupo.informe.elabora.id|encrypt }}" tipofirma="ELA" acc="firmarinforme"><i class="fa fa-pencil-alt"></i> Firmar Informe</a></li>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                    {% if grupo.puede_subir_resolucion_ocs %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="aprobacionocs" id="{{ grupo.id|encrypt }}"><i class="fa fa-upload"></i> Subir Resolución OCS</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if persona.es_experto_investigacion %}
+                                                    {% if grupo.puede_validar_informe %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="validarinforme" id="{{ grupo.informe.id|encrypt }}"><i class="fa fa-check"></i> Analizar Informe</a></li>
+                                                    {% endif %}
+                                                    {% if grupo.puede_firmar_informe_experto %}
+                                                        <li class="dropdown-item"><a href="javascript:;" class="firmardocumento" id="{{ grupo.informe.id|encrypt }}" idper="{{ grupo.informe.verifica.id|encrypt }}" tipofirma="VER" acc="firmarinforme"><i class="fa fa-pencil-alt"></i> Firmar Informe</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="8" style="text-align: center">NO EXISTEN REGISTROS DE SOLICITUDES</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+{#         TABLA DE DATOS#}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelrecorrido" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list-ol"></i>&nbsp;<span class="paneltitlerecorrido">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyrecorrido">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelaprobacionocs" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-handshake-o"></i>&nbsp;<span class="paneltitleaprobacionocs">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyaprobacionocs">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelfirmardocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-pencil-alt"></i>&nbsp;<span class="paneltitlefirmardocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyfirmardocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar" accion=""> Firmar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelvalidarinforme" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-check"></i>&nbsp;<span class="paneltitlevalidarinforme">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyvalidarinforme">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelaprobacionocs" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-upload"></i>&nbsp;<span class="paneltitleaprobacionocs">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyaprobacionocs">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

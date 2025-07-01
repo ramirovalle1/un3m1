@@ -1,0 +1,365 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script type="text/javascript">
+
+        var destinatarios = [{% if respuesta %}"{{ respuesta.id }}"{% endif %}];
+        var counter = 1;
+
+        validacion_formulario = function (){
+
+            if (!chequear_tamano()){
+                return false;
+            }
+
+            if (destinatarios.length<=0){
+                $("#searchinput").focus().css({"background-color":"#fffaf0"});
+                return false;
+            }
+
+            asunto = $("#asunto").val();
+            if (asunto.trim().length<=0){
+                $("#asunto").focus().css({"background-color":"#fffaf0"});
+                return false;
+            }
+
+            contenido = $("#contenido").val();
+            if (contenido.trim().length<=0){
+                $("#contenido").focus().css({"background-color":"#fffaf0"});
+                return false;
+            }
+
+            if (!chequear_tamano()){
+                return false;
+            }
+
+            $("#seleccion").val(destinatarios);
+
+            return true;
+        };
+
+        chequear_tamano = function() {
+            var tamano_general;
+            var filesize;
+            ficheros = $(".fichero");
+            tamano_general = 0;
+            if (ficheros.length > 0) {
+                for (i = 0; i < ficheros.length; i++) {
+                    if (ficheros[i].files.length > 0) {
+                        filesize = ((ficheros[i].files[0].size / 1024) / 1024).toFixed(4);
+                        tamano_general += parseFloat(filesize);
+                        if (tamano_general >{{ limite_ficheros }}) {
+                            smoke.alert("Error, sobrepasa el tamaño permitido de archivos adjuntos.");
+                            return false;
+                        }
+                    } else {
+                        ficheros[i].parentElement.parentElement.remove();
+                    }
+                }
+            }
+            $('#archivos').css({"height":5+(ficheros.length*30)});
+            return true;
+        };
+
+        $(function() {
+
+            $("#searchinput").blur(function(){
+                if (destinatarios.length<=0){
+                    $(this).css({"background-color":"#fffaf0"});
+                } else {
+                    $(this).css({"background-color":""});
+                }
+            });
+
+            verificartextos = function(elemento){
+                if (elemento.val().trim().length<=0){
+                    elemento.css({"background-color":"#fffaf0"});
+                } else {
+                    elemento.css({"background-color":""});
+                }
+            };
+
+            $("#asunto").blur(function(){
+                verificartextos($(this));
+            });
+
+            $("#contenido").blur(function(){
+                verificartextos($(this));
+            });
+
+            $("#contenido").keyup(function(){
+                verificartextos($(this));
+            });
+
+            $("#asunto").keyup(function(){
+                verificartextos($(this));
+            });
+
+            seleccionararchivo = function(){
+                elemento = $(this);
+                id=elemento[0].id;
+                fichero=$("#archivefile_"+id);
+                if (fichero[0].files.length>0){
+                    filesize = ((fichero[0].files[0].size / 1024) / 1024).toFixed(2);
+                    $("#name_archivefile_"+id).html(fichero[0].files[0].name+" - "+filesize+"Mb.");
+                }
+            };
+
+            actualizar_eliminar_fichero = function(){
+                $('.del_file,.exam_file').unbind();
+                $('.del_file').click(function(){
+                    padre = $(this).parent();
+                    padre.remove();
+                    alto = $('#archivos').height();
+                    mialto = $(this).height();
+                    ficheros = $(".fichero");
+                    $('#archivos').css({"height":5+(ficheros.length*30)});
+                });
+
+                $('.exam_file').click(function(){
+                    id = $(this).attr('btnarchivefile_id');
+                    elemento=$('#archivefile_'+id );
+                    elemento.click()
+                });
+            };
+
+            $('#add_file').click(function(){
+                alto = $('#archivos').height();
+                $('#archivos').css({"height":alto+30});
+                $('#file_tools').before('<div class="archivoindividual" style="width: 100%; height: 30px;">' +
+                        '<a class="btn btn-mini del_file"><i class="fa fa-remove"></i></a>' +
+                        ' <a class="btn btn-mini exam_file" btnarchivefile_id="'+counter+'"><i class="fa fa-arrow-up"></i> Abrir</a>' +
+                        ' <span id="name_archivefile_'+counter+'" idname="archivefile_'+counter+'">nombre del fichero</span><div hidden="hidden" >' +
+                        '<input type="file" btnarchivefile_id="'+counter+'" name="archivefile_'+counter+'" id="archivefile_'+counter+'" onchange="seleccionararchivo()" class="fichero"/></div>' +
+                        '</div>');
+                $('#del_file').fadeIn(0);
+                actualizar_eliminar_fichero();
+                counter++;
+            });
+
+            buscar_persona = function(query, process) {
+                $.get("/mailbox", {'action': 'data', 'model': 'Persona','p': 1, 'q': query, 's': 10}, function(data) {
+                    var dato;
+                    if (data.results) {
+                        $("#searchinput").get(0).results = data.results;
+                        listing = [];
+                        for (var i in data.results) {
+                            dato = data.results[i];
+                            listing.push(dato.name);
+                        }
+                        process(listing);
+                    }
+                }, 'json');
+            };
+
+            $('#searchinput').typeahead({source: buscar_persona, updater: function(item) {
+                var datos;
+                var results = $("#searchinput").get(0).results;
+                for (var i in results) {
+                    datos = results[i];
+                    $("#searchinput").attr({"value":""});
+                    if (item==datos.name) {
+                        id = datos.id;
+                        nombre = datos.nombre_corto;
+                        existentes = $("#seleccionados").html();
+                        if (destinatarios.indexOf(id)<0){
+                            destinatarios.push(id);
+                            nuevo = "<label class='label label-info quitar' id='"+id+"'>"+nombre+"</label>";
+                            $("#seleccionados").html(existentes+" "+nuevo);
+                            $("#searchinput").css({"background-color":""});
+                            elminiarcontacto();
+                        }
+                    }
+                }
+            }});
+
+
+            $("#contactosbtn").click(function(){
+                contactos = $("#contactoslist");
+                if (contactos.hasClass('contactoslistoculto')){
+                    $("#contactoslist").show();
+                    contactos.removeClass('contactoslistoculto');
+                } else {
+                    $("#contactoslist").hide();
+                    contactos.addClass('contactoslistoculto');
+                }
+            });
+
+            $(".seleccion").click(function(){
+                id = $(this).attr("id");
+                nombre = $(this).html();
+                existentes = $("#seleccionados").html();
+                if (destinatarios.indexOf(id)<0){
+                    destinatarios.push(id);
+                    nuevo = "<label class='label label-info quitar' id='"+id+"'>"+nombre+"</label>";
+                    $("#seleccionados").html(existentes+" "+nuevo);
+                    $("#searchinput").css({"background-color":""});
+                    elminiarcontacto();
+                }
+            });
+
+            $(".desplegar").dblclick(function(){
+                id = $(this).attr("id");
+                hijos = $("#contenidodesplegar_"+id).children();
+                for (i=0;i<hijos.length;i++){
+                    id = hijos[i].id;
+                    nombre = hijos[i].firstChild.data;
+                    existentes = $("#seleccionados").html();
+                    if (destinatarios.indexOf(id)<0){
+                        destinatarios.push(id);
+                        nuevo = "<label class='label label-info quitar' id='"+id+"'>"+nombre+"</label>";
+                        $("#seleccionados").html(existentes+" "+nuevo);
+                        $(this).css({"background-color":""});
+                        elminiarcontacto();
+                    }
+                }
+            });
+
+            elminiarcontacto = function(){
+                $(".quitar").click(function(){
+                    id = $(this).attr("id");
+                    if (destinatarios.indexOf(id)>=0){
+                        destinatarios.splice(destinatarios.indexOf(id),1);
+                        this.remove();
+                    }
+                });
+            };
+
+            $('#myTab a').click(function (e) {
+                e.preventDefault();
+                $(this).tab('show')
+            });
+
+            $(".desplegar").click(function(){
+                id = $(this).attr("id");
+                elemento = $("#contenidodesplegar_"+id);
+                if (elemento.hasClass("oculto")){
+                    elemento.removeAttr("hidden");
+                    elemento.removeClass("oculto");
+
+                }else{
+                    elemento.attr({"hidden":"hidden"});
+                    elemento.addClass("oculto");
+                }
+            });
+
+            $("#btn-envio").click(function(){
+                if (validacion_formulario()){
+                    var formData;
+                    bloqueointerface();
+                    if(!validacion_formulario()){
+                        $.unblockUI();
+                    }
+                    contenido = $("#contenido").val();
+                    $("#seleccion").val(destinatarios);
+                    $("#mensaje").val(contenido);
+                    form = $("#data");
+                    $.ajax({
+                        url: '/mailbox',
+                        type: 'POST',
+                        data: new FormData(form[0]),
+                        async: true,
+                        cache: false,
+                        contentType: false,
+                        processData: false,
+                        success: function (returndata) {
+                            location.href = "/mailbox";
+                        },
+                        error: function (returndata) {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar el mensaje.");
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/mailbox{% endblock %}
+{% block canvas %}
+    <div class='row-fluid' id="title">
+        <div class='span2'>
+        </div>
+    </div>
+    <div class='row-fluid' id="title">
+        <div class='span3'>
+            <div hidden="hidden" id="contactoslist" class="contactoslistoculto" style="width: 300px;">
+                <div class="titleform">
+                    <h4>Contactos</h4>
+                </div>
+                <div style="height: 500px; overflow-y: scroll; overflow-x: hidden" id="contactos" class="well form-horizontal" >
+                    {% for lista in listacontactos %}
+                        {% if lista.0 == 0 %}
+                            {% if lista.2 != 0 %}
+                                <label id="{{ forloop.counter }}" class="badge desplegar {% if lista.2 %}badge-warning{% else %}badge-important{% endif %}">{% if lista.3 %}<abbr title="{{ lista.3 }}">{{ lista.1 }}</abbr>{% else %}{{ lista.1 }}{% endif %}</label><br>
+                            {% endif %}
+                            {% if lista.2 %}
+                                <div class="oculto" id="contenidodesplegar_{{ forloop.counter }}" hidden>
+                            {% endif %}
+                        {% else %}
+                            <label id="{{ lista.0 }}" class="badge seleccion">{{ lista.1 }}</label>
+                            {% if lista.2 == 0 %}
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class='span6'>
+            <div class="titleform">
+                <h4>{{ title }}</h4>
+            </div>
+            <div class="well form-horizontal" >
+                <form id="data">
+                    <fieldset>
+                        <div style="width: 100%; text-align: left; padding-bottom: 10px;">
+                            <a  href="javascript:;" id="btn-envio" class="btn btn-mini btn-success "><i class="fa fa-envelope"></i> Enviar</a>
+                        </div>
+
+                        <label>Contactos:</label>
+                        <div class="input-prepend" style="width: 100%;">
+                            <a  href="javascript:;" style="width: 15px; height: 24px;" class="btn" id="contactosbtn"><i class="fa fa-user"></i>  </a>
+                            <input type='text' name='destinatarios' style="text-transform: none; width: 90%; height: 34px;" class='searchinput input-block-level' id="searchinput" autocomplete="off">
+                        </div>
+                        <label>Destinatarios:</label>
+                        <div id="seleccionados" style="width: 100%; height:70px; overflow-y: scroll; overflow-x: hidden">
+                            {% if respuesta %}<label class='label label-info quitar' id='"+id+"'>{{ respuesta.nombre_completo }}</label>{% endif %}
+                        </div>
+                        <input type="hidden" id="seleccion" name="seleccion">
+                        <input type="hidden" id="mensaje" name="mensaje">
+                        <input type="hidden" id="action" name="action" value="add">
+                        {% if reenvio %}
+                            <input type="hidden" id="reenvio" name="reenvio" value="{{ reenvio.id }}">
+                        {% endif %}
+                        <div style="width: 100%">
+                            <label>Asunto:</label>
+                            <input type='text' name='asunto' style="text-transform: none;" class='input-block-level' id="asunto" value="{% if reenvio %}Fwd: {{ reenvio.mensaje.asunto }}{% else %}{% if asunto_respuesta %}Fwd: {{ asunto_respuesta }}{% endif %}{% endif %}">
+                        </div>
+
+                        <div style="width: 100%">
+                            <label>Mensaje:</label>
+                            <textarea id="contenido" rows="10" style="width: 100%; text-transform: none">{% if reenvio %}Escriba aqui su mensaje&#13;&#13;&#13;---------------Mensaje reenviado---------------&#13; {{ reenvio.mensaje.contenido }}{% endif %}</textarea>
+                        </div>
+                        {% if not reenvio %}
+                            <label><b>Archivos: (Límite de envio {{ limite_ficheros }}Mb.)</b></label>
+                            <div id="archivos" style="width: 100%; min-height: 5px;">
+                                <div id='file_tools'>
+                                    <a  href="javascript:;" id="add_file" class="btn btn-mini btn-info"><i class="fa fa-paper-clip"></i>Adjuntar</a>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div id="archivos" style="width: 100%; padding-top:5px; min-height: 5px;">
+                                <label><b>Archivos adjuntos:</b></label>
+                                {% for adjunto in reenvio.mensaje.archivo.all %}
+                                    <div style="height: 30px; width: 100%;">
+                                        <a href="{{ adjunto.download_link }}" target="_blank"><p>{{ adjunto.nombre }}</p></a>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </fieldset>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

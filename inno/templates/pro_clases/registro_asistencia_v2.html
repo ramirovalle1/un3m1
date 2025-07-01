@@ -1,0 +1,672 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+	<script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script type="text/javascript">
+        lista_items1 = [];
+        lista_items2 = [];
+        lista_items3 = [];
+        var solicitudes = 0;
+        $(function() {
+
+            $(".fancybox").fancybox();
+
+            $(".verdetalleppl").click(function() {
+                var idmatricula = $(this).attr('idmat');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_planificacion",
+                    data: {'action': 'verdetalleppl', 'idmatricula':idmatricula },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            $(".panelbodydetalleppl" ).empty();
+                            $(".panelbodydetalleppl" ).html(data.data);
+                            $("#itemspanelverdetalleppl").modal({backdrop:'static', width: '900px'}).modal('show');
+
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            total_presentes = function(){
+                return $('.selectorasistencia:checked').length
+            };
+
+            total_alumnos = function(){
+                return $('.selectorasistencia').length;
+            };
+
+            total_ausentes = function(){
+                return total_alumnos() - total_presentes()
+            };
+
+            actualiza_asistencia = function(){
+                $('#presentes').html(total_presentes());
+                $('#ausentes').html(total_ausentes());
+                $('#totalasistencias').html(total_alumnos());
+            };
+
+            actualizarasistencia = function(id, valor, intento){
+                var marca = $("#check"+id);
+                $("#tab"+id).css({"background-color":"rgb(217, 237, 247)"});
+                $.ajax({
+                    cache:false,
+                    type:"POST",
+                    url:"/pro_clases",
+                    data:{'action':'asistencia', 'id':id, 'val': valor},
+                    error:function(){
+                        if (intento>=100){
+                            solicitudes -= 1;
+                            $("#tab"+id).find("#check"+id).removeAttr("disabled");
+                            $("#tab"+id).css({"background-color":"rgb(240, 128, 128)"});
+                            if (valor=='y'){
+                                $("#check"+id).attr('checked', false);
+                            } else {
+                                $("#check"+id).attr('checked', true);
+                            }
+                            actualiza_asistencia();
+                        }else{
+                            actualizarasistencia(id,valor,intento+1);
+                        }
+                    },
+                    success:function(data){
+                        solicitudes -= 1;
+                        $("#tab"+id).find("#check"+id).removeAttr("disabled");
+                        if (data.result=="ok"){
+                            $("#tab"+id).css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                            $("#porcientoasist"+id).html(data.porcientoasist+"%");
+                            if (!data.porcientorequerido){
+                                $("#porcientoasist"+id).removeClass("badge-success");
+                                $("#porcientoasist"+id).addClass("badge-important");
+                            }else{
+                                $("#porcientoasist"+id).removeClass("badge-important");
+                                $("#porcientoasist"+id).addClass("badge-success");
+                            }
+                            let asistio = $(".asistencia_"+id).attr('asistio');
+                            let virtual = $(".asistencia_"+id).attr('virtual');
+                            $(".asistencia_"+id).removeClass('hidden');
+                            if (valor == 'y' && virtual == 1){
+                                $(".asistencia_"+id).addClass('hidden');
+                            }
+                        } else {
+                            $("#tab"+id).css({"background-color":"rgb(240, 128, 128)"});
+                            if (valor=='y'){
+                                $("#check"+id).attr('checked', false);
+                            } else {
+                                $("#check"+id).attr('checked', true);
+                            }
+                        }
+                        actualiza_asistencia();
+                    }
+                });
+            };
+
+            $(".selectorasistencia").change(function() {
+                var val;
+                var id;
+                $(this).prop('disabled', true);
+                id = $(this).attr("idasis");
+                val = $(this).is(":checked");
+                solicitudes += 1;
+                actualizarasistencia(id, ((val)?'y':'n'),0);
+            });
+
+            $(".action-observacion").click(function (){
+                bloqueointerface();
+                let type = $(this).attr('type');
+                let ida = $(this).attr('ida');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_clases",
+                    data: {'action': 'viewAsistenciaObservaciones', 'type': type, 'id': ida},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $("#modalViewAsistenciaObservacion .panelbody").html(data.html);
+                            $("#modalViewAsistenciaObservacion").modal({backdrop:'static', width: '60%'}).modal('show');
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                    },
+                    dataType: "json",
+                });
+            });
+
+            $('.action-close', $("#modalViewAsistenciaObservacion")).click(function(){
+                $("#modalViewAsistenciaObservacion").modal('hide');
+
+            });
+
+            $(".solicitudjustificacion").click(function(){
+                var id = $(this).attr('ids');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_clases",
+                    data: {'action':'detallesolicitud', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detallesolicitudmodal_body").html(data.data);
+                            $("#detallesolicitudmodal").modal({"backdrop":"static", "width": "800px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $("#detallesolicitudmodal_cerrar").click(function(){$("#detallesolicitudmodal").modal("hide");});
+
+            $('.action-save', $("#modalAddAsistenciaObservacion")).click(function(){
+                let type = $("[name='type']", $("#modalAddAsistenciaObservacion")).val();
+                let ida = $("[name='ida']", $("#modalAddAsistenciaObservacion")).val();
+                let ido = $("[name='ido']", $("#modalAddAsistenciaObservacion")).val();
+                let observacion = $("[name='observacion']", $("#modalAddAsistenciaObservacion")).val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_clases",
+                    data: {'action': 'saveAsistenciaObservacion', 'type': type, 'ida': ida, 'ido': ido, 'observacion': observacion},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#modalAddAsistenciaObservacion").modal('hide');
+                            NotificationJG.success(data.mensaje);
+                            $(".modal-body", $("#modalViewAsistenciaObservacion")).html(data.html);
+                            let obj = `#btn_action_observacion_${ida} > sup > label > b`;
+                            $(obj).html(data.num_observaciones);
+                            //$("#modalViewAsistenciaObservacion").modal({backdrop:'static', width: '90%'}).modal('show');
+
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                    },
+                    dataType: "json",
+                });
+            });
+
+            {% if leccion.leccion_es_practica_salud %}
+                $.ajax({
+                    type:"POST",
+                    url:"/pro_clases",
+                    data:{'action': 'leccion_silabo_practica_salud','idm': {{ leccion.clase.materia.id }},'idc': {{ leccion.clase.id }},'idl': {{ leccion.leccion_grupo.id }}, 'abierta': 'false' },
+                    error:function(){
+                        $.unblockUI();
+                        smoke.alert("Error de conección.");
+                    },
+                    success:function(data){
+                        if (data.results == 'ok'){
+                            $("#silabos_temas").html(data.html);
+                        } else {
+                            $.unblockUI();
+                            smoke.alert("Error al cargar los temas del silabo");
+                        }
+                    }
+                });
+            {% endif %}
+        });
+    </script>
+    <style>
+        .fa fa-folder-open{background-position:-408px -120px;width:16px;}
+        .well{min-height:20px;padding:19px;margin-bottom:20px;background-color:#f5f5f5;border:1px solid #e3e3e3;-webkit-border-radius:4px;-moz-border-radius:4px;border-radius:4px;-webkit-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);-moz-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);}.well blockquote{border-color:#ddd;border-color:rgba(0, 0, 0, 0.15);}
+        .well-large{padding:24px;-webkit-border-radius:6px;-moz-border-radius:6px;border-radius:6px;}
+        .well-small{padding:9px;-webkit-border-radius:3px;-moz-border-radius:3px;border-radius:3px;}
+        .close{float:right;font-size:20px;font-weight:bold;line-height:20px;color:#000000;text-shadow:0 1px 0 #ffffff;opacity:0.2;filter:alpha(opacity=20);}.close:hover,.close:focus{color:#000000;text-decoration:none;cursor:pointer;opacity:0.4;filter:alpha(opacity=40);}
+        button.close{padding:0;cursor:pointer;background:transparent;border:0;-webkit-appearance:none;}
+        .tree {
+            min-height:20px;
+            padding:19px;
+            margin-bottom:20px;
+            background-color:#fbfbfb;
+            border:1px solid #999;
+            -webkit-border-radius:4px;
+            -moz-border-radius:4px;
+            border-radius:4px;
+            -webkit-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);
+            -moz-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);
+            box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05)
+        }
+        .tree li {
+            list-style-type:none;
+            margin: 0;
+            padding:10px 5px 0 5px;
+            position:relative
+        }
+        .tree li::before, .tree li::after {
+            content:'';
+            left:-20px;
+            position:absolute;
+            right:auto
+        }
+        .tree li::before {
+            border-left:1px solid #999;
+            bottom:50px;
+            height:100%;
+            top:0;
+            width:1px
+        }
+        .tree li::after {
+            border-top:1px solid #999;
+            height:20px;
+            top:25px;
+            width:25px
+        }
+        .tree li span {
+            -moz-border-radius:5px;
+            -webkit-border-radius:5px;
+            border:1px solid #999;
+            border-radius:5px;
+            display:inline-block;
+            padding:3px 8px;
+            text-decoration:none
+        }
+        .tree li.parent_li>span {
+            cursor:pointer
+        }
+        .tree>ul>li::before, .tree>ul>li::after {
+            border:0
+        }
+        .tree li:last-child::before {
+            height:30px
+        }
+        .tree li.parent_li>span:hover, .tree li.parent_li>span:hover+ul li span {
+            background:#eee;
+            border:1px solid #94a0b4;
+            color:#000
+        }
+        .btn-flotante-close {
+            font-size: 12px; /* Cambiar el tamaño de la tipografia */
+            text-transform: uppercase; /* Texto en mayusculas */
+            font-weight: bold; /* Fuente en negrita o bold */
+            color: #ffffff; /* Color del texto */
+            border-radius: 15px; /* Borde del boton */
+            letter-spacing: 2px; /* Espacio entre letras */
+            /*background-color: #51a351;*/ /* Color de fondo */
+            padding: 15px 15px; /* Relleno del boton */
+            position: fixed;
+            bottom: 55px;
+            right: 10px;
+            transition: all 300ms ease 0ms;
+            box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.1);
+            z-index: 99;
+        }
+        .btn-flotante-close:hover {
+            /*background-color: #2c2fa5;*/
+            box-shadow: 0px 15px 20px rgba(0, 0, 0, 0.3);
+            color: #ffffff;
+            transform: translateY(-10px);
+        }
+        .btn-flotante-zoom {
+            font-size: 12px; /* Cambiar el tamaño de la tipografia */
+            text-transform: uppercase; /* Texto en mayusculas */
+            font-weight: bold; /* Fuente en negrita o bold */
+            color: #ffffff; /* Color del texto */
+            border-radius: 15px; /* Borde del boton */
+            letter-spacing: 2px; /* Espacio entre letras */
+            /*background-color: #51a351;*/ /* Color de fondo */
+            padding: 15px 15px; /* Relleno del boton */
+            position: fixed;
+            bottom: 55px;
+            right: 220px;
+            transition: all 300ms ease 0ms;
+            box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.1);
+            z-index: 99;
+
+        }
+        .btn-flotante-zoom:hover {
+            /*background-color: #2c2fa5;*/
+            box-shadow: 0px 15px 20px rgba(0, 0, 0, 0.3);
+            color: #ffffff;
+            transform: translateY(-10px);
+        }
+        @media only screen and (max-width: 600px) {
+            .btn-flotante-close, .btn-flotante-zoom  {
+                /*font-size: 14px;
+                padding: 12px 20px;
+                bottom: 55px;
+                right: 10px;*/
+                position: inherit;
+
+                padding: 12px 20px;
+                font-size: 14px;
+                padding: 7px 15px;
+                font-size: 14.5px;
+                -webkit-border-radius: 6px;
+                -moz-border-radius: 6px;
+                border-radius: 6px;
+                font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            }
+            /*.btn-flotante-zoom {
+                font-size: 14px;
+                padding: 12px 20px;
+                bottom: 110px;
+                right: 10px;
+            }*/
+        }
+
+        .btn-mini {
+            padding: 3px !important;
+            font-size: 10.5px !important;
+            -webkit-border-radius: 3px !important;
+            -moz-border-radius: 3px !important;
+            border-radius: 3px !important;
+        }
+
+        input[type="checkbox"]:checked {
+            background-color: #15CA9A;border-color: #15CA9A;
+        }
+
+        input[type="checkbox"]:hover {
+            cursor:pointer;border-color: #15CA9A;
+        }
+    </style>
+{% endblock %}
+{% block atras %}/pro_clases{% endblock %}
+{% block canvas %}
+    <div class="container">
+        <div class='row'>
+			<div class='col-lg-12 ps-1'>
+				<div class="headtitle ps-0">
+					<h3 class="my-0 py-0">{{ title }}</h3>
+					<h6>Aula: {{ leccion.clase.aula|title }} | Fecha: {{ leccion.fecha|date:"d-m-Y" }} | Hora Inicio: {{ leccion.horaentrada }} {% if not leccion.abierta %}Hora Fin: {{ leccion.horasalida }}{% endif %} {{ leccion.clase.turno }} {% if silabosemanal %}| Semana: {{ silabosemanal.numsemana }}{% endif %}</h6>
+                    <h6>Registro abierto hasta {{ registro_hasta|date:"Y-m-d" }}</h6>
+				</div>
+			</div>
+		</div>
+        <div class="row">
+            <div class="col-sm-12">
+                <strong>Materia: </strong>
+                {{ leccion.clase.materia.asignaturamalla.asignatura.nombre|title2 }} | {{ leccion.clase.materia.identificacion }} | {{ leccion.clase.materia.paralelo }} | {{ leccion.clase.materia.asignaturamalla.malla.carrera.nombre|title2 }}
+                {% if leccion.clase.tipoprofesor.id == 2 and leccion.clase.grupoprofesor and leccion.clase.grupoprofesor.paralelopractica %}
+                    | <span class="tu" title="Paralelo de practica">{{ leccion.clase.grupoprofesor.get_paralelopractica_display|title }}</span>
+                {% endif %}
+                {% if DEBUG %}
+                    <span class="label label-info tr" title="ID MATERIA">{{ leccion.clase.materia.pk }}</span>
+                {% endif %}
+                <br>
+                <strong>Modalidad: </strong> <span class="text-info me-4">{{ leccion.clase.get_tipohorario_display|lower|capfirst }} - {{ leccion.clase.tipoprofesor|lower|capfirst }}</span>
+                <strong>Profesor: </strong> {{ leccion.clase.profesor.persona.nombre_completo|title }}
+            </div>
+        </div>
+        <div class='row'>
+            <div class='col-sm-8'>
+                <div class="row">
+                    <div class="col-sm-12 d-flex justify-content-between">
+                        <div class="headtitle ms-0 ps-1 my-3">
+                            <h3 class="py-0">Estudiantes</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class='table table_primary table_striped' >
+                    <thead>
+                    <tr>
+                        <th style="width: 5%; text-align: center; vertical-align: middle;text-transform: capitalize!important;">#</th>
+                        <th style="width: 6%; text-align: center;vertical-align: middle;text-transform: capitalize!important;">Foto</th>
+                        <th style="width: 33%; text-align: center;vertical-align: middle;text-transform: capitalize!important;">Estudiantes</th>
+                        <th style="width: 15%; text-align: center;vertical-align: middle;text-transform: capitalize!important;">Observaciones</th>
+                        <th style="width: 10%; text-align: center;vertical-align: middle;text-transform: capitalize!important;">% Asistencia</th>
+                        <th style="width: 8%; text-align: center;vertical-align: middle;text-transform: capitalize!important;"></th>
+                        <th style="width: 23%; text-align: center;vertical-align: middle;text-transform: capitalize!important;">Detalle</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for asistencia in leccion.mis_asistencias %}
+                        <tr>
+                            <td style="vertical-align: middle; text-align: center"><strong>{{ forloop.counter }}</strong></td>
+                            {% with materiaasignada=asistencia.materiaasignada alumno=asistencia.materiaasignada.matricula.inscripcion.persona foto=alumno.foto puede_tomar_asistencia=asistencia.puede_tomar_asistencia %}
+                                <td style="text-align: center; vertical-align: middle;">
+                                    {% if alumno.foto.foto and verfoto %}
+                                        <a title="{{ alumno.nombre_completo }}" href='{% if DEBUG %}https://sga.unemi.edu.ec{% endif %}{{ alumno.foto.foto.url }}' class="fancybox" rel="group">
+                                            <img class="rounded-circle" src="{% if DEBUG %}https://sga.unemi.edu.ec{% endif %}{{ alumno.foto.foto.url }}" onerror="this.onerror=null;this.src='/static/images/image.png'" width="45" height="45">
+                                        </a>
+                                    {% else %}
+                                        {% if alumno.sexo_id == 1 %}
+                                            <img style="width: 20px; height: 20px;" class="img-circle" src="/static/images/iconos/mujer_small.png">
+                                        {% else %}
+                                            <img style="width: 20px; height: 20px;" class="img-circle" src="/static/images/iconos/hombre_small.png">
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="vertical-align: middle;">
+                                    <strong>{{ alumno|title }}</strong>
+                                    <br>
+                                    <span style="font-size: 12px!important;">
+                                        {% if asistencia.materiaasignada.matricula.inscripcion.persona.telefono and asistencia.materiaasignada.matricula.inscripcion.persona.telefono %}
+                                            <span>
+                                                <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ asistencia.materiaasignada.matricula.inscripcion.persona.telefono }}&text=Hola {{ asistencia.materiaasignada.matricula.inscripcion.persona|title }}' target="_blank" class="border-0 tu" title="Enviar mensaje por whatsapp">
+                                                    <i class="fa fa-whatsapp text-success"></i> <span class="text-dark">{{ asistencia.materiaasignada.matricula.inscripcion.persona.telefono }}</span>
+                                                </a>
+                                            </span>
+                                        {% endif %}
+                                        {% if materiaasignada.matricula.bloqueomatricula %}
+                                            <span class="label bg-danger">Matricula bloqueada</span>
+                                        {% endif %}
+                                        {% if materiaasignada.matriculas > 1 %}
+                                            <span class="label bg-danger">{{ materiaasignada.matriculas }}{% if materiaasignada.matriculas == 2 %}da {% elif materiaasignada.matriculas == 3 or materiaasignada.matriculas == 1 %}ra {% endif %} matricula</span>
+                                        {% endif %}
+                                        {% if materiaasignada.retiramateria %}
+                                            <span class='label bg-danger'>Retirado</span>
+                                        {% else %}
+                                            {% if alumno.datos_incompletos and incluyedatos %}
+                                                <span class='label label-info'>Datos incompletos</span>
+                                            {% endif %}
+                                        {% endif %}
+                                        {% if alumno.tiene_discapasidad_new %}
+                                            <span class='label label-warning'><i class="fa fa-user"></i>{{ alumno.discapasidad.tipodiscapacidad.nombre }} ({{ alumno.discapasidad.porcientodiscapacidad|floatformat:0 }}%)</span>
+                                        {% endif %}
+                                        {% if materiaasignada.matricula.inscripcion.persona.ppl %}
+                                            <span style="cursor:pointer;" class="label label-warning verdetalleppl" idmat="{{ materiaasignada.matricula.id|encrypt }}" href="javascript:;"><i class="fa fa-user"></i> PPL</span>
+                                        {% endif %}
+                                    </span>
+                                    {%if asistencia.materiaasignada.matricula.obtener_solicitud_extendida  %}
+                                        {% for soli in asistencia.materiaasignada.matricula.obtener_solicitud_extendida %}
+                                            <a href="javascript:;" ids="{{ soli.id }}" class="btn btn-danger btn-mini solicitudjustificacion tu" title="Justificación aprobada">{{ soli.fechainicioreposo|date:"d-m-Y"  }} a {{ soli.fechafinreposo|date:"d-m-Y"  }}</a>
+                                        {% endfor %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle;">
+                                    <button href="javascript:;" class="btn btn-outline-primary border-2 px-2 py-0 action-observacion" id="btn_action_observacion_{{ asistencia.id }}" type="{% if leccion.abierta and puede_tomar_asistencia %}add{% else %}view{% endif %}" ida="{{ asistencia.id }}">
+                                        <span type="button" class="position-relative mt-1">
+                                            <i style="font-size: 16px" class="bi bi-chat-left-text"></i>
+                                            <span id="dot-{{ asistencia.pk }}" {% if not asistencia.num_observacion %}style="display:none;"{% endif %} class="position-absolute top-0 start-100 translate-middle p-1 bg-warning border border-light rounded-circle mt-1">
+                                                <span class="visually-hidden">...</span>
+                                            </span>
+                                        </span>
+                                    </button>
+                                </td>
+                                <td style="text-align: center; vertical-align: middle;">
+                                    <span id='porcientoasist{{ asistencia.id }}' class="badge {% if not materiaasignada.porciento_requerido %}bg-danger{% else %}bg-success{% endif %} fs-6">{{ materiaasignada.asistenciafinal|floatformat:0 }}%</span>
+                                </td>
+                                <td style="text-align: center; vertical-align: middle;" id="tab{{ asistencia.id }}">
+                                    {% if not materiaasignada.matricula.bloqueomatricula and puede_tomar_asistencia %}
+                                        <input class="selectorasistencia form-check-input" type='checkbox' idasis='{{ asistencia.id }}' id='check{{ asistencia.id }}' {% if asistencia.asistio %} checked="true" {% endif %} {% if not puede_tomar_asistencia %} disabled="disabled" {% endif %}/>
+                                    {% else %}
+                                        <i class="fa fa-remove tu" style="color: red" title="Falta"></i>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: left; vertical-align: middle;">
+                                    {% if asistencia.virtual %}
+                                        <span class="asistencia_{{ asistencia.id }} {% if asistencia.virtual and asistencia.asistio %}hidden{% endif %}" virtual="{% if asistencia.virtual %}1{% else %}0{% endif %}" asistio="{% if asistencia.asistio %}1{% else %}0{% endif %}"><i class="fa fa-bell blinkimg" border=0></i></span> Ingreso el <b>{{ asistencia.virtual_fecha|date:"Y-m-d" }}</b> a las <b>{{ asistencia.virtual_hora|time:"h:i a" }}</b> desde el navegador <b>{{ asistencia.browser }}</b>, con IP: <b>{{ asistencia.ip_public }}</b>
+                                    {% else %}
+                                        No ingreso mediante la plataforma SGA, módulo de "Mis horarios"
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+            <div class='col-sm-4'>
+                <br>
+                <div class="row">
+                    <div class="col-sm-12">
+                        <a href="javascript:;" class="btn border-0 mb-1 mt-2" style="cursor:default;">&nbsp;</a>
+                        <table class="table table_primary table_striped">
+                            <thead>
+                            <tr>
+                                <th colspan="3" style="text-align: center;text-transform: capitalize!important;">Asistencias</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td style="text-align: center; width: 33%">Presentes</td>
+                                <td style="text-align: center; width: 33%">Ausentes</td>
+                                <td style="text-align: center; width: 33%">Total</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: center" id="presentes">{{ presentes }}</td>
+                                <td style="text-align: center" id="ausentes">{{ ausentes }}</td>
+                                <td style="text-align: center" id="totalasistencias">{{ totalasistencias }}</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        {% if leccion.leccion_es_practica_salud %}
+                            <div class="row">
+                                {% include 'pro_clases/leccion_silabo_v2.html' %}
+                            </div>
+                        {% endif %}
+                        <br>
+                        <table class="table table_primary table_striped">
+                            <thead>
+                            <tr>
+                                <th style="text-transform: capitalize!important;" colspan="2">Observaciones</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td style="width: 25px;%">
+                                    <div style="width: 15px; height: 15px;background-color: rgb(240, 128, 128)"></div>
+                                </td>
+                                <td style="font-size:10px;">Error al enviar los datos, debido a fallas de conectividad.</td>
+                            </tr>
+                            <tr>
+                                <td style="width: 25px;%">
+                                    <div style="width: 15px; height: 15px;background-color: rgb(148, 255, 183)"></div>
+                                </td>
+                                <td style="font-size:10px;">Los datos fueron enviados correctamente.</td>
+                            </tr>
+                            <tr>
+                                <td style="width: 25px;%">
+                                    <div style="width: 15px; height: 15px;background-color: rgb(217, 237, 247)"></div>
+                                </td>
+                                <td style="font-size:10px;">Los datos estan en proceso de ser enviados.</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="width: 15px; height: 15px; background-color: #D6F3AC;"></div>
+                                </td>
+                                <td style="font-size:10px;">Estudiante ingreso mediante módulo de Mis Horarios.</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="width: 15px; height: 15px; background-color: #F9F6E7;"></div>
+                                </td>
+                                <td style="font-size:10px;">Estudiante no ingreso mediante módulo de Mis Horarios.</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2"> </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalViewAsistenciaObservacion" style="display: none;">
+		<div class="modal-dialog modal-dialog-centered modal-lg">
+			<div class="modal-content">
+				<div class="modal-body">
+					<div class="container">
+						<div class="panelbody"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+    <div class="modal fade static" id="modalAddAsistenciaObservacion" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+			<div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="paneltitle"><span></span> Observación</h4>
+                </div>
+                <div class="modal-body panelbody">
+                    <input type="hidden" value="" name="ida">
+                    <input type="hidden" value="" name="ido">
+                    <input type="hidden" value="{{ type }}" name="type">
+                    <textarea style="width: 100%" rows="5" name="observacion"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <a href="javascript:;" class="btn btn-success action-save"> Guardar</a>
+                    <a href="javascript:;" class="btn btn-info action-close"> Cancelar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="detallesolicitudmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+			<div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle1">Detalle de la solicitud</h3>
+                </div>
+                <div class="modal-body" id="detallesolicitudmodal_body"></div>
+                <div class="modal-footer">
+                    <div style="float: right">
+                        <a href="javascript:;" id="detallesolicitudmodal_cerrar" class="btn btn-info"> Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelverdetalleppl" style="display: none;">
+		<div class="modal-dialog modal-dialog-centered modal-lg">
+			<div class="modal-content">
+				<div class="modal-header border-0">
+					<div class="ps-1"><h3 class="fw-bolder py-0" style="font-size: 14px;">Detalle de PPL</h3></div>
+					<button type="button" class="btn btn-close btn-default rounded-circle p-3 my-0" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body border-0">
+					<div class="row">
+						<div class="col-sm-12">
+							<div class="panelbodydetalleppl"></div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer border-0" style="justify-content:center!important;">
+					<a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cerrar</a>
+				</div>
+			</div>
+		</div>
+	</div>
+{% endblock %}

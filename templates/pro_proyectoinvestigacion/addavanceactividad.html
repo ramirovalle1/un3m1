@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+            $("#observacion").addClass("validate[required]")
+
+            $(".porcentajesavance").blur(function () {
+                let idobj = $(this).attr("idobj");
+                let secuencia = $(this).attr("secuencia");
+                numerico($(this), 0, 100, 2);
+                let porcentaje = parseFloat($(this).val());
+
+                if (porcentaje == 0)
+                    $(`#estado${idobj}${secuencia}`).val('1').trigger('change');
+                else if (porcentaje < 100)
+                    $(`#estado${idobj}${secuencia}`).val('2').trigger('change');
+                else
+                    $(`#estado${idobj}${secuencia}`).val('3').trigger('change');
+            });
+
+            $(".guardar").click(function () {
+                enviarFormulario("/pro_proyectoinvestigacion", "addavanceactividad");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+
+                $("#frmAddAvanceActividad").validationEngine('attach',{ scroll: false });
+                valido = $("#frmAddAvanceActividad").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    bloqueointerface();
+                    formdata = new FormData($("#frmAddAvanceActividad")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                let urlDestino = "/pro_proyectoinvestigacion?action=avancesactividades&idp={{ proyecto.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                location.href = "/pro_proyectoinvestigacion?action=avancesactividades&idp={{ proyecto.id|encrypt }}";
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?action=avancesactividades&idp={{ proyecto.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Proyecto: {{ proyecto.titulo }} | Director: {{ proyecto.profesor.persona.nombre_completo_inverso }}</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        <div class='row mb-1'>
+            <div class="col-lg-12">
+                Año: <span class="badge bg-primary tu" title="Año">{{ fechainicio.year }}</span> |
+                Mes: <span class="badge bg-success tu" title="Mes">{{ fechainicio.month|nombremes|title }}</span>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                {# CUERPO DEL FORMULARIO #}
+                <form name="frmAddAvanceActividad" id="frmAddAvanceActividad">{% csrf_token %}
+                    <input type='hidden' name='action' value='addavanceactividad'/>
+                    <input type='hidden' name='idp' value='{{ proyecto.id|encrypt }}'/>
+                    <input type='hidden' name='finicio' value='{{ finicio }}'/>
+                    <input type='hidden' name='ffin' value='{{ ffin }}'/>
+                    <div class="accordion" id="accordionPanelsStayOpenExample">
+                        {# ACORDIÓN POR OBJETIVO #}
+                        {% for objetivo in objetivos %}
+                            {% with detalles=proyecto|args:objetivo.id|call:"cronograma_detallado_objetivo" totales=proyecto|args:objetivo.id|call:"totales_detalle_objetivo" %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="panelsStayOpen-heading{{ objetivo.id }}">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ objetivo.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ objetivo.id }}">
+                                    <b>{{ forloop.counter }}.</b>&nbsp;{{ objetivo.descripcion }}&nbsp;
+                                    <span class="badge bg-primary" id="totalactividades{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total actividades">{{ totales.totalactividades }}</span>&nbsp;
+                                    <span class="badge bg-success" id="totalobjetivo{{ objetivo.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total ponderación objetivo">{{ totales.totalponderacion|floatformat:2|intcomma }} %</span>
+                                    </button>
+                                </h2>
+                                <div id="panelsStayOpen-collapse{{ objetivo.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ objetivo.id }}">
+                                    <div class="accordion-body">
+                                        <div class="table-responsive-xxl">
+                                            <table class="table table_primary table-bordered table-striped" id="tbobjetivo_{{ objetivo.id }}" style="margin-bottom: 1px">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 1%;" class=text-center">N°</th>
+                                                        <th style="width: 37%;" class="text-center">Actividad</th>
+                                                        <th style="width: 8%;" class="text-center">Ponderación (%)</th>
+                                                        <th style="width: 8%;" class="text-center">Fecha Inicio</th>
+                                                        <th style="width: 8%;" class="text-center">Fecha Fin</th>
+                                                        <th style="width: 15%;" class="text-center">Porcentaje Avance</th>
+                                                        <th style="width: 20%;" class="text-center">Estado Avance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="detalle_objetivo_{{ objetivo.id }}">
+                                                    {% if detalles %}
+                                                        {% for detalle in detalles %}
+                                                            <tr id="filadetalle_{{ objetivo.id }}{{ forloop.counter }}">
+                                                                <td class="text-end"><b>{{ forloop.counter }}</b></td>
+                                                                <td class="text-justify">
+                                                                    <input type="hidden" id="idsactividad{{ forloop.counter }}" name="idsactividad[]" value="{{ detalle.id }}" />
+                                                                    <input type="hidden" id="ponderaciones{{ forloop.counter }}" name="ponderaciones[]" value="{{ detalle.ponderacion }}" />
+                                                                    {{ detalle.actividad }}
+                                                                </td>
+                                                                <td class="text-end">{{ detalle.ponderacion|floatformat:2 }} %</td>
+                                                                <td class="text-center">{{ detalle.fechainicio|date:"d-m-Y" }}</td>
+                                                                <td class="text-center">{{ detalle.fechafin|date:"d-m-Y" }}</td>
+                                                                <td class="text-start">
+                                                                    <input type="text" maxlength="5" autocomplete="off" id="porcentajesavance{{ objetivo.id }}{{ forloop.counter }}" name="porcentajesavance[]" idobj="{{ objetivo.id }}" secuencia="{{ forloop.counter }}" value="" class="porcentajesavance validate[required, min[0], max[100]]" style="width: 99%; text-align: right">
+                                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                                </td>
+                                                                <td class="text-start">
+                                                                    <select id="estado{{ objetivo.id }}{{ forloop.counter }}" name="estado[]" class="validate[required]" disabled>
+                                                                        <option value="">---------</option>
+                                                                        {% for estado in estados %}
+                                                                            <option value="{{ estado.id }}">{{ estado.descripcion|title }}</option>
+                                                                        {% endfor %}
+                                                                    </select>
+                                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                                </td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        <tr id="fila_default_objetivo_{{ objetivo.id }}">
+                                                            <td colspan="9" style="text-align: center">No existen detalles de actividades para el objetivo # {{ forloop.counter }}</td>
+                                                        </tr>
+                                                    {% endif %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endwith %}
+                        {% endfor %}
+                        {# ACORDIÓN POR OBJETIVO #}
+                    </div>
+                    <div class="row">
+                        <div class="table-responsive-xxl">
+                            <table class='table table_primary table-striped'>
+                                <thead>
+                                    <tr>
+                                        <th colspan="2">Observaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 15%;"><b>Observaciones:</b></td>
+                                        <td style="width: 85%">
+                                            <textarea style="width: 100%; resize: none; text-transform: none" cols="40" id="observacion" name="observacion" rows="3"></textarea>
+                                            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </form>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+{% endblock %}

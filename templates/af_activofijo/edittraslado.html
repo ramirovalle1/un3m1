@@ -1,0 +1,281 @@
+{% extends "ajaxformbs.html" %}
+{% block atras %}/af_activofijo?action=histtraslados{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/af_activofijo{% endblock %}
+{% block formdestination %}/af_activofijo?action=histtraslados&id={{ traslado.id }}{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block extraheading %}
+    <script>
+        var pagina_bienes_usuario = 1;
+        $(function(){
+
+            $("#id_fecha").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_departamentosolicita, #id_asistentelogistica, #id_usuariobienes, #id_taller").addClass("validate[required]");
+            $("#observacion").css({"text-transform": "uppercase"});
+
+            contador_pertenece = function (contador) {
+                $("#totalactivos").html(contador.total_act);
+                $('#totalactivosseleccionados').html(contador.total_sel);
+            };
+
+            cargar_pagina_activos_usuario = function (pag, id) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: { 'action': 'activostraslado', 'page': pag , 'id': '{{ traslado.id }}'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            contador_pertenece(data.contador);
+                            $("#detalleactivos").html(data.data);
+                            conectar_control();
+                            tooltips();
+                            pagina_bienes_usuario = pag;
+                            if (id > 0){
+                                if ($("#seleccionado_"+id).is(':checked')){
+                                    smoke.alert("Activo ya fue seleccionado.");
+                                }else{
+                                    $("#seleccionado_"+id).prop('checked', true);
+                                    seleccionar_elemento(id, 'true');
+                                }
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+
+            $("#FilterTextBox").keypress(function(event){
+                var keycode = (event.keyCode ? event.keyCode : event.which);
+                var codigo = $(this).val().trim();
+                if(keycode == '13' && codigo.length > 0) {
+                    $.unblockUI();
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "buscarcodigotraslado", "id": '{{ traslado.id }}', "codigo": codigo},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                if (data.encontrado){
+                                    if (data.pagina != pagina_bienes_usuario){
+                                        cargar_pagina_activos_usuario(data.pagina, data.id);
+                                    }else{
+                                        if (data.id > 0){
+                                            if ($("#seleccionado_"+data.id).is(':checked')){
+                                                smoke.alert("Activo ya fue seleccionado.");
+                                            }else{
+                                                seleccionar_elemento(data.id, 'true');
+                                            }
+                                        }
+                                    }
+                                    $("#FilterTextBox").val('');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            seleccionar_elemento = function (id, estado) {
+                if (estado == 'true'){
+                    $("#seleccionado_"+id).prop('checked', true);
+                } else {
+                    $("#seleccionado_"+id).prop('checked', false);
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: { 'action': 'marcarseleccionadotraslado', 'id': id, 'valor': estado},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            if(data.reload=='true'){
+                                cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+                            }else{
+                                if($("#seleccionado_"+id).is(":checked")){
+                                    $("#obs_"+id).removeAttr('disabled');
+                                }else{
+                                    $("#obs_"+id).attr({'disabled':'disabled'});
+                                }
+                            }
+                            contador_pertenece(data.contador);
+                        }else{
+                            if(elemento.is(":checked")){
+                                elemento.prop('checked', false);
+                            }else{
+                                elemento.prop('checked', true);
+                            }
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        if(elemento.is(":checked")){
+                            elemento.prop('checked', false);
+                        }else{
+                            elemento.prop('checked', true);
+                        }
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            conectar_control = function () {
+                $("#todos").unbind();
+                $("#todos").click(function () {
+                    var estado = "false";
+                    if($("#todos").is(":checked")){
+                        estado = "true"
+                    }
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: { 'action': 'marcartodostraslado', 'id': '{{ traslado.id }}', 'valor': estado},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                contador_pertenece(data.contador);
+                                cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+                $(".seleccionado").unbind();
+                $(".seleccionado").click(function () {
+                    var estado = "false";
+                    var elemento = $(this);
+                    var id = elemento.attr('ida');
+                    if(elemento.is(":checked")){
+                        estado = "true"
+                    }
+                    seleccionar_elemento(id, estado);
+                });
+
+                $(".obser").unbind();
+                $(".obser").click(function () {
+                    var id = $(this).attr('ida');
+                    var texto = $(this).attr('va');
+                    if ($("#seleccionado_"+id).length > 1){
+                        if ($("#seleccionado_"+id).is(":checked")){
+                            $("#observacion").val(texto);
+                            $("#adicionarobs").attr({'ida': id});
+                            $("#itemspanelobs").modal('show');
+                        }
+                    }else{
+                        if ($("#seleccionado_"+id).is(":checked")){
+                            $("#observacion").val(texto);
+                            $("#adicionarobs").attr({'ida': id});
+                            $("#itemspanelobs").modal('show');
+                        }
+                    }
+                });
+            };
+
+            $("#cerrarobs").click(function(){
+                $("#itemspanelobs").modal('hide');
+            });
+
+            $("#adicionarobs").click(function () {
+                $("#itemspanelobs").modal('hide');
+                bloqueointerface();
+                var elemento = $(this);
+                var id = elemento.attr("ida");
+                var texto = $("#observacion").val();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {"action": "actualizaobservaciontraslado", "id": id, "valor": texto},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#obs_"+id).attr({'va': texto});
+                        } else {
+                            smoke.alert(data.mensaje, function(e){
+                                $("#itemspanelobs").modal('show');
+                            }, {
+                                ok: "ok",
+                                classname: "custom-class"
+                            });
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.", function(e){
+                            $("#itemspanelobs").modal('show');
+                        }, {
+                            ok: "ok",
+                            classname: "custom-class"
+                        });
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='id' value='{{ traslado.id }}'/>
+    <input type='hidden' name='action' value='edittraslado'/>
+{% endblock %}
+{% block formback %}/af_activofijo?action=histtraslados{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <table class="table table-condensed">
+            <tr>
+                <th style="width: 50%">
+                    <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">
+                </th>
+                <th style="width: 50%; vertical-align: middle; font-size: 9px">
+                    <div style="float: left;">Total Activos:<b> <span id="totalactivos">0</span></b></div>
+                    <div style="float: left; margin-left: 30px">Seleccionados:<b> <span id="totalactivosseleccionados">0</span></b></div>
+                </th>
+            </tr>
+        </table>
+        <div id="detalleactivos" style="width: 100%;">
+
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanelobs">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Observación</h3>
+        </div>
+        <div class="modal-body">
+            <div class="row-fluid">
+                <textarea style="width: 100%" id="observacion"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" id="adicionarobs" class="btn btn-adicionar btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" id="cerrarobs" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

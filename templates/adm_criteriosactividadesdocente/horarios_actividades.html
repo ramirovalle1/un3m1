@@ -1,0 +1,671 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $("#id_fecha_desde, #id_fecha_hasta").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fecha_desde, #id_fecha_hasta").addClass("validate[required]");
+
+            $("#feinicio, #fefin").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $("#idactividad").select2();
+            deleteactividad = function(codigoact) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'delactividaddocente', 'id': codigoact },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $('#leyenda').html(data.des)
+                            $('#codigoturno').val(data.turno)
+                            $('#codigodia').val(data.dia)
+                            $('#leyenda').html(data.des)
+                            $('#codigoactividad').val(data.idactividad)
+                            $('#selectdelete').modal({'width': 800}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            }
+            addactividad = function(codigoturno,codigodia,idprof) {
+                $("#codturno").val('');
+                $("#coddia").val('');
+                $("#codturno").val(codigoturno);
+                $("#coddia").val(codigodia);
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'listactividades','idprof':idprof},
+                    success: function (data) {
+                        $("#idactividad").html(data).trigger('change');
+                        if(($('#idactividad option').length)==1){
+                            $("#alertaingresotemas").show();
+                        }else{
+                            $("#alertaingresotemas").hide();
+                        }
+                        $("#feinicio").val('{{ periodo.inicio|date:"Y-m-d" }}')
+                        $("#fefin").val('{{ periodo.fin|date:"Y-m-d" }}')
+                        $.unblockUI();
+                    },
+                    dataType: "html"
+                });
+                $("#alertaingrestemas").hide();
+                $("#itemspaneltemas .incompletotemas").hide();
+                $("#itemspaneltemas .incompletovalorestemas").hide();
+                $("#adicionarycerrartemas").show();
+                $("#guardar").hide();
+                $("#itemspaneltemas").modal({backdrop:'static', width: '1000px'}).modal('show');
+                return false;
+            }
+            $("#adicionarycerraractividad").click(function() {
+                var idactividades = $("#idactividad").val();
+                var idactividad = idactividades.split("_");
+                var idturno = $("#codturno").val()
+                var iddia = $("#coddia").val()
+                var feinicio = $("#feinicio").val()
+                var fefin = $("#fefin").val()
+                if (idactividad[0] == 0 || idactividad[1] == 0 || feinicio == '' || fefin == ''){$("#itemspaneltemas .incompletotemas").show();return false;}
+                $("#itemspaneltemas").modal("hide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'addactividaddocente', 'idactividad': idactividad[0],'feinicio': feinicio,'fefin': fefin, 'idturno': idturno, 'iddia': iddia, 'tipoactividad': idactividad[1]},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            var cboactividad = $("#idactividad option:selected").text();
+                            var nomactividad = cboactividad.split(":");
+                            {#                            $('#nombreactividad'+idturno+'_'+iddia).html(nomactividad[1]+'<a href="javascript:;" class="btn btn-tini btn-danger eliminarobj tu" iturno="'+idturno+'" idia="'+iddia+'" descrip="'+nomactividad[1]+'" onclick="deleteactividad('+data.codiactividad+')"  idact="'+data.codiactividad+'" title="Eliminar"><i class="fa fa-remove"></i></a>');#}
+                            $('#nombreactividad'+idturno+'_'+iddia).html(data.datos);
+                            {#                            location.reload();#}
+                            tooltips();
+                            {#                            conectar_controlestemas();#}
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $("#cerrartemas").click(function() {
+                $("#itemspaneltemas .incompletotemas").hide();
+                $("#itemspaneltemas .incompletovalotemas").hide();
+                $("#itemspaneltemas").modal("hide");
+            });
+            $("#eliminacionmodal_formbutton").click(function(){
+                $('#selectdelete').modal('hide');
+                var idturno = $('#codigoturno').val();
+                var idia = $('#codigodia').val();
+                var tipoelimina = $('#tipoelimina').val();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'eliminaractividaddocente','idturno': idturno,'idia': idia,'tipoelimina': tipoelimina,'idactividad': $('#codigoactividad').val()},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            {#                            location.reload();#}
+                            $('#nombreactividad'+idturno+'_'+idia).html(data.datos);
+                            {#                            $('#nombreactividad'+idturno+'_'+idia).html('<a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-success" onclick="addactividad('+idturno+','+idia+',{{ profesor.id }})"><i class="fa fa-plus"></i></a>');#}
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $(".eliminarobj").click(function () {
+                var desactividad=$(this).attr('descrip');
+                var iturno=$(this).attr('iturno')
+                var idia=$(this).attr('idia')
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'delactividaddocente', 'id': $(this).attr('idact') },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $('#leyenda').html(desactividad)
+                            $('#codigoturno').val(iturno)
+                            $('#codigodia').val(idia)
+                            $('#leyenda').html(desactividad)
+                            $('#codigoactividad').val(data.idactividad)
+                            $('#tipoelimina').val(0)
+                            $('#selectdelete').modal({'width': 800}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $(".eliminarobjact").click(function () {
+                var desactividad=$(this).attr('descrip');
+                var iturno=$(this).attr('iturno')
+                var idia=$(this).attr('idia')
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'delactividaddocente', 'id': $(this).attr('idact') },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == "ok") {
+                            $('#leyenda').html(desactividad)
+                            $('#codigoturno').val(iturno)
+                            $('#codigodia').val(idia)
+                            $('#leyenda').html(desactividad)
+                            $('#codigoactividad').val(data.idactividad)
+                            $('#tipoelimina').val(1)
+                            $('#selectdelete').modal({'width': 800}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $("#eliminacionmodal_cancel").click(function(){
+                $('#selectdelete').modal('hide');
+            });
+            $(".mostrardetalleaprobacion").click(function() {
+                $("#itemspaneldetalle").modal({backdrop:'static', width: '700px'}).modal('show');
+            });
+            $("#itemspaneldetalle .btn-cerrar").click(function() {
+                $("#itemspaneldetalle").modal("hide");
+                return false;
+            });
+            $(".mostrardetalledesaprobar").click(function() {
+                {#                $("#aprobarcerrar").css('display', 'block');#}
+                var id = $(this).attr('idr');
+                $("#itemspaneldesaprobar").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+
+            $(".mostrardetalleaprobar").click(function() {
+                {#                $("#aprobarcerrar").css('display', 'block');#}
+                var id = $(this).attr('idr');
+                $("#itemspanelaprobar").modal({backdrop:'static', width: '500px'}).modal('show');
+            });
+
+            $("#itemspaneldesaprobar .btn-aprobarcerrar").click(function() {
+                var idtipo = 1;
+                var obse = $("#id_observacion2").val();
+                if(obse == ""){
+                    smoke.alert("Ingrese una observación.");
+                    $("#id_observacion2").focus();
+                    return false;
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'adddesaprobacion','idtipo': idtipo, 'obsaprueba': obse, 'idprofesor': {{ profesor.id }}, 'idperiodo': {{ periodo.id }} },
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            $("#itemspanel").modal("hide");
+                            location.href = '/adm_criteriosactividadesdocente?action=confighorarioprof&idprof={{ profesor.id|encrypt }}&idper={{ idper|encrypt }}';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        desbloqueoUi();
+                        smoke.alert("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#itemspaneldesaprobar .btn-cerrar").click(function() {
+                $("#itemspaneldesaprobar").modal("hide");
+                return false;
+            });
+
+            $("#itemspanelaprobar .btn-aprobarcerrar").click(function() {
+                var idtipo = 2;
+                var obse = $("#id_observacion3").val();
+                if(obse == ""){
+                    smoke.alert("Ingrese una observación.");
+                    $("#id_observacion3").focus();
+                    return false;
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'addaprobacion','idtipo': idtipo, 'obsaprueba': obse, 'idprofesor': {{ profesor.id }}, 'idperiodo': {{ periodo.id }} },
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            $("#itemspanel").modal("hide");
+                            location.href = '/adm_criteriosactividadesdocente?action=confighorarioprof&idprof={{ profesor.id|encrypt }}&idper={{ idper|encrypt }}';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        desbloqueoUi();
+                        smoke.alert("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#itemspanelaprobar .btn-cerrar").click(function() {
+                $("#itemspanelaprobar").modal("hide");
+                return false;
+            });
+
+            $(".editarobjact").click(function () {
+                var iturno=$(this).attr('iturno');
+                var idia=$(this).attr('idia');
+                var idact=$(this).attr('idact');
+                var fecha_desde=$(this).attr('fecha_desde');
+                var fecha_hasta=$(this).attr('fecha_hasta');
+
+                editarobjact(iturno,idia,idact,fecha_desde,fecha_hasta);
+            });
+
+
+            editarobjact = function(iturno,idia,idact,fechadesde,fechahasta) {
+                $("#itemspanel_adicionar_fecha").attr({'iturno': iturno, 'idia': idia, 'fecha_desde': fechadesde, 'fecha_hasta': fechahasta, 'idact': idact});
+                $("#id_fecha_desde").val(fechadesde);
+                $("#id_fecha_hasta").val(fechahasta);
+                $("#itemspanel_fecha").modal({backdrop:'static', width: '400'}).modal('show');
+            };
+
+
+            $("#itemspanel_cerrar_fecha").click(function () {
+                $("#itemspanel_fecha").modal('hide');
+            });
+
+            $("#itemspanel_adicionar_fecha").click(function () {
+                var elemento = $(this);
+                var id = elemento.attr("idperiodo");
+                var fecha_desde = $("#id_fecha_desde").val();
+                var fecha_hasta = $("#id_fecha_hasta").val();
+                var idturno=$("#itemspanel_adicionar_fecha").attr('iturno');
+                var idia=$("#itemspanel_adicionar_fecha").attr('idia');
+                var idact=$("#itemspanel_adicionar_fecha").attr('idact');
+                $("#itemspanel_fecha").modal('hide');
+                if (fecha_desde){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_criteriosactividadesdocente",
+                        data: {"action": "editar_fecha", 'idturno': idturno, 'idia': idia, 'idactividad': idact, 'fecha_desde': fecha_desde, 'fecha_hasta': fecha_hasta},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#itemspanel").modal("hide");
+                                {#                                location.href = '/adm_criteriosactividadesdocente?action=confighorarioprof&idprof={{ profesor.id|encrypt }}&idper={{ idper|encrypt }}';#}
+                                $('#nombreactividad'+idturno+'_'+idia).html(data.datos);
+
+                                $(".editarobjact").click(function () {
+                                    var iturno=$(this).attr('iturno');
+                                    var idia=$(this).attr('idia');
+                                    var idact=$(this).attr('idact');
+                                    var fecha_desde=$(this).attr('fecha_desde');
+                                    var fecha_hasta=$(this).attr('fecha_hasta');
+
+                                    editarobjact(iturno,idia,idact,fecha_desde,fecha_hasta);
+                                });
+
+                                $("#itemsadicionartema").unbind();
+
+                            } else {
+                                {#                                $.unblockUI();#}
+                                smoke.alert(data.mensaje, function(e){
+                                    $("#itemspanel_fecha").modal({backdrop:'static', width: '400'}).modal('show');
+                                }, {
+                                    ok: "ok",
+                                    classname: "custom-class"
+                                });
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.", function(e){
+                                $("#itemspanel_fecha").modal({backdrop:'static', width: '400'}).modal('show');
+                            }, {
+                                ok: "ok",
+                                classname: "custom-class"
+                            });
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+
+        });
+        function vistaprevia(profesorid,periodoid){
+            {#            openwindow('POST' ,'/adm_criteriosactividadesdocente', {action:'pdf_horarios','profesor':profesorid,'periodoid':periodoid}, '_blank');#}
+            openwindow('POST' ,'/adm_criteriosactividadesdocente', {action:'pdf_horarios',profesor:profesorid,periodo:periodoid}, '_blank');
+        }
+    </script>
+{% endblock %}
+{% block atras %}/adm_criteriosactividadesdocente?action=horarioactividades{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>{{ profesor.persona.nombre_completo_inverso }}</h5>
+            {% if ver %}
+                <a href="javascript:;"  class='btn btn-success mostrardetalledesaprobar'><i class="fa fa-square-o"></i> Desaprobar Actividades</a>
+            {% else %}
+                <a href="javascript:;"  class='btn btn-success mostrardetalleaprobar'><i class="fa fa-check-square-o"></i> Aprobar Actividades</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            {% if sesiones %}
+                {%  for sesion in sesiones %}
+                    <table class='table table-bordered' >
+                        <tbody>
+                        <thead>
+                        <tr>
+                            <th colspan="8">{{ sesion }}</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            {% for dia in semana %}
+                                <th style="text-transform: uppercase;text-align: center;width: 160px;">{{ dia.1 }}</th>
+                            {% endfor %}
+                        </tr>
+                        </thead>
+                        {% with turnos=sesion|args:misclases|call:"turnos_actividades" %}
+                            {% for turno in turnos %}
+                                <tr>
+                                    <td>
+                                        {{ turno.comienza }} a {{ turno.termina }}
+                                    </td>
+                                    {% for dia in semana %}
+                                        {#                                        {% with clasesactuales=turno|args:dia.0|args:profesor|args:periodo|call:"horario_profesor_periodo"  clasesactividades=turno|args:dia.0|args:profesor|args:periodo|call:"horario_profesor_actividad" %}#}
+                                        {% with clasesactuales=profesor|args:forloop.counter|args:turno|args:periodo|call:"clases_horario"  clasesactividades=turno|args:dia.0|args:profesor|args:periodo|call:"horario_profesor_actividad" %}
+                                            <td style="padding: 2px; font-size: 9px">
+                                                {% if clasesactuales %}
+                                                    {% for clase in clasesactuales %}
+                                                        {{ clase.materia.asignatura.nombre }}<br>
+                                                        {{ clase.materia.tipo_profesor }}<br>
+                                                        {{ clase.inicio|date:'d-m-Y' }} al {{ clase.fin|date:'d-m-Y' }}
+                                                    {% endfor %}
+
+                                                    {% if clasesactividades %}
+                                                        <div id="nombreactividad{{ turno.id }}_{{ dia.0 }}" class="alert alert-danger span12">
+                                                            {% for clasesacti in clasesactividades %}
+                                                                {%  if clasesacti.tipodistributivo == 1 %}
+                                                                    {{ clasesacti.detalledistributivo.criteriodocenciaperiodo.criterio.nombre }}<br>
+                                                                    <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                    <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                    {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                        <a href='javascript:;' class='btn btn-tini btn-danger eliminarobjact tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criteriodocenciaperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                    {% endif %}
+                                                                    <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a><br>
+                                                                {% endif %}
+                                                                {%  if clasesacti.tipodistributivo == 2 %}
+                                                                    {{ clasesacti.detalledistributivo.criterioinvestigacionperiodo.criterio.nombre }}<br>
+                                                                    <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                    <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                    {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                        <a href='javascript:;' class='btn btn-tini btn-danger eliminarobjact tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criterioinvestigacionperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                    {% endif %}
+                                                                    <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a><br>
+                                                                {% endif %}
+                                                                {%  if clasesacti.tipodistributivo == 3 %}
+                                                                    {{ clasesacti.detalledistributivo.criteriogestionperiodo.criterio.nombre }}<br>
+                                                                    <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                    <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                    {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                        <a href='javascript:;' class='btn btn-tini btn-danger eliminarobjact tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criteriogestionperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                    {% endif %}
+                                                                    {#                                                                        <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a>#}
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% if not clasesfuturas %}
+                                                        <div id="nombreactividad{{ turno.id }}_{{ dia.0 }}">
+                                                            {% if clasesactividades %}
+                                                                {% for clasesacti in clasesactividades %}
+                                                                    {%  if clasesacti.tipodistributivo == 1 %}
+                                                                        {{ clasesacti.detalledistributivo.criteriodocenciaperiodo.criterio.nombre }}<br>
+                                                                        <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                        <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                        {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                            <a href='javascript:;' class='btn btn-tini btn-danger eliminarobj tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criteriodocenciaperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                        {% endif %}
+                                                                        <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a><br>
+                                                                    {% endif %}
+                                                                    {%  if clasesacti.tipodistributivo == 2 %}
+                                                                        {{ clasesacti.detalledistributivo.criterioinvestigacionperiodo.criterio.nombre }}<br>
+                                                                        <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                        <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                        {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                            <a href='javascript:;' class='btn btn-tini btn-danger eliminarobj tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criterioinvestigacionperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                        {% endif %}
+                                                                        <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a><br>
+                                                                    {% endif %}
+                                                                    {%  if clasesacti.tipodistributivo == 3 %}
+                                                                        {{ clasesacti.detalledistributivo.criteriogestionperiodo.criterio.nombre }}<br>
+                                                                        <span class="label label-default tu"><strong>{{ clasesacti.inicio|date:"Y-m-d" }} | {{ clasesacti.fin|date:"Y-m-d" }}</strong></span>
+                                                                        <a href='javascript:;' class='btn btn-tini btn-info editarobjact tu' fecha_desde="{{ clasesacti.inicio|date:"d-m-Y" }}" fecha_hasta="{{ clasesacti.fin|date:"d-m-Y" }}" iturno="{{ turno.id }}" idia="{{ dia.0 }}" idact="{{ clasesacti.id }}" title='Editar Fechas'><i class='fa fa-edit'></i></a><br>
+                                                                        {% if clasesacti.estadosolicitud == 1 or clasesacti.estadosolicitud == 3 %}
+                                                                            <a href='javascript:;' class='btn btn-tini btn-danger eliminarobj tu' iturno="{{ turno.id }}" idia="{{ dia.0 }}" descrip="{{ clasesacti.detalledistributivo.criteriogestionperiodo.criterio.nombre }}" idact="{{ clasesacti.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                                                                        {% endif %}
+                                                                        <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-{% if clasesacti.estadosolicitud == 1 %}warning{% endif %}{% if clasesacti.estadosolicitud == 2 %}success{% endif %}{% if clasesacti.estadosolicitud == 3 %}danger{% endif %}">{{ clasesacti.get_estadosolicitud_display }}</a>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            {% endif %}
+                                                            {% if estadoactividad.estadosolicitud != 2 %}
+                                                                <a href="javascript:;" id="itemsadicionartema" class="btn btn-tini btn-success" onclick="addactividad({{ turno.id }},{{ dia.0 }},{{ profesor.id }})"><i class="fa fa-plus"></i></a>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </td>
+                                        {% endwith %}
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        {% endwith %}
+                        <tr></tr>
+                        </tbody>
+                    </table>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-error">
+                    <a  href="javascript:;" class="close" data-dismiss="alert">×</a>
+                    <h4 class="alert-heading">Informaci&oacute;n!</h4>
+                    Periodo de clases de la materia ha terminado.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="modal fade static" id="mensajepanel" data-backdrop="static" data-keyboard="false" >
+        <div class="modal-header">
+            <h4>Mensaje</h4>
+        </div>
+        <div class="modal-body" style="height: 60px;">
+            <div id='mensaje'>
+            </div>
+        </div>
+        <div class="modal-footer" hidden="hidden">
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+    {#    **************       VENTANA PARA ADICIONAR ACTIVIDAD         ********#}
+    <div class="modal fade static" id="itemspaneltemas" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Actividades</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info incompletotemas" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalorestemas" style="display: none;">
+                <i class="fa fa-info-sign"></i> Revise los valores, la fecha/hora DESDE no debe ser mayor a la fecha/hora HASTA
+            </div>
+            <div class="alert alert-danger" id="alertaingresotemas" style="display: none;"> NO TIENE ACTIVIDADES</div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-vertical' action="" method="POST" >
+                    Actividad:<br><select id="idactividad" style="width: 900px" name="idactividad">
+                    <option value="0_0" >Seleccione la actividad </option>
+                </select>
+                    <br><br>Fecha Inicio:<input type="text" class="selectorfecha" name="feinicio" id="feinicio" placeholder="Fecha Inicio" value="{{ periodo.inicio|date:"Y-m-d" }}">
+                    Fecha Fin:<input type="text" class="selectorfecha" name="fefin" id="fefin" placeholder="Fecha Fin" value="{{ periodo.fin|date:"Y-m-d" }}">
+                    <input type="hidden" name="codturno" id="codturno" value="0">
+                    <input type="hidden" name="coddia" id="coddia" value="0">
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="adicionarycerraractividad"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info" id="cerrartemas">Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="selectdelete" style="min-height: 60px">
+        <div class="modal-header">
+            <h4 id="paneltitle">Eliminar Actividad</h4>
+        </div>
+        <div class="modal-body" id="selectdeletepar-body">
+            <input type='hidden' id="codigoactividad" name="codigoactividad" value=""/>
+            <input type="hidden" name="codigoturno" id="codigoturno" value="0">
+            <input type="hidden" name="codigodia" id="codigodia" value="0">
+            <input type="hidden" name="tipoelimina" id="tipoelimina" value="0">
+            <p style="margin-top: 10px;">Esta seguro(a) que desea eliminar: <b id="leyenda"></b></p>
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="eliminacionmodal_formbutton" class='btn btn-danger btn-form'> {% block botonlabel %}Eliminar{% endblock %}</a>
+                <a href="javascript:;" id="eliminacionmodal_cancel" class="btn btn-info"> Cerrar</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspaneldesaprobar" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Desaprobación de Actividades</h3>
+        </div>
+        <div class="modal-body panelbody">
+            Observación:
+            <textarea id="id_observacion2" rows="3" cols="40" name="observacion2" maxlength="1000" style="width: 100%" class="validate[required]"></textarea>
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerrardesaprobar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelaprobar" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Aprobación de Actividades</h3>
+        </div>
+        <div class="modal-body panelbody">
+            Observación:
+            <textarea id="id_observacion3" rows="3" cols="40" name="observacion3" maxlength="1000" style="width: 100%" class="validate[required]"></textarea>
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerraraprobar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itemspanel_fecha" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Editar Fecha</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class=ow-fluid">
+                <form id="form3" class="form-horizontal form-modal" style="width: 370px; margin-bottom: 0">
+                    <div style="width: 150px">
+                        <strong>Fecha desde: </strong><p>Date: <input type="text" id="id_fecha_desde"></p><br>
+                        <strong>Fecha hasta: </strong><p>Date: <input type="text" id="id_fecha_hasta"></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_adicionar_fecha"><i class="fa fa-edit"></i> Editar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar_fecha"> Cerrar</a>
+        </div>
+    </div>
+
+
+
+
+    {%  if detalleestados %}
+        <div class="modal fade static" id="itemspaneldetalle" style="display: none;">
+            <div class="modal-header">
+                <h3 class="paneltitle">Detalle</h3>
+            </div>
+            <div class="modal-body panelbodydetalle">
+                <table class='table table-bordered table-striped'  >
+                    <thead>
+                    <tr>
+                        <th style="width: 160px">Usuario Aprobación</th>
+                        <th style="width: 160px">Observación</th>
+                        <th style="width: 100px">Estado</th>
+                        <th style="width: 100px">Fecha</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for det in detalleestados %}
+                        <tr>
+                            <td>{{ det.personaaprueba }}</td>
+                            <td>{{ det.obseaprueba }}</td>
+                            <td>{{ det.get_estadosolicitud_display }}</td>
+                            <td>{{ det.fecha_creacion|date:"Y-m-d" }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+
+            </div>
+            <div class="modal-footer">
+                <table class="pull-right">
+                    <tr>
+                        <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+
+

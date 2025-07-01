@@ -1,0 +1,498 @@
+{% extends 'af_activofijo/base_activofijo.html' %}
+{% load sga_extras %}
+{% block atras %}{{ request.path }}?action=periodoconstatacion{% endblock %}
+{% block extraJs_ext %}
+    <script type="text/javascript">
+        $(function () {
+            $("select").select2({width:'100%'})
+            $('.tabla_responsive tbody').on('click', '.encontrado', function () {
+                var id = $(this).attr('iden');
+                var objeto = $(this)
+                ActualizarEstadoExt(id, 'marcarencontradoactivo', objeto, '{{ periodo_c.id|encrypt }}')
+            });
+            let responsable = $("#id_responsable")
+            let constatador = $("#id_constatador")
+            constatador.select2({width:'100%','placeholder':'Seleccione uno o mas constatadores'})
+            buscarResponsable(responsable,'distributivos')
+        });
+        function ActualizarTabla(data){
+            let detalle_c=$(`#detalle_c${data.id_a}`)
+            let constatar_a=$(`#constatar_a${data.id_a}`)
+            let accion=$(`#accion_${data.id_a}`)
+            detalle_c.empty().append(` <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿En uso?: </b>
+                                                ${data.enuso ? '<i class="fa fa-check-circle text-success" aria-hidden="true"></i>' : '<i class="fa fa-remove text-danger" aria-hidden="true"></i>'}
+                                            </div>
+                                        </div>
+                                        {#<div class="arrow-content">#}
+                                        {#    <i class="arrow-item"></i>#}
+                                        {#    <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">#}
+                                        {#        <b>¿Pertenece al usuario?: </b>#}
+                                        {#        ${data.perteneceusuario ? '<i class="fa fa-check-circle text-success" aria-hidden="true"></i>' : '<i class="fa fa-remove text-danger" aria-hidden="true"></i>'}#}
+                                        {#    </div>#}
+                                        {#</div>#}
+                                        <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿Requiere traspaso?: </b>
+                                                ${data.requieretraspaso? '<i class="fa fa-check-circle text-success" aria-hidden="true"></i>' : '<i class="fa fa-remove text-danger" aria-hidden="true"></i>'}
+                                            </div>
+                                        </div>
+                                        <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿Requiere dar de baja?: </b>
+                                                ${data.requieredarbaja? '<i class="fa fa-check-circle text-success" aria-hidden="true"></i>' : '<i class="fa fa-remove text-danger" aria-hidden="true"></i>'}
+                                            </div>
+                                        </div>`)
+            constatar_a.empty().append(`<a class="dropdown-item"
+                                           onclick="formModal('${data.id_p}','${data.id}','Editar constatación','constatar','modal-lg',true,'${data.id_a}')"
+                                           href="javascript:void(0)" ;>
+                                            <i class="fa fa-clipboard dropdown-item-icon"></i> Editar constatación </a>`)
+            if (!$(`#eliminar_c${data.id_a}`).length){
+                accion.append(`<li id="eliminar_c${data.id_a}">
+                                                <a class="dropdown-item"
+                                                   onclick="eliminarajax('${data.id}','Eliminar constatación','delconstatacion')"
+                                                   href="javascript:void(0)" ;>
+                                                    <i class="fa fa-trash dropdown-item-icon"></i> Eliminar</a>
+                                            </li>`)
+            }
+            if (!$(`#elemento_li_${data.id_a}`).length){
+                  accion.append(`<li id="elemento_li_${data.id_a}">
+                                <a class="dropdown-item"
+                                   onclick="formModal('','${data.id}','Detalle de constatación de activo','detalleconstatacion','modal-lg',false)"
+                                   href="javascript:void(0)" ;>
+                                    <i class="fa fa-search-plus dropdown-item-icon"></i>Detalle de constatación </a></li>`)
+            }
+            if (data.modal){
+                $(`#estado_a${data.id_a}`).text(data.estado)
+                $(`#encontrado_${data.id_a}`).prop('checked',data.encontrado)
+                $("#itemspanel").modal('hide');
+            }
+        }
+        function formModalReporte(id, text, action) {
+            $("#id_obj_r").val(id)
+            $("#id_action_r").val(action)
+            $('#itemspanelrepote .paneltitle-reporte').html(text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
+            $("#itemspanelrepote").modal({backdrop: 'static'}).modal('show');
+        }
+        function formatRepo(repo) {
+            if (repo.loading) {
+                return 'Buscando..'
+            }
+            var option = '';
+            if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                option = $(`<b>${repo.text}</b>`);
+            } else {
+                option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-2 text-center"><img src="${repo.foto}" width="50px" height="50px" class="w-25px rounded-circle me-2"></div><div class="col-lg-10 text-left"><b>Documento:</b> ${repo.documento}<br><b>Nombres:</b> ${repo.text}<br>${repo.departamento ? `<b>Departamento: </b><span>${repo.departamento}</span>` : ''} </div></div></div>`);
+            }
+            return option;
+        }
+
+        ItemsDisplayPersonas = function (item) {
+            if (item.text && item.documento) {
+                return $(`<img src="${item.foto}" width="25px" height="25px" class="w-25px rounded-circle me-2"><span>${item.text}</span>`);
+            } else if (item) {
+                return item.text;
+            } else {
+                return ' Consultar Personas';
+            }
+        };
+
+        function buscarResponsable(objeto, tipo, action='buscarpersonas',excl='') {
+            objeto.select2({
+                width: '100%',
+                placeholder: "Consultar responsable",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ reques.path }}?action=${action}&q=${params.term}&tipo=${tipo}&idsagregados=${excl}`;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: formatRepo, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+            });
+        }
+    </script>
+{% endblock %}
+{% block subtitle %}
+    <i class="fa fa-record-vinyl"></i> {{ periodo_c.nombre }}
+{% endblock %}
+{% block title_input %}
+    Buscar por códigos, descripción o responsable del activo...
+{% endblock %}
+{% block filtros %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="id" value="{{ periodo_c.id|encrypt }}">
+    <div class="mb-1">
+        <label for=""><i class="fa fa-traffic-light"></i> Estado:</label>
+        <select name="estado" id="estados_list" class="form-control" style="width: 100%">
+            <option value="">Todos</option>
+            {% for tc in estados %}
+                <option {% if tc.id == estado %}selected{% endif %}
+                        value="{{ tc.id }}">{{ tc.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-1">
+        <label for=""><i class="fa fa-traffic-light"></i> Constatación:</label>
+        <select name="constatacion" id="id_constatacion" class="form-control" style="width: 100%">
+            <option value="">Todos</option>
+                <option {% if 1 == constatacion %}selected{% endif %} value="1">Constatados</option>
+                <option {% if 2 == constatacion %}selected{% endif %} value="2">Por constatar</option>
+        </select>
+    </div>
+     <div class="mb-1">
+        <label for=""><i class="fa fa-user-check"></i> Constatador:</label>
+        <select name="constatador" id="id_constatador" style="width: 100%" class="form-control">
+            <option value="">Todos</option>
+            {% for c in constatadores %}
+                <option {% if c.0 == constatador %}selected{% endif %}
+                        value="{{ c.0 }}">{{ c.1|title }} {{ c.2|title }} {{ c.3|title }}</option>
+            {% endfor %}
+        </select>
+    </div>
+{% endblock %}
+{% block replace_all_btn %}
+    <a href="{{ request.path }}?action={{ action }}&id={{ periodo_c.id|encrypt }}"
+       id='allresults'
+       class='btn btn-default w-100 bloqueo_pantalla'>
+        <span class="fa fa-refresh "></span> Todo
+    </a>
+{% endblock %}
+{% block content %}
+    <div class='row justify-content-end'>
+        {% if request.user.is_superuser %}
+            <div class="col-lg-6">
+                <a href="javascript:void(0)"
+                 onclick="formModalReporte('{{ periodo_c.id|encrypt }}','Reporte de constataciones','reportconstatacion1')"
+                 class="btn btn-cian-opacity"><i class="fa fa-print"></i> Reportes de constatación</a>
+            </div>
+        {% endif %}
+        <div class='col-lg-6 text-end'>
+           <i class="fa fa-sort-numeric-asc"></i> Constatados: <span class="badge bg-success" id="id_tc">{{ totales.t_constatados }}</span> |
+           <i class="fa fa-sort-numeric-asc"></i> Pendientes: <span class="badge bg-primary" id="id_tp">{{ totales.t_pendientes }}</span> |
+{#           <i class="fa fa-sort-numeric-asc"></i> Proceso de baja: <span class="badge bg-warning">{{ totales.t_procesobaja }}</span> |#}
+           <i class="fa fa-sort-numeric-asc"></i> Total: <span class="badge bg-secondary" id="id_ta">{{ totales.t_activos }}</span> |
+        </div>
+    </div>
+    <div class="card">
+        <div class='card-body border-top border-5 rounded-3 border-dark-info'>
+            <table class="table table_primary tabla_responsive" id="example">
+                <thead class="table-light cabecera-fija">
+                <tr>
+                    <th class="text-center"><i class="fa fa-barcode"></i> Códigos</th>
+                    <th class="text-center"><i class="fa fa-tag"></i> Activo</th>
+                    <th class="text-center"><i class="fa fa-users"></i> Usuarios</th>
+                    <th class="text-center"><i class="fa fa-clipboard-check"></i> Detalle constatación</th>
+                    <th class="w-3 text-center"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for l in listado %}
+                    <tr>
+                        <td class="text-center w-10 align-middle">
+                            {% if l.codigogobierno %}
+                                <p>
+                                    <b>Gob: </b>{{ l.codigogobierno }}
+                                </p>
+                            {% endif %}
+                            {% if l.codigointerno %}
+                                <p>
+                                    <b>Int: </b>{{ l.codigointerno }}
+                                </p>
+                            {% endif %}
+                        </td>
+                        <td class=" w-25 align-middle">
+                            <div class="row">
+                                <div class="col">
+                                    {#                                    <a class="text-body detalleactivo1"#}
+                                    {#                                       cid="{{ l.id }}"#}
+                                    {#                                       href="javascript:void(0);">#}
+                                    <div class="d-flex" style="font-size: .80rem">
+                                        <div class="ms-2">
+                                            <p class="lh-15">
+                                                <b>{{ l.catalogo|title }}</b>
+                                            </p>
+                                            <p class="lh-15 fs-6">
+                                                <b>Desc: </b>{{ l.descripcion }}
+                                            </p>
+                                            <p>
+                                                <b>Modelo: </b>{{ l.modelo }}
+                                            </p>
+                                            <p>
+                                                <b>Estado: </b> <span id="estado_a{{ l.id|encrypt }}">{{ l.estado }}</span>
+                                            </p>
+                                            <p>
+                                                <b>Ubicación: </b> <span class="fs-6">{{ l.ubicacion}}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {#                                    </a>#}
+                                </div>
+                                <div class="col-auto text-center me-2">
+                                    <a href="javascript:void(0)"
+                                       onclick="formModal('','{{ l.id }}','Detalles de activo','detalle_activo','modal-xl',false)"
+                                       class="badge-dot bg-info "
+                                       data-bs-toggle="tooltip" data-bs-placement="top" title=""
+                                       data-bs-original-title="Detalle de activo">
+                                    </a>
+                                </div>
+                            </div>
+                        </td>
+                        {% with constatado=l|args:periodo_c.id|call:'activo_constatado' %}
+                        <td class="w-20 align-middle" style="font-size: .80rem">
+                            <p><b>Responsable del activo: </b><br>
+                                <span class="ms-2">
+                                  <i class="fa fa-user-tie"></i>
+                                    {% if constatado %}{{ constatado.codigoconstatacion.usuariobienes.nombre_completo_minus }}
+                                {% else %}
+                                     {{ l.responsable.nombre_completo_minus }}
+                                {% endif %}
+                                </span>
+                            </p>
+                            {% if constatado and constatado.responsable %}
+                                <p><b>Constatador: </b><br><span class="ms-2"><i class="fa fa-user-check"></i> {{ constatado.responsable.nombre_completo_minus }}</span></p>
+
+                            {% endif %}
+                        </td>
+                        <td class="w-20 align-middle ps-2" style="font-size: .80rem;">
+
+                                <div class="arrow-content">
+                                    <i class="arrow-item" style="bottom: -4px"></i>
+                                     <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                        <b>¿Encontrado?: </b>
+                                        {% if not constatado or constatado.responsable.id == persona.id %}
+                                             <input type="checkbox" name="encontrado" class="encontrado"
+                                               id="encontrado_{{ l.id|encrypt }}" iden="{{ l.id|encrypt }}"
+                                               {% if constatado and constatado.encontrado %}checked{% endif %}>
+                                       {% else %}
+                                            {%if constatado.encontrado %}
+                                                <i class="fa fa-check-circle text-success" aria-hidden="true"></i>
+                                            {% else %}
+                                                <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                            {% endif %}
+                                       {% endif %}
+                                    </div>
+                                </div>
+                                <div id="detalle_c{{ l.id|encrypt }}">
+                                    {% if constatado %}
+                                        <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿En uso?: </b>
+                                                {% if constatado.enuso %}
+                                                    <i class="fa fa-check-circle text-success" aria-hidden="true"></i>
+                                                {% else %}
+                                                    <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+{#                                        <div class="arrow-content">#}
+{#                                            <i class="arrow-item"></i>#}
+{#                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">#}
+{#                                                <b>¿Pertenece al usuario?: </b>#}
+{#                                                {% if constatado.perteneceusuario %}#}
+{#                                                    <i class="fa fa-check-circle text-success" aria-hidden="true"></i>#}
+{#                                                {% else %}#}
+{#                                                    <i class="fa fa-remove text-danger" aria-hidden="true"></i>#}
+{#                                                {% endif %}#}
+{#                                            </div>#}
+{#                                        </div>#}
+                                        <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿Requiere traspaso?: </b>
+                                                {% if constatado.requieretraspaso %}
+                                                    <i class="fa fa-check-circle text-success" aria-hidden="true"></i>
+                                                {% else %}
+                                                    <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="arrow-content">
+                                            <i class="arrow-item"></i>
+                                            <div class="arrow-text" data-bs-toggle="tooltip" title="" data-bs-original-title="">
+                                                <b>¿Requiere dar de baja?: </b>
+                                                {% if constatado.requieredarbaja %}
+                                                    <i class="fa fa-check-circle text-success" aria-hidden="true"></i>
+                                                {% else %}
+                                                    <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <p class="text-muted mt-2"><b><i class="fa fa-remove me-1"></i> Activo sin constatar</b></p>
+                                    {% endif %}
+                                </div>
+
+                            <div>
+                            </div>
+                        </td>
+                        <td class="text-center align-middle w-5">
+                            <div class="dropdown dropstart">
+                                <a href="javascript:void(0);"
+                                   class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                   data-bs-toggle="dropdown" data-offset="-140"
+                                   aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v"></i>
+                                </a>
+                                <ul class="dropdown-menu" id="accion_{{ l.id|encrypt }}">
+                                    {% if not constatado or constatado.responsable.id == persona.id and not periodo_c.cerrado %}
+                                        <li id="constatar_a{{ l.id|encrypt }}">
+                                            <a class="dropdown-item"
+                                               onclick="formModal('{{ periodo_c.id|encrypt }}','{{ constatado.id|encrypt }}','Constatar activo','constatar','modal-lg',true,'{{ l.id|encrypt }}')"
+                                               href="javascript:void(0)" ;>
+                                                <i class="fa fa-clipboard dropdown-item-icon"></i> {% if constatado %}Editar constatación{% else %}Constatar {% endif %}</a>
+                                        </li>
+                                    {% endif %}
+                                        {% if constatado %}
+                                            {% if constatado.responsable.id == persona.id %}
+                                              <li id="eliminar_c{{ l.id|encrypt }}">
+                                                    <a class="dropdown-item"
+                                                       onclick="eliminarajax('{{ constatado.id|encrypt }}','{{ l }}','delconstatacion')"
+                                                       href="javascript:void(0)" ;>
+                                                        <i class="fa fa-trash dropdown-item-icon"></i> Eliminar</a>
+                                                </li>
+                                            {% endif %}
+                                             <li id="elemento_li_{{ l.id|encrypt }}">
+                                                <a class="dropdown-item"
+                                                   onclick="formModal('','{{ constatado.id|encrypt }}','Detalle de constatación de activo','detalleconstatacion','modal-lg',false)"
+                                                   href="javascript:void(0)" ;>
+                                                    <i class="fa fa-search-plus dropdown-item-icon"></i>Detalle de constatación </a>
+                                            </li>
+                                        {% endif %}
+                                    <li>
+                                      <a class="dropdown-item"
+                                           onclick="formModal('','{{ l.id|encrypt }}','Movimiento de activo','movimiento','modal-xl',false)"
+                                           href="javascript:void(0)" ;>
+                                            <i class="fa fa-arrows-alt-h dropdown-item-icon"></i> Movimiento </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0);"
+                                           onclick="formModalBase('{{ l.id|encrypt }}','Historial de estados','historialestadosactivo','','modal-xl')"
+                                           class="dropdown-item"><i
+                                                class="fa fa-history dropdown-item-icon"></i> Historial de estados</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                        {% endwith %}
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" style="text-align: center">NO TIENE REGISTROS DE PERIODOS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% include "paginacionb4.html" %}
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock_ext %}
+    <div class="modal fade static" id="itemspanelrepote" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><i class="fa fa-download" id="title-icon"></i> <b class="paneltitle-reporte"> FORMULARIO</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body panelbody-reporte">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="get"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <div class="alert alert-default-info p-0">
+                                    <i class="fa fa-info-circle"></i> Estimad{% if persona.es_mujer %}a{% else %}o{% endif %}
+                                    <b>{{ persona.un_nombre_dos_apellidos }}</b>, recuerde que si desea extraer un reporte con todos los responsables, simplemente, no debe seleccionar
+                                    ningun responsable en la casilla de responsables de activo y lo mismo aplica para constatador.
+                                </div>
+                            </div>
+                            <input type="hidden" value="" name="action" id="id_action_r">
+                            <input type="hidden" value="" name="id_obj" id="id_obj_r">
+                                <div class="col-lg-4">
+                                    <label class="fw-semi-bold">Constatación: <b class="text-danger">*</b></label>
+                                    <select name="constatacion" id="id_constatacion">
+                                        <option value="">Todos</option>
+                                        <option value="1">Constatados</option>
+                                        <option value="2">Por constatar</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-4">
+                                        <label class="fw-semi-bold">Estado: <b class="text-danger">*</b></label>
+                                        <select name="estado" id="id_estado">
+                                            <option value="">Todos</option>
+                                           {% for tc in estados %}
+                                            <option {% if tc.id == estado %}selected{% endif %}
+                                                    value="{{ tc.id }}">{{ tc.nombre }}</option>
+                                        {% endfor %}
+                                        </select>
+                                    </div>
+                                     <div class="col-lg-4">
+                                        <label class="fw-semi-bold">Detalle: <b class="text-danger">*</b></label>
+                                        <select name="item" id="id_item">
+                                            <option value="">Todos</option>
+                                            <option value="1">¿Encontrado?</option>
+                                            <option value="2">¿En uso?</option>
+                                            <option value="3">¿Requiere traspaso?</option>
+                                            <option value="4">¿Requiere dar de baja?</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <label class="fw-semi-bold">Responsable de activo: <b class="text-danger">*</b></label>
+                                        <select name="responsable" id="id_responsable" multiple>
+                                        </select>
+                                    </div>
+                                     <div class="col-lg-12">
+                                        <label class="fw-semi-bold">Constatador: <b class="text-danger">*</b></label>
+                                        <select name="constatador" id="id_constatador" multiple>
+                                            {% for c in constatadores %}
+                                                <option value="{{ c.0 }}">{{ c.1|title }} {{ c.2|title }} {{ c.3|title }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+
+                                </div>
+
+                        <div class="row">
+                            <div class="col-12 text-end">
+                                <button type="submit" class="btn btn-orange fs-5 bloqueo_pantalla"><i class="fa fa-download"></i> Generar
+                                </button>
+                                <a href="javascript:;" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"
+                                   aria-label="Close"><i class="fa fa-remove"></i> Cancelar</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

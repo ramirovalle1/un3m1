@@ -1,0 +1,270 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script>
+        $(function() {
+            $("#id_fini, #id_ffin").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $("#fechadesdecsv, #fechahastacsv").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $('#id_tipopermiso').select2({placeholder: "Seleccione", allowClear: true});
+            $('#id_cerrargenerarexcel').click(function() {
+                $("#itemspanelgenerarexcel").modal("hide");
+                return false;
+            });
+            
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/th_consultapermiso?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $(".cerrarview").click(function() {
+                $("#vistaprevia").modal("hide");
+                return false;
+            });
+
+            $(".mostrarview").click(function() {
+                document.getElementById('pdfview_permi').src = $(this).attr("url");
+                $("#vistaprevia").modal({backdrop:'static', width: $(window).width()-100, height: '400px'}).modal('show');
+            });
+
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            $(".mostrardetalle_view").click(function() {
+                $("#aprobarcerrar").css('display', 'none');
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/th_consultapermiso",
+                    data: {'action': 'verdetalle', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+        function reportexcel(idinscripcion){
+            id_fini = $("#id_fini").val()
+            id_ffin = $("#id_ffin").val()
+            if (id_fini==''){smoke.alert("Ingrese fecha desde"); return false;}
+            if (id_ffin==''){smoke.alert("Ingrese fecha hasta"); return false;}
+            openwindow('GET' ,'/th_consultapermiso', {action:'xlsaprobarpermiso',fechainicio:id_fini,fechafinal:id_ffin}, '_blank');
+        }
+
+        function generarreportegeneral() {
+            $("#itemspanelgenerarexcel").modal({backdrop: 'static', width: '600px'}).modal('show');
+            $('#id_tipopermiso').empty().append('<option value="0">TODOS</option>').val(0).trigger("change");
+            $('#fechadesdecsv').val('{{ fecha|date:"d-m-Y" }}');
+            $('#fechahastacsv').val('{{ fecha|date:"d-m-Y" }}');
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {'action': 'cargar_tipopermiso'},
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.each(data.data, function (i, item) {
+                            $('#id_tipopermiso').append($('<option>', {
+                                value: item.id,
+                                text: item.descripcion
+                            }));
+                        });
+                    } else {
+                        $("#itemspanelgenerarexcel").modal("hide");
+                        mensajeErrorSwal(data.mensaje)
+                    }
+                },
+                error: function () {
+                    $("#itemspanelgenerarexcel").modal("hide");
+                    mensajeErrorSwal("Error de conexión.");
+                },
+                dataType: "json"
+            });
+
+        }
+        
+        function procesarexcel() {
+            console.log("Generar reporte");
+            let tipopermiso = $("#id_tipopermiso").val();
+            let fechadesdecsv = $("#fechadesdecsv").val();
+            let fechahastacsv = $("#fechahastacsv").val();
+            $("#itemspanelgenerarexcel").modal("hide");
+            openwindow('GET', '/th_consultapermiso', {action: 'generarexcelpermisos', tipo: tipopermiso, fechai: fechadesdecsv, fechaf: fechahastacsv}, '_blank');
+        }
+        
+        
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            <input placeholder="fecha desde" type="text" name="fini" id="id_fini" style="width: 100px">
+            <input placeholder="fecha hasta" type="text" name="ffin" id="id_ffin" style="width: 100px">
+            <a onclick="reportexcel(1)" href="javascript:;" class="btn btn-mini btn-warning tu"><i class="fa fa-table"></i> Reporte</a>
+            <a style="margin-left: 2rem; " onclick="generarreportegeneral()" href="javascript:;" class="btn  btn-light tu"><i class="fa fa-file-excel"></i> Generar reporte</a>
+        </div>
+        <div class="span6">
+            <form class="form-search">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span> Buscar</a>
+                {% if search or ids %}
+                    <a href="/th_consultapermiso" id='allresults' class='btn btn-info'><span class="fa fa-refresh "></span> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width:110px; text-align: center">Código</th>
+                    <th style="width:70px; text-align: center">Fecha</th>
+                    <th style="width:80px; text-align: center">Estado</th>
+                    <th style="width:80px; text-align: center">Cédula</th>
+                    <th style="width:350px;">Solicitante</th>
+                    <th>Tipo Solicitud/Motivo</th>
+                    <th style="width:70px; text-align: center">Soporte</th>
+                    <th style="width:70px; text-align: center">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for permiso in permisos %}
+                    <tr>
+                        <td style="text-align: center"><b>{{ permiso.codificacion }}</b></td>
+                        <td style="text-align: center">{{ permiso.fechasolicitud|date:'d-m-Y' }}</td>
+                        <td style="text-align: center"><b><span class="label label-{% if permiso.estadosolicitud == 1 %}info{% elif permiso.estadosolicitud == 2 %}warning{% elif permiso.estadosolicitud == 3 %}success{% else %}important{% endif %}">{{ permiso.get_estadosolicitud_display }}</span></b></td>
+                        <td style="text-align: center">{{ permiso.solicita.cedula }}</td>
+                        <td><b>{{ permiso.solicita }}</b><br>{{ permiso.unidadorganica }}</td>
+                        <td>
+                            <b>Tipo solicitud: </b>{{ permiso.get_tiposolicitud_display }}<br>
+                            <b>Tipo permiso: </b>{{ permiso.tipopermiso }}<br>
+                            <b>Motivo: </b>{{ permiso.motivo|upper }}
+                        </td>
+                        <td>{% if permiso.archivo %}<a class="btn btn-info btn-mini mostrarview" url="{{ permiso.archivo.url }}" href="javascript:;"><i class="fa fa-download"></i> Descargar</a>{% endif %}</td>
+                        <td style="text-align: center">
+                            <a class="btn btn-mini btn-warning mostrardetalle_view tu" title="Ver Detalle" href="javascript:;" idr="{{ permiso.id }}"><i class="fa fa-list"></i></a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10">NO EXISTEN DATOS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/th_consultapermiso?page=1">1</a></li>
+                        <li><a href="/th_consultapermiso?page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/th_consultapermiso?page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/th_consultapermiso?page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/th_consultapermiso?page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/th_consultapermiso?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Mostrar detalles del Permiso</h3>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="vistaprevia" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Vista previa</h3>
+        </div>
+        <div class="modal-body">
+            <iframe src="" align="center" height="380px" width="99%" id="pdfview_permi"></iframe>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info cerrarview">Cerrar</a>
+        </div>
+    </div>
+    
+    
+     <div class="modal fade static" id="itemspanelgenerarexcel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitlegenerarcsv">Generar reporte de permisos institucionales</h3>
+        </div>
+        <div class="modal-body panelbodygenerarcsv">
+            <div class=ow-fluid">
+                <form id="frmGenerarCsv" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                    <table class="table table-bordered">
+                        <tbody>
+                        <tr>
+                            <td>Tipo de permiso:</td>
+                            <td colspan="3">
+                                <select  id="id_tipopermiso" name="tipopermiso" style="width: 99%">
+                                    <option value="0" selected>TODOS</option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr id="fila_fechas">
+                            <td style="width: 25%;">Fecha desde:</td>
+                            <td style="width: 25%;"><input type="text" class="selectorfecha" id="fechadesdecsv" name="fechadesdecsv" value="{{ fecha|date:'d-m-Y' }}" readonly style="cursor:text; background-color: #FFFFFF;"/></td>
+                            <td style="width: 25%;">Fecha hasta:</td>
+                            <td style="width: 25%;"><input type="text" class="selectorfecha" id="fechahastacsv" name="fechahastacsv" value="{{ fecha|date:'d-m-Y' }}" readonly style="cursor:text; background-color: #FFFFFF;"/></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a onclick="procesarexcel()" href="javascript:;" class="btn btn-success " id="id_generarreporteg"><i class="fa fa-check"></i> Generar</a>
+            <a href="javascript:;" class="btn btn-info " id="id_cerrargenerarexcel"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

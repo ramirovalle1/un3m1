@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+	<link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+	<script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+	<script type="text/javascript">
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+        });
+        $(function() {
+            $(".tl").tooltip({position:"center up"});
+            /*$("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "{{ request.path }}?action=inscritos&id={{ eventoperiodo.id }}&s="+term;
+            });*/
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+            $(".mostrardetalle_view").click(function() {
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {'action': 'verdetalle', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeWarning("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+            $("#actualizar_cargo").click(function() {
+                bloqueointerface();
+                $.post("{{ request.path }}", {'action': 'actualizarcargo', 'id': {{ eventoperiodo.id }}}, function(data) {
+                    $.unblockUI();
+                    if (data.result=='ok') {
+                        location.reload();
+                    } else {
+                        elemento.val(valoranterior);
+                        mensajeWarning(data.mensaje);
+                    }
+                }).error(function(){
+                    $.unblockUI();
+                    elemento.val(valoranterior);
+                    mensajeWarning("Fallo al cambiar el cupo");
+                });
+            });
+            $(".enviar_certificado").click(function() {
+                var id = $(this).attr('id');
+                $("#idinscripcion").val(id);
+                {#                {% if eventoperiodo.instructor_principal %}#}
+                bloqueointerface();
+                $("#modalnotificacion").modal({backdrop:'static', width: '600px'}).modal('show');
+                $.unblockUI();
+                //openwindow('POST' ,'{{ request.path }}', {action: 'reporte_certificado','id':id},'_blank');
+                {#                {% else %}#}
+                {#                    mensajeWarning("No puede abrir, elija un instructor principal");#}
+                {#                {% endif %}#}
+            });
+
+            $("#btn_aceptar").click(function(){
+                var idinscripcion = $("#idinscripcion").val();
+
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'enviar_certificado_pdf', 'id': idinscripcion },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeWarning("Error al obtener los datos.");
+                    },
+                    success: function (response) {
+                        if (response.result) {
+                            $("#modalnotificacion").modal({backdrop:'static', width: '600px'}).modal('hide');
+                            $.unblockUI();
+                            //location.reload();
+                            //$("#lblenv_"+idinscripcion+"").html("&nbsp;SI&nbsp;");
+                            //$("#lblenv_"+idinscripcion+"").attr("class","label label-success");
+                            $(`#td_certificado_${idinscripcion}`).html(`${response.data}`)
+                            mensajeWarning('El certificado fue enviado al e-mail del participante');
+                        } else {
+                            $.unblockUI();
+                            mensajeWarning(response.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+            $("#btn_cancelar").click(function(){
+                $('#modalnotificacion').modal('hide');
+            });
+
+            $(".visualizar_certificado").click(function() {
+                var id = $(this).attr('id');
+                $("#idinscripcion").val(id);
+                {#                {% if eventoperiodo.instructor_principal %}#}
+                openwindow('POST' ,'{{ request.path }}', {action: 'ver_certificado_pdf','id':id},'_blank');
+                {#                {% else %}#}
+                {#                    mensajeWarning("No puede abrir, elija un instructor principal");#}
+                {#                {% endif %}#}
+            });
+            $(".generar_certificado").click(function() {
+                var id = $(this).attr('id');
+                $("#idinscripcion").val(id);
+                {#                {% if eventoperiodo.instructor_principal %}#}
+                openwindow('POST' ,'{{ request.path }}', {action: 'generar_certificado_pdf','id':id},'_blank');
+                {#                {% else %}#}
+                {#                    mensajeWarning("No puede abrir, elija un instructor principal");#}
+                {#                {% endif %}#}
+            });
+
+            $("#filter_estado, #filter_encuesta").change(function () {
+                console.log($(this).val())
+                busqueda();
+            });
+
+        });
+
+        var busqueda = function (page/*=undefined*/) {
+            var term = $("#searchinput").val().trim().toUpperCase();
+            var estado = $("#filter_estado").val();
+            var encuesta = $("#filter_encuesta").val();
+            page = typeof page == 'undefined' ? 1 : page;
+
+            bloqueointerface();
+            if (term){
+            	location.href = `/adm_capacitaciondocente/gestion?action=inscritos&id={{ eventoperiodo.id }}&s=${term}&estado=${estado}&encuesta=${encuesta}&page=${page}`;
+            }else{
+            	location.href = `/adm_capacitaciondocente/gestion?action=inscritos&id={{ eventoperiodo.id }}&estado=${estado}&encuesta=${encuesta}&page=${page}`;
+            }
+			return false;
+        };
+
+        function generarreportemasivo(idinscripcion) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}",
+                data: {'action': 'reporte_generar_masivo', 'id': idinscripcion},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        mensajeWarning(`CERTIFICADOS GENERADOS`);
+                        location.reload();
+                    } else {
+                        mensajeWarning(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeWarning("Error al obtener los datos");
+                },
+                dataType: "json"
+            });
+        }
+
+	</script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=planificacion&id={{ eventoperiodo.periodo_id }}{% endblock %}
+{% block canvas %}
+
+	<div class='row'>
+		<div class='col-lg-12'>
+			<div class="headtitle">
+				<h3 class="texto-blue">{{ title }}</h3>
+				<h6>Periodo: {{ eventoperiodo.periodo }}</h6>
+				<h6>Planificación: {{ eventoperiodo.capevento }}</h6>
+				<h6>Fecha: {{ eventoperiodo.fechainicio|date:"d-m-Y" }} - {{ eventoperiodo.fechafin|date:"d-m-Y" }}</h6>
+			</div>
+		</div>
+	</div>
+
+
+	<div class="container-fluid">
+		<div class='row'>
+			<div class="col-lg-4 col-md-6 col-12">
+				{% if eventoperiodo.hay_cupo_inscribir %}
+					<a class="btn  btn-success" href="{{ request.path }}?action=addinscribir&id={{ eventoperiodo.id }}"><i class="fa fa-plus"></i> Adicionar</a>
+				{% elif not eventoperiodo.hay_cupo_inscribir %}
+					<b class="text-danger tu">CUPO LLENO</b>
+				{% endif %}
+				<a href="javascript:void(0);" class="btn btn-default" onclick="generarreportemasivo('{{ eventoperiodo.id }}')"><i class="fa fa-send"></i> Enviar certificado masivo</a>
+				{#            <a href="{{ request.path }}?action=reporteinscritoscurso&id={{ eventoperiodo.id }}" class="btn btn-warning"><i class="fa fa-table"></i> Reporte inscritos</a>#}
+
+
+				<div class="btn-group dropleft">
+					<button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+						Reportes <i class="fa fa-angle-down"></i>
+					</button>
+					<ul class="dropdown-menu" x-placement="right-start">
+						<li class="dropdown-item"><a href="{{ request.path }}?action=reporteinscritoscurso&id={{ eventoperiodo.id }}" ><i class="fa fa-table"></i> Reporte inscritos</a></li>
+						<li class="dropdown-item"><a href="{{ request.path }}?action=reporteaprobadosfacultad&id={{ eventoperiodo.id }}" ><i class="fa fa-table"></i> Reporte aprobados facultad </a></li>
+						<li class="dropdown-item"><a href="{{ request.path }}?action=reportecalificaciones&id={{ eventoperiodo.id }}" ><i class="fa fa-table"></i> Reporte de calificaciones </a></li>
+					</ul>
+				</div>
+
+			</div>
+
+			<div class="col-lg-8 col-md-6 col-12">
+				<div class="row">
+					<div class="col-lg-3 col-md-12 col-12">
+						<div class="me-3">
+							<select id="filter_estado" style="width: 100%" autocomplete="off">
+								<option value="0" {% if estado == 0 %}selected{% endif %}>Todos</option>
+								<option {% if estado == 1 %}selected{% endif %} value="1">Aprobado</option>
+								<option {% if estado == 2 %}selected{% endif %} value="2">Reprobado</option>
+							</select>
+						</div>
+					</div>
+					<div class="col-lg-3 col-md-12 col-12">
+						<div class="me-3">
+							<select id="filter_encuesta" style="width: 100%" autocomplete="off">
+								<option value="0" {% if encuesta == 0 %}selected{% endif %}>Todos</option>
+								<option {% if encuesta == 1 %}selected{% endif %} value="1">Encuestado</option>
+								<option {% if encuesta == 2 %}selected{% endif %} value="2">Faltante</option>
+							</select>
+						</div>
+					</div>
+					<div class="col-lg-6 col-md-12 col-12">
+						<div class="input-group">
+							<input class='form-control' type='text' id='searchinput' value='{{ search }}' autocomplete="off" />
+							<div class="input-group-append">
+								<a class="btn btn-primary" href="javascript:;" id="search"><span class="fa fa-search"></span></a>
+								{% if search or estado or encuesta or ids %}
+									<a title="Ver todo" href="{{ request.path }}?action=inscritos&id={{ eventoperiodo.id }}" id='allresults' class="btn btn-default tr">
+										<i class="fas fa-sync-alt"></i></a>
+								{% endif %}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+		</div>
+		<div class='row my-2'>
+			<!-- col -->
+			<div class="col-lg-2 col-md-12 col-12">
+				<div class="d-flex align-items-center justify-content-between p-4">
+					<div>
+						<h3 class="h3 fw-bold mb-0">{{ eventoperiodo.contar_inscripcion_evento_periodo }}</h3>
+						<p class="mb-0 fs-6">Total inscritos</p>
+					</div>
+					<div class="ms-3">
+						<div class="icon-shape icon-sm bg-primary text-info rounded-circle">
+
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- col -->
+			<div class="col-lg-2 col-md-12 col-12 border-start-md">
+				<div class="d-flex align-items-center justify-content-between p-4">
+					<div>
+						<h2 class="h3 fw-bold mb-0">{{ eventoperiodo.total_inscritos_aprobados }}</h2>
+						<p class="mb-0 fs-6">Total aprobados</p>
+					</div>
+					<div class="ms-3">
+						<div class="icon-shape icon-sm bg-success text-success rounded-circle">
+
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- col -->
+			<div class="col-lg-2 col-md-12 col-12 border-start-md">
+						<div class="d-flex align-items-center justify-content-between p-4">
+							<div>
+								<h2 class="h3 fw-bold mb-0">{{ eventoperiodo.total_inscritos_reprobados }}</h2>
+								<p class="mb-0 fs-6">Total reprobados</p>
+							</div>
+							<div class="ms-3">
+								<div class="icon-shape icon-sm bg-danger text-danger rounded-circle">
+
+								</div>
+							</div>
+						</div>
+					</div>
+			{% if eventoperiodo.encuesta %}
+				{% with encuesta=eventoperiodo.estadistica_encuesta  %}
+					<!-- col -->
+					<div class="col-lg-2 col-md-12 col-12 border-start-md">
+						<div class="d-flex align-items-center justify-content-between p-4">
+							<div>
+								<h3 class="h3 fw-bold mb-0">{{ encuesta.total }}</h3>
+								<p class="mb-0 fs-6">Total a encuestar</p>
+							</div>
+							<div class="ms-3">
+								<div class="icon-shape icon-sm bg-light-primary text-primary rounded-circle">
+
+								</div>
+							</div>
+						</div>
+					</div>
+					<!-- col -->
+					<div class="col-lg-2 col-md-12 col-12 border-start-md">
+						<div class="d-flex align-items-center justify-content-between p-4">
+							<div>
+								<h2 class="h3 fw-bold mb-0">{{ encuesta.encuestados }}</h2>
+								<p class="mb-0 fs-6">Total encuestados</p>
+							</div>
+							<div class="ms-3">
+								<div class="icon-shape icon-sm bg-light-success text-success rounded-circle">
+
+								</div>
+							</div>
+						</div>
+					</div>
+					<!-- col -->
+					<div class="col-lg-2 col-md-12 col-12 border-start-md">
+							<div class="d-flex align-items-center justify-content-between p-4">
+								<div>
+									<h2 class="h3 fw-bold mb-0">{{ encuesta.faltantes }}</h2>
+									<p class="mb-0 fs-6">Total faltantes</p>
+								</div>
+								<div class="ms-3">
+									<div class="icon-shape icon-sm bg-light-danger text-danger rounded-circle">
+
+									</div>
+								</div>
+							</div>
+						</div>
+				{% endwith %}
+			{% endif %}
+		</div>
+		<div class='card mb-4'>
+			<div class='card-body border-6 rounded-3'>
+				<table class='tabla_responsive table_primary table table-striped'>
+					<thead>
+					<tr>
+						<th style="width: 5%; text-align: center; vertical-align: middle"> No.</th>
+						<th style="width: 15%; text-align: center; vertical-align: middle"> Fechas </th>
+						<th style="width: 25%; text-align: center; vertical-align: middle"> Inscrito </th>
+						<th style="width: 30%; text-align: center; vertical-align: middle"> Cargo</th>
+						<th style="width: 15%; text-align: center; vertical-align: middle" title="Asistencia/Promedio/Estado">% Asis. <br>Promedio</th>
+						<th style="width: 12%; text-align: center; vertical-align: middle" title="Certificado enviado">Información</th>
+						<th style="width: 10%; text-align: center; vertical-align: middle">Acciones</th>
+					</tr>
+					</thead>
+					<tbody>
+					{% for cab in cabecera %}
+						<tr>
+							<td style="text-align: center;" data-title='Nª:'>
+								{{ forloop.counter }}<br>
+								{{ cab.id }}
+							</td>
+							<td >
+								<i class="fa fa-calendar"></i> <b>Solicitud: </b> {{ cab.fechasolicitud|date:"d-m-Y" }}<br>
+								<i class="fa fa-calendar"></i> <b>Aprobación: </b>{{ cab.fechaultimaestadosolicitud|date:"d-m-Y" }}
+							</td>
+							<td style="text-align: left; " data-title='Inscrito'>
+								<div class="d-flex justify-content-start align-content-center align-items-center">
+									<div class="avatar me-2">
+										{% if cab.participante.tiene_foto %}
+											<img src="{{ cab.participante.foto.foto.url }}" onerror="this.onerror=null;this.src='/static/images/image.png'" alt="{{ cab.participante }}" class="rounded-circle">
+										{% else %}
+											{% if cab.participante.sexo_id == 1 %}
+												<img class="avatar img-circle grupo.matricula.inscripcion.file_info_image"
+													 src="/static/images/iconos/mujer.png">
+											{% else %}
+												<img class="avatar img-circle grupo.matricula.inscripcion.file_info_image"
+													 src="/static/images/iconos/hombre.png">
+											{% endif %}
+										{% endif %}
+									</div>
+									<div>
+										<i class="fa fa-user"></i> {{ cab.participante.nombre_completo_minus }}<br>
+										<i class="fa fa-address-card"></i> {{ cab.participante.cedula }}<br>
+										{% if cab.participante.emailinst %}
+											<i class="fa fa-envelope"></i> {{ cab.participante.emailinst }} <br>
+										{% endif %}
+										<i class="fa fa-envelope"></i> {{ cab.participante.email }} <br>
+										{% if cab.participante.idusermoodle == 0 %}
+											<span class="label label-danger"> </span>
+										{% endif %}
+									</div>
+								</div>
+							</td>
+							<td>
+								<b>Cargo: </b>{{ cab.tiene_cargo_participante|default_if_none:'NINGUNO' }}<br>
+								<b>Departamento: </b>{{ cab.tiene_unidadorganica_participante|default_if_none:'NINGUNO' }}<br>
+								{% if cab.facultad %}
+									<b>Facultad: </b>{{ cab.facultad|default_if_none:'NINGUNO' }}<br>
+								{% endif %}
+								{% if cab.carrera %}
+									<b>Carrera: </b>{{ cab.carrera|default_if_none:'NINGUNO' }}
+								{% endif %}
+							</td>
+
+							<td style="text-align: left">
+								<b>Asistencia:</b> {{ cab.porciento_asistencia }} %<br>
+								<b>Promedio:</b> {{ cab.notafinal |floatformat:2 |default:'0.0' }}
+
+								{% if eventoperiodo.tipoparticipacion_id == 3 %}
+									<br><b>Estado:</b>
+									{% if cab.porciento_requerido_asistencia and cab.calificacion_requerido_aprobacion %}
+										<b class="text-success">Aprobado</b>
+									{% else %}
+								 		<b class="text-danger">Reprobado</b>
+									{% endif %}
+								{% elif eventoperiodo.tipoparticipacion_id == 2 %}
+									<br><b>Estado:</b>
+									{% if cab.calificacion_requerido_aprobacion %}
+										<b class="text-success">Aprobado</b>
+									{% else %}
+										<b class="text-danger">Reprobado</b>
+									{% endif %}
+								{% elif eventoperiodo.tipoparticipacion_id == 1 %}
+									<br><b>Estado:</b>
+									{% if cab.porciento_requerido_asistencia %}
+										<b class="text-success">Aprobado</b>
+									{% else %}
+										<b class="text-danger">Reprobado</b>
+									{% endif %}
+								{% endif %}
+							</td>
+							<td style="text-align: left" id="td_certificado_{{ cab.id }}">
+{#								{{ cab.rutapdf }}#}
+								{% if cab.rutapdf %}
+									<p><b class="fs-6">Certificado: </b> <i class="fa fa-check" style="color: green"></i></p>
+									{% if cab.notificado %}
+										<p><b class="fs-6">Notificado: </b> {{ cab.fechanotifica|date:"d-m-Y h:i a" }}</p>
+									{% endif %}
+									{% if cab.aplica_encuesta %}
+										{% if cab.respondio_encuesta %}
+											<br><b class="fs-6">Respondio encuesta: </b> <i class="fa fa-check" style="color: green"></i>
+										{% else %}
+											<br><b class="fs-6">Respondio encuesta: </b> <i class="fa fa-close" style="color: red"></i>
+										{% endif %}
+									{% endif %}
+								{% else %}
+									<p><b class="fs-6">Certificado: </b> <i class="fa fa-close" style="color: red"></i></p>
+								{% endif %}
+
+							</td>
+							<td style="text-align: center">
+								{% comment %}
+									<a class="btn btn-mini btn-info mostrardetalle_view tu" title="Recorrido" href="javascript:;" idr="{{ cab.id }}"><i class="fa fa-sitemap"></i></a>
+									{% if cab.puede_eliminar_inscrito %}
+										<a href="javascript:;" nhref="{{ request.path }}?action=delinscrito&id={{ cab.id }}" class="btn btn-danger btn-mini eliminacionmodal tu" title="Eliminar"><i class="fa fa-remove"></i></a>
+									{% endif %}
+								{% endcomment %}{#                                {% if cab.porciento_requerido_asistencia %}#}
+								{#                                    <a class="btn btn-mini btn-warning certificado_view_pdf tu" title="Certificado" href="javascript:;" id="{{ cab.id }}"><i class="fa fa-print"></i></a>#}
+								{#                                {% endif %}#}
+								{% comment %}{% if cab.porciento_requerido_asistencia %}
+									<a class="btn btn-mini btn-success visualizar_certificado tu" title="Visualizar certificado" href="javascript:;" id="{{ cab.id }}"><i class="fa fa-file-pdf-o"></i></a>
+									<a class="btn btn-mini btn-success enviar_certificado tu" title="Generar certificado" href="javascript:;" id="{{ cab.id }}"><i class="fa fa-envelope"></i></a>
+								{% endif %}{% endcomment %}
+
+								<div class="btn-group dropleft">
+									<button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+										Acciones <i class="fa fa-angle-down"></i>
+									</button>
+									<ul class="dropdown-menu" x-placement="right-start">
+										{#                                    {% if cab.puede_eliminar_inscrito %}#}
+										{% if cab.puede_eliminar_inscrito2 %}
+											<li class="dropdown-item"><a href="javascript:;" nhref="{{ request.path }}?action=delinscrito&id={{ cab.id }}" class="eliminacionmodal"><i class="fa fa-remove"></i> Eliminar </a></li>
+										{% endif %}
+										{#                                        <li class="dropdown-item"><a href="javascript:;" idr="{{ cab.id }}" class="mostrardetalle_view"><i class="fa fa-sitemap"></i> Recorrido </a></li>#}
+										{% if eventoperiodo.tipoparticipacion_id == 3 %}
+											{% if cab.porciento_requerido_asistencia and cab.calificacion_requerido_aprobacion %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="visualizar_certificado"><i class="fa fa-print"></i> Vista Previa Certificado </a></li>
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="generar_certificado"><i class="fa fa-print"></i> Generar Certificado</a></li>
+												{% with certificado_pdf=cab|args:folder|args:filename_certificado|args:'.pdf'|args:cab.id|call:'esta_generado_certificado'  %}
+													{% if certificado_pdf  %}
+														<li class="dropdown-item"><a href="{{ url_path }}/media/qrcode/certificados/{{ filename_certificado }}{{ cab.id }}.pdf" target="_blank"><i class="fa fa-print"></i> Ver Certificado </a></li>
+													{% endif %}
+												{% endwith %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="enviar_certificado"><i class="fa fa-envelope"></i> Enviar Certificado </a></li>
+											{% endif %}
+										{% elif eventoperiodo.tipoparticipacion_id == 2 %}
+											{% if cab.calificacion_requerido_aprobacion %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="visualizar_certificado"><i class="fa fa-print"></i> Vista Previa Certificado </a></li>
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="generar_certificado"><i class="fa fa-print"></i> Generar Certificado</a></li>
+												{% with certificado_pdf=cab|args:folder|args:filename_certificado|args:'.pdf'|args:cab.id|call:'esta_generado_certificado'  %}
+													{% if certificado_pdf  %}
+														<li class="dropdown-item"><a href="{{ url_path }}/media/qrcode/certificados/{{ filename_certificado }}{{ cab.id }}.pdf" target="_blank"><i class="fa fa-print"></i> Ver Certificado </a></li>
+													{% endif %}
+												{% endwith %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="enviar_certificado"><i class="fa fa-envelope"></i> Enviar Certificado </a></li>
+											{% endif %}
+										{% elif eventoperiodo.tipoparticipacion_id == 1 %}
+											{% if cab.porciento_requerido_asistencia %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="visualizar_certificado"><i class="fa fa-print"></i> Vista Previa Certificado </a></li>
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="generar_certificado"><i class="fa fa-print"></i> Generar Certificado</a></li>
+												{% with certificado_pdf=cab|args:folder|args:filename_certificado|args:'.pdf'|args:cab.id|call:'esta_generado_certificado'  %}
+													{% if certificado_pdf  %}
+														<li class="dropdown-item"><a href="{{ url_path }}/media/qrcode/certificados/{{ filename_certificado }}{{ cab.id }}.pdf" target="_blank"><i class="fa fa-print"></i> Ver Certificado </a></li>
+													{% endif %}
+												{% endwith %}
+												<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="enviar_certificado"><i class="fa fa-envelope"></i> Enviar Certificado </a></li>
+											{% endif %}
+										{% elif eventoperiodo.tipoparticipacion_id == 5 %}
+											<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="visualizar_certificado"><i class="fa fa-print"></i> Vista Previa Certificado </a></li>
+											<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="generar_certificado"><i class="fa fa-print"></i> Generar Certificado</a></li>
+											{% with certificado_pdf=cab|args:folder|args:filename_certificado|args:'.pdf'|args:cab.id|call:'esta_generado_certificado'  %}
+												{% if certificado_pdf  %}
+													<li class="dropdown-item"><a href="{{ url_path }}/media/qrcode/certificados/{{ filename_certificado }}{{ cab.id }}.pdf" target="_blank"><i class="fa fa-print"></i> Ver Certificado </a></li>
+												{% endif %}
+											{% endwith %}
+											<li class="dropdown-item"><a href="javascript:;" id="{{ cab.id }}" class="enviar_certificado"><i class="fa fa-envelope"></i> Enviar Certificado </a></li>
+										{% endif %}
+
+										<li class="dropdown-item"><a href="{{ request.path }}?action=moverinscrito&id={{ cab.id }}"><span class="fa fa-refresh"></span> Mover Inscrito</a></li>
+									</ul>
+								</div>
+
+							</td>
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="10" style="text-align: center">NO EXISTEN INSCRITOS REGISTRADOS</td>
+						</tr>
+					{% endfor %}
+					</tbody>
+				</table>
+			</div>
+			<div class="card-footer border-top-0">
+				{% include 'paginacionb4.html' %}
+			</div>
+		</div>
+
+
+	</div>
+
+	<div class="modal fade static" id="itemspanel" style="display: none;">
+		<div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h4><b class="paneltitle">Mostrar detalles del solicitud</b></h4>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+
+				</div>
+				<div class="modal-footer">
+					<table class="pull-right">
+						<tr>
+							<td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+						</tr>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+	{#    <div class="modal fade static" id="itemspanel" style="display: none;">#}
+	{#        <div class="modal-header">#}
+	{#            <h3 class="paneltitle">Mostrar detalles del solicitud</h3>#}
+	{#        </div>#}
+	{#        <div class="modal-body panelbody">#}
+	{#        </div>#}
+	{#        <div class="modal-footer">#}
+	{#            <table class="pull-right">#}
+	{#                <tr>#}
+	{#                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>#}
+	{#                </tr>#}
+	{#            </table>#}
+	{#        </div>#}
+	{#    </div>#}
+
+	{#    <div class="modal fade static" id="modalnotificacion" style="display: none;">#}
+	{#        <div class="modal-header">#}
+	{#            <h4 id="paneltitle">Enviar certificado por e-mail</h4>#}
+	{#            <h4 id="idnombrespostulante"></h4>#}
+	{#        </div>#}
+	{#        <div class="modal-body notificacionbody">#}
+	{#            <p style="margin-top: 16px;">¿Esta seguro(a) que desea enviar el certificado por e-mail?</p>#}
+	{#            <input type="hidden" id="idinscripcion" name="idinscripcion">#}
+	{#        </div>#}
+	{#        <div class="modal-footer">#}
+	{#            <p style="text-align: right; margin-bottom: 0">#}
+	{#                <a href="javascript:;" id="btn_aceptar" class='btn btn-success'> Enviar certificado</a>#}
+	{#                <a href="javascript:;" id="btn_cancelar" class='btn btn-default'> Cancelar</a>#}
+	{#            </p>#}
+	{#        </div>#}
+	{#    </div>#}
+
+
+
+	<div class="modal fade static" id="modalnotificacion" style="display: none;">
+		<div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h4><b class="paneltitle">Enviar certificado por e-mail</b></h4>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body notificacionbody">
+					<p style="margin-top: 16px;">Esta seguro(a)que desea enviar el certificado por e-mail?</p>
+					<input type="hidden" id="idinscripcion" name="idinscripcion">
+				</div>
+				<div class="modal-footer">
+					<p style="text-align: right; margin-bottom: 0">
+						<a href="javascript:;" id="btn_aceptar" class='btn btn-success'> Enviar certificado</a>
+						<a href="javascript:;" id="btn_cancelar" class='btn btn-default'> Cancelar</a>
+					</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+{% endblock %}
+

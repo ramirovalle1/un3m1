@@ -1,0 +1,1430 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+
+    <script type="text/javascript">
+
+        lista_items1 = [];
+        lista_items2 = [];
+        lista_items3 = [];
+        function addsubtema(codsubtema,indice,tema, leccion){
+            bandera = 0;
+            if (indice.checked){
+                for (re=0;re<lista_items2.length;re++){
+                    if (lista_items2[re] == tema){bandera=1;}
+                }
+                if (bandera==0){
+                    $("#chktem_"+tema).attr('checked', true);
+                    lista_items2.push(tema);
+                }
+                lista_items1.push(codsubtema);
+            }else{
+                pop_lista(lista_items1, codsubtema);
+            }
+            bloqueointerface();
+            $.ajax({
+                type:"POST",
+                url:"/pro_clases",
+                data:{'action':'selectsubtema', 'idl': leccion, 'idt':tema, 'ids': codsubtema},
+                error:function(){
+                    smoke.alert("Error al cerrar la clase.");
+                    $.unblockUI();
+                },
+                success:function(data){
+                    if (data.result=="ok"){
+                        if (data.tem>0)
+                            $.unblockUI();
+                        $("#chktem_" + data.tem).attr('checked', true);
+                        $.unblockUI();
+                    } else {
+                        smoke.alert(data.mensaje);
+                        $.unblockUI();
+                    }
+                }
+            });
+        }
+        function addsubtemaadicional(codsubtema,indice,tema,leccion){
+            bandera = 0;
+            if (indice.checked){
+                for (re=0;re<lista_items2.length;re++){
+                    if (lista_items2[re] == tema){bandera=1;}
+                }
+                if (bandera==0){
+                    $("#chktem_"+tema).attr('checked', true);
+                    lista_items2.push(tema);
+                }
+                lista_items1.push(codsubtema);
+            }else{
+                pop_lista(lista_items3, codsubtema);
+            }
+            bloqueointerface();
+            $.ajax({
+                type:"POST",
+                url:"/pro_clases",
+                data:{'action':'selectsubtemaadicional', 'idl': leccion, 'idt':tema, 'ids': codsubtema},
+                error:function(){
+                    smoke.alert("Error al cerrar la clase.");
+                    $.unblockUI();
+                },
+                success:function(data){
+                    if (data.result=="ok"){
+                        if (data.tem>0)
+                            $.unblockUI();
+                        $("#chktem_" + data.tem).attr('checked', true);
+                        $.unblockUI();
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                }
+            });
+        }
+        function addtema(codtema,indicetem, leccion){
+            var total = $("#total_"+codtema).val();
+            if (indicetem.checked) {
+                actualizartema(leccion, codtema);
+            }
+            else{
+                bloqueointerface();
+                actualizartema(leccion, codtema);
+            }
+        }
+        function actualizartema(leccion, codtema) {
+            bloqueointerface();
+            $.ajax({
+                type:"POST",
+                url:"/pro_clases",
+                data:{'action':'selecttema', 'idl': leccion, 'idt':codtema},
+                error:function(){
+                    smoke.alert("Error al cerrar la clase.");
+                    $.unblockUI();
+                },
+                success:function(data){
+                    if (data.result=="ok"){
+                        $.unblockUI();
+                        for (elemento in data.lista) {
+                            $("#chksub_" + data.lista[elemento][0]).attr('checked', false);
+                            pop_lista(lista_items1, parseInt($("#chksub_" + data.lista[elemento][0]).val()));
+                        }
+                    } else {
+                        smoke.alert("Antes de Cerrar la Leccion introduzca el contenido de la misma.");
+                    }
+                }
+            });
+        }
+        function addbibli(codbibli,indicebib){
+            if (indicebib.checked){
+                lista_items3.push(codbibli);
+            }else{
+                pop_lista(lista_items3, codbibli);
+            }
+        }
+
+        var solicitudes = 0;
+
+        {% if lecciongrupo.abierta %}
+            verificarcontinuaabierta = function  (){
+                if (solicitudes < 1){
+                    $.ajax({
+                        type:"POST",
+                        url:"/inno/api",
+                        data:{'action':'checkOpenClassContinue', 'id': parseInt('{{ lecciongrupo.id }}') },
+                        error:function(){
+                        },
+                        success:function(data){
+                            //console.log(data);
+                            if (data.result=="ok"){
+                                if (data.abierta == false){
+                                    bloqueointerface();
+                                    if (data.otras > 0){
+                                        bloqueointerface();
+                                        location.href = "/pro_clases?action=view&id=" + data.otras;
+                                        bloqueointerface();
+                                    } else {
+                                        bloqueointerface();
+                                        location.href = "/pro_clases";
+                                        bloqueointerface();
+                                    }
+                                }else{
+                                    $(".action_close_class").hide();
+                                    if (data.puede_cerrar_leccion_grupo){
+                                        $(".action_close_class").show();
+                                    }
+                                    //console.table(data.asistencias);
+                                    {% if websocket and ePeriodoAcademia and ePeriodoAcademia.utiliza_asistencia_ws %}
+                                        $.each(data.asistencias, function(index, value) {
+                                            $("#porcientoasist"+value.id).html(value.asistenciafinal+"%");
+                                            if (!value.porciento_requerido){
+                                                $("#porcientoasist"+value.id).removeClass("badge-success");
+                                                $("#porcientoasist"+value.id).addClass("badge-important");
+                                            }else{
+                                                $("#porcientoasist"+value.id).removeClass("badge-important");
+                                                $("#porcientoasist"+value.id).addClass("badge-success");
+                                            }
+                                            if (value.virtual){
+                                                let $span = $(`#asistencia_virtual_${value.materiaasignada}`);
+                                                //$span.show();
+                                                $span.html(`Ingresó a la clase a las ${value.virtual_hora} desde ${value.browser} con la IP ${value.ip_public}`);
+                                            }
+                                            if (value.asistio && value.virtual){
+                                                //console.log("EN LINEA: " + value.asistio && value.virtual);
+                                                let $el = $("#check"+value.id);
+                                                if (!$el.is(':checked')){
+                                                    $el.prop("checked", true);
+                                                    $("#porcientoasist"+value.id).html(value.asistenciafinal+"%");
+                                                    if (!value.porciento_requerido){
+                                                        $("#porcientoasist"+value.id).removeClass("badge-success");
+                                                        $("#porcientoasist"+value.id).addClass("badge-important");
+                                                    }else{
+                                                        $("#porcientoasist"+value.id).removeClass("badge-important");
+                                                        $("#porcientoasist"+value.id).addClass("badge-success");
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    {% endif %}
+                                    actualiza_asistencia();
+                                }
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            };
+        {% endif %}
+
+        $(function() {
+            var chequeo = null;
+            $(window).scroll(function() {
+                $(".btn-flotante-zoom, .btn-flotante-close").removeClass('show');
+                $(".btn-flotante-zoom, .btn-flotante-close").addClass('hidden');
+                if ($(window).scrollTop() > 300) {
+                    //console.log("ent");
+                    $(".btn-flotante-zoom, .btn-flotante-close").removeClass('hidden');
+                    $(".btn-flotante-zoom, .btn-flotante-close").addClass('show');
+                } else {
+                    $(".btn-flotante-zoom, .btn-flotante-close").removeClass('show');
+                    $(".btn-flotante-zoom, .btn-flotante-close").addClass('hidden');
+                }
+            });
+
+
+            $(".action-observacion").click(function (){
+                bloqueointerface();
+                let type = $(this).attr('type');
+                let ida = $(this).attr('ida');
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_clases",
+                    data: {'action': 'viewAsistenciaObservaciones', 'type': type, 'id': ida},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".modal-body", $("#modalViewAsistenciaObservacion")).html(data.html);
+                            $("#modalViewAsistenciaObservacion").modal({backdrop:'static', width: '60%'}).modal('show');
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                    },
+                    dataType: "json",
+                });
+            });
+            $('.action-close', $("#modalViewAsistenciaObservacion")).click(function(){
+                $("#modalViewAsistenciaObservacion").modal('hide');
+
+            });
+
+            $('.action-save', $("#modalAddAsistenciaObservacion")).click(function(){
+                let type = $("[name='type']", $("#modalAddAsistenciaObservacion")).val();
+                let ida = $("[name='ida']", $("#modalAddAsistenciaObservacion")).val();
+                let ido = $("[name='ido']", $("#modalAddAsistenciaObservacion")).val();
+                let observacion = $("[name='observacion']", $("#modalAddAsistenciaObservacion")).val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_clases",
+                    data: {'action': 'saveAsistenciaObservacion', 'type': type, 'ida': ida, 'ido': ido, 'observacion': observacion},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#modalAddAsistenciaObservacion").modal('hide');
+                            NotificationJG.success(data.mensaje);
+                            $(".modal-body", $("#modalViewAsistenciaObservacion")).html(data.html);
+                            $(`#btn_action_observacion_${ida} > sup > label > b`).html(data.num_observaciones);
+                            //$("#modalViewAsistenciaObservacion").modal({backdrop:'static', width: '90%'}).modal('show');
+
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        NotificationJG.error("Error al enviar los datos.");
+                    },
+                    dataType: "json",
+                });
+            });
+
+            $(".verdetalleppl").click(function() {
+                var idmatricula = $(this).attr('idmat');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_planificacion",
+                    data: {'action': 'verdetalleppl', 'idmatricula':idmatricula },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            $(".panelbodydetalleppl" ).empty();
+                            $(".panelbodydetalleppl" ).html(data.data);
+                            $("#itemspanelverdetalleppl").modal({backdrop:'static', width: '900px'}).modal('show');
+
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+
+            $(".cerrardetalleppl").click(function(){
+                $('#itemspanelverdetalleppl').modal('hide');
+            });
+            $(".action_close_class").hide();
+            {% if lecciongrupo.abierta %}
+                {% if lecciongrupo.puede_cerrar_leccion_grupo %}
+                    $(".action_close_class").show();
+                {% endif %}
+                chequeo = setInterval(verificarcontinuaabierta, 80000);
+
+                $(".action_close_class").click(function() {
+                    Swal.fire({
+                        title: `NOTIFICACIÓN`,
+                        text: "¿Está segur{% if persona.sexo.id == 1 %}a{% else %}o{% endif %} de cerrar la clase?",
+                        type: 'info',
+                        icon: 'info',
+                        showCancelButton: true,
+                        allowOutsideClick: false,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'SI',
+                        cancelButtonText: 'NO'
+                    }).then((result) => {
+                        if (result.value) {
+                            var contenido;
+                            if (solicitudes < 1)
+                            {
+                                contenido = $("#contenido").val();
+                                if (contenido.trim()) {
+                                    bloqueointerface();
+                                    $.ajax({
+                                        type:"POST",
+                                        url:"/pro_clases",
+                                        data:{'action':'cerrar', 'id': '{{ lecciongrupo.id }}' },
+                                        error:function(){
+                                             NotificationJG.error("Error al cerrar la clase.");
+                                            $.unblockUI();
+                                        },
+                                        success:function(data){
+                                            if (data.result=="ok"){
+                                                {% if ret %}
+                                                    bloqueointerface();
+                                                    location.href = "{{ ret }}";
+                                                    bloqueointerface();
+                                                {% else %}
+                                                    bloqueointerface();
+                                                    location.href = "/pro_clases";
+                                                    bloqueointerface();
+                                                {% endif %}
+                                            } else {
+                                                $.unblockUI();
+                                                if (data.result=="bad"){
+                                                    if (data.motivo=="contenido"){
+                                                        actualizarcontenido();
+                                                        actualizarobservacion();
+                                                        NotificationJG.warning("Antes de Cerrar la Leccion introduzca el contenido de la misma.");
+                                                    } else {
+                                                        NotificationJG.error("Error al cerrar la clase.");
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    NotificationJG.warning("Antes de Cerrar la Leccion introduzca el contenido de la misma.");
+                                }
+                            }
+                            else
+                            {
+
+                                NotificationJG.warning("Tiene en proceso envio de asistencia o contenido que no han terminado.");
+                            }
+
+                        }else{
+                            NotificationJG.info("Enhorabuena su clase sigue abierta")
+                        }
+                    }).catch(error => {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'error',
+                            title: 'Ocurrio un error inesperado',
+                            showConfirmButton: false,
+                            timer: 6000
+                        });
+                    });
+
+                });
+                /*$("#cerrarclase1").click(function() {
+                    var contenido;
+                    if (solicitudes < 1){
+                        contenido = $("#contenido").val();
+                        if (contenido.trim()) {
+                            bloqueointerface();
+                            $.ajax({
+                                type:"POST",
+                                url:"/pro_clases",
+                                data:{'action':'cerrar', 'id': '{{ lecciongrupo.id }}' },
+                                error:function(){
+                                    smoke.alert("Error al cerrar la clase.");
+                                    $.unblockUI();
+                                },
+                                success:function(data){
+                                    if (data.result=="ok"){
+                                        location.href = "/pro_clases";
+                                    } else {
+                                        $.unblockUI();
+                                        if (data.result=="bad"){
+                                            if (data.motivo=="contenido"){
+                                                actualizarcontenido();
+                                                actualizarobservacion();
+                                                smoke.alert("Antes de Cerrar la Leccion introduzca el contenido de la misma.");
+                                            } else {
+                                                smoke.alert("Error al cerrar la clase.");
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        } else {
+                            smoke.alert("Antes de Cerrar la Leccion introduzca el contenido de la misma.");
+                        }
+                    } else {
+                        smoke.alert("Tiene en proceso envio de asistencia o contenido que no han terminado.");
+                    }
+                });*/
+
+                $("#btn-cerrar").click(function() {
+                    $("#incidenciaspanel").modal('hide');
+                    return false;
+                });
+
+                adicionarincidencia = function(intento, tipo, contenido, tiponombre){
+                    if (contenido.trim().length>0){
+                        $.ajax({
+                            type:"POST",
+                            url:"/pro_clases",
+                            data:{'action': 'addincidencia', 'lecciongrupo': '{{ lecciongrupo.id }}', 'tipo': tipo, 'contenido': contenido},
+                            error:function(){
+                                if (intento>=100){
+                                    solicitudes -=1;
+                                } else {
+                                    adicionarincidencia(intento+1, tipo, contenido, tiponombre);
+                                }
+                            },
+                            success:function(data){
+                                solicitudes -=1;
+                                if (data.result=="ok"){
+                                    listaincidencias = $("#listaincidencias").html();
+                                    listaincidencias += "<tr class=''><td><h4>"+tiponombre+"</h4><p>"+contenido+"</p></td></tr>";
+                                    $("#listaincidencias").html(listaincidencias);
+                                    $("#incidenciaspanel").modal('hide');
+                                }
+                            }
+                        });
+                    } else {
+                        solicitudes -=1;
+                    }
+                };
+
+                fecha = $(".selectorfecha");
+
+                actualiza_fecha = function(){
+                    elemento = $('#fecha');
+                    var id = elemento.attr('lg');
+                    var fechaanterior = elemento.attr("va");
+                    var fechaactual = elemento.val();
+                    $('.datepicker').css({"display": "none"});
+                    bloqueointerface();
+                    $.post("/pro_clases", {'action': 'updatefecha', 'id': id, 'fecha': fechaactual}, function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok') {
+                            $('#fecha').attr({'va': fechaactual});
+                        } else {
+                            elemento.val(fechaanterior);
+                            smoke.alert(data.mensaje);
+                        }
+                    }).error(function(){
+                        $.unblockUI();
+                        elemento.val(fechaanterior);
+                        smoke.alert("Fallo al cambiar la fecha");
+                    });
+                };
+
+                fecha.datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(){
+                    actualiza_fecha($(this));
+                });
+
+                fecha.change(function(){
+                    actualiza_fecha($(this));
+                });
+
+                $("#btn-ejecutar").click(function() {
+                    var tiponombre = $("#id_tipo :selected").text();
+                    var contenido = $("#id_contenido").val();
+                    var tipo = $("#id_tipo").val();
+                    solicitudes +=1;
+                    $("#incidenciaspanel").modal('hide');
+                    adicionarincidencia(0, tipo, contenido, tiponombre);
+                });
+
+                $("#addincidencia").click(function() {
+                    $('#id_contenido').val("");
+                    $('#incidenciaspanel').modal({keyboard: false, backdrop: 'static'});
+                    $('#incidenciasspanel').modal("show");
+                    return false;
+                });
+
+                $("#subirdeber").click(function(){
+                    if (solicitudes<=0){
+                        bloqueointerface();
+                        location.href = '/pro_clases?action=adddeberes&id={{ lecciongrupo.id }}';
+                        bloqueointerface();
+                    } else {
+                        smoke.alert("Tiene en proceso envio de asistencia o contenido que no han terminado.");
+                    }
+                });
+
+                actualizarestrategiasmetodologicas = function(intento){
+                    var id;
+                    var contenido;
+                    contenido = $("#estrategiasmetodologicas").val().trim();
+                    id = $("#estrategiasmetodologicas").attr("idleccion");
+                    $("#estrategiasmetodologicas").css({"background-color":"rgb(217, 237, 247)"});
+                    $.ajax({
+                        cache:false,
+                        type:"POST",
+                        url:"/pro_clases",
+                        data:{'action': 'estrategiasmetodologicas', 'id': id, 'val': contenido},
+                        error:function(){
+                            if (intento>=100){
+                                solicitudes -= 1;
+                                $("#estrategiasmetodologicas").css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                                $("#estrategiasmetodologicas").removeAttr("disabled");
+                            } else {
+                                actualizarestrategiasmetodologicas(intento+1);
+                            }
+                        },
+                        success:function(data){
+                            solicitudes -=1;
+                            $("#estrategiasmetodologicas").removeAttr("disabled");
+                            if (data.result=="ok"){
+                                $("#estrategiasmetodologicas").css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                            } else {
+                                $("#estrategiasmetodologicas").css({"background-color":"rgba(240, 128, 128, 0.21)"});
+                            }
+                        }
+                    });
+                };
+
+                $("#estrategiasmetodologicas").change(function() {
+                    solicitudes +=1;
+                    $(this).prop('disabled', true);
+                    actualizarestrategiasmetodologicas(0);
+                });
+
+                actualizarasistencia = function(id, valor, intento){
+                    var marca = $("#check"+id);
+                    $("#tab"+id).css({"background-color":"rgb(217, 237, 247)"});
+                    $.ajax({
+                        cache:false,
+                        type:"POST",
+                        url:"/pro_clases",
+                        data:{'action':'asistencia', 'id':id, 'val': valor},
+                        error:function(){
+                            if (intento>=100){
+                                solicitudes -= 1;
+                                $("#tab"+id).find("#check"+id).removeAttr("disabled");
+                                $("#tab"+id).css({"background-color":"rgb(240, 128, 128)"});
+                                if (valor=='y'){
+                                    $("#check"+id).attr('checked', false);
+                                } else {
+                                    $("#check"+id).attr('checked', true);
+                                }
+                                actualiza_asistencia();
+                            }else{
+                                actualizarasistencia(id,valor,intento+1);
+                            }
+                        },
+                        success:function(data){
+                            solicitudes -= 1;
+                            $("#tab"+id).find("#check"+id).removeAttr("disabled");
+                            if (data.result=="ok"){
+                                $("#tab"+id).css({"background-color":"rgba(148, 255, 183, 0.23)"});
+                                $("#porcientoasist"+id).html(data.porcientoasist+"%");
+                                if (!data.porcientorequerido){
+                                    $("#porcientoasist"+id).removeClass("badge-success");
+                                    $("#porcientoasist"+id).addClass("badge-important");
+                                }else{
+                                    $("#porcientoasist"+id).removeClass("badge-important");
+                                    $("#porcientoasist"+id).addClass("badge-success");
+                                }
+                            } else {
+                                $("#tab"+id).css({"background-color":"rgb(240, 128, 128)"});
+                                if (valor=='y'){
+                                    $("#check"+id).attr('checked', false);
+                                } else {
+                                    $("#check"+id).attr('checked', true);
+                                }
+                            }
+                            actualiza_asistencia();
+                        }
+                    });
+                };
+
+                {% if asistencia_en_grupo %}
+                    actualizar_lista = function(){
+                        var lista = '';
+                        $('.selectorasistencia').each(function() {
+                            if ($(this).is(":checked")){
+                                lista += $(this).attr('idasis') + ',';
+                            }
+                        });
+                        if (lista.length > 0){
+                            lista = lista.substring(0, lista.length-1);
+                        }
+                        return lista;
+                    };
+
+                    actualizarasistenciagrupo = function(){
+                        var listagrupo = actualizar_lista();
+                        bloqueointerface();
+                        $.ajax({
+                            type:"POST",
+                            url:"/pro_clases",
+                            data:{'action':'asistenciagrupo', 'id': '{{ lecciongrupo.id }}', 'lista': listagrupo},
+                            error:function(){
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            },
+                            success:function(data){
+                                if (data.result=='ok'){
+                                    bloqueointerface();
+                                    location.href = location.href;
+                                    bloqueointerface();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    };
+
+                    $(".enviarasistencia").click(function() {
+                        actualizarasistenciagrupo();
+                    });
+                {% endif %}
+
+                $(".selectorasistencia").change(function() {
+                    {% if not asistencia_en_grupo %}
+                        var val;
+                        var id;
+                        $(this).prop('disabled', true);
+                        id = $(this).attr("idasis");
+                        val = $(this).is(":checked");
+                        solicitudes += 1;
+                        actualizarasistencia(id, ((val)?'y':'n'),0);
+                    {% else %}
+
+                    {% endif %}
+                });
+
+                $("#selectortotalasistencia").click(function() {
+                    var id = $(this).attr('idl');
+                    bloqueointerface();
+                    $.ajax({
+                        type:"POST",
+                        url:"/pro_clases",
+                        data:{'action':'asistenciageneral', 'id': id},
+                        error:function(){
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        success:function(data){
+                            if (data.result == 'ok'){
+                                bloqueointerface();
+                                location.href = location.href;
+                                bloqueointerface();
+                            } else {
+                                $.unblockUI();
+                                smoke.alert("Error al enviar los datos.");
+                            }
+                        }
+                    });
+                });
+
+                claseNota = function(v) {
+                    if (v>=0 && v<5) {
+                        return "badge-error";
+                    } else if (v>=5 && v<8) {
+                        return "badge-warning";
+                    } else {
+                        return "badge-success";
+                    }
+                };
+
+                $(".removeevalbutton").click(function() {
+                    var id = $(this).attr("idasis");
+                    var parent = $(this.parentNode);
+                    var ultima = parent.find("#eval"+id+" span.badge").last();
+                    var evalid = ultima.attr("evalid");
+                    if (parent.find("#eval"+id+" span.badge").size()>0) {
+                        $.post("/pro_clases", {'action': 'borrarevaluacion','asisid': id,'evalid': evalid}, function (data) {
+                            ultima.remove();
+                            {#                            if (parent.find("#eval" + id + " span.badge").size() == 0) {#}
+                            {#                                $(".removeevalbutton" + id).hide();#}
+                            {#                            } else {#}
+                            {#                                $(".removeevalbutton" + id).show();#}
+                            {#                            }#}
+                            $("span#prom" + id).html("<span class='badge " + claseNota(data.promedio) + "'>" + data.promedio + "</span>");
+                        }, "json");
+                    }
+                    return false;
+                });
+
+                $(".evalbutton").click(function() {
+                    var id = $(this).attr("idasis");
+                    var parent = $(this.parentNode);
+                    smoke.prompt("Digite un puntaje entre 1 y 10", function(v) {
+                        if (v && parseInt(v)>0 && parseInt(v)<=10) {
+                            parent.addClass("ajaxed");
+                            $.post("/pro_clases",{'action': 'evaluar', id: id, val: v}, function(data) {
+                                $("span#eval"+id).append(" <span class='badge "+claseNota(v)+"' evalid='"+data.evalid+"'>"+v+"</span>");
+                                $("span#prom"+id).html("<span class='badge "+claseNota(data.promedio)+"'>"+data.promedio+"</span>");
+                                if (parent.find("#eval"+id+" span.badge").size()==0) {
+                                    $(".removeevalbutton"+id).hide();
+                                } else {
+                                    $(".removeevalbutton"+id).show();
+                                }
+                                parent.removeClass("ajaxed");
+                            }, "json");
+                        }
+                    });
+                    return false;
+                });
+            {% endif %}
+
+            total_presentes = function(){
+                return $('.selectorasistencia:checked').length
+            };
+
+            total_alumnos = function(){
+                return $('.selectorasistencia').length;
+            };
+
+            total_ausentes = function(){
+                return total_alumnos() - total_presentes()
+            };
+
+            total_presentes_2 = function(){
+                return $('.check_presente').length
+            };
+
+            total_alumnos_2 = function(){
+                return $('.check_count').length;
+            };
+
+            total_ausentes_2 = function(){
+                return total_alumnos_2() - total_presentes_2()
+            };
+
+            actualiza_asistencia = function(){
+                //console.log("entro");
+                $('#presentes').html(total_presentes());
+                $('#ausentes').html(total_ausentes());
+                $('#totalasistencias').html(total_alumnos());
+            };
+
+            actualiza_asistencia_2 = function(){
+                console.log("entro");
+                $('#presentes').html(total_presentes_2());
+                $('#ausentes').html(total_ausentes_2());
+                $('#totalasistencias').html(total_alumnos_2());
+            };
+
+            {% if lecciongrupo.abierta %}
+                actualiza_asistencia();
+            {% endif %}
+            {#        $(#)#}
+            $(".leer").click(function() {
+                var descripcion = $(this).attr('descripcion');
+                var valor = $(this).attr('v');
+                var ver = $(this).attr('ver');
+                var texto = ''; var nleer = ''; var accion = '';
+                if (ver == 1){
+                    $(this).attr({'ver': 2});
+                    texto = descripcion;
+                    nleer = 'Leer menos';
+                }
+                if (ver == 2){
+                    $(this).attr({'ver': 1});
+                    texto = descripcion.substr(0,366) + '...';
+                    nleer = 'Leer mas'
+                }
+                if (valor == 1){
+                    accion = 'menmision'
+                }
+                if (valor == 2){
+                    accion ='menperfil'
+                }
+                if (valor == 3){
+                    accion ='menegreso'
+                }
+                if (valor == 4){
+                    accion ='menobjetivo'
+                }
+                document.getElementById(accion).innerHTML = texto;
+                document.getElementById('nleer'+valor).innerHTML = nleer;
+            });
+            setTimeout(function() {
+                $("#contenidocentral").find(".alert").fadeOut("slow");
+            }, 34000);
+
+        });
+
+        $(document).ready(function() {
+            $(".fancybox").fancybox();
+            actualiza_asistencia();
+            {% if not lecciongrupo.abierta %}
+                actualiza_asistencia_2();
+            {% endif %}
+            $.ajax({
+                type:"POST",
+                url:"/pro_clases",
+                data:{'action': 'leccion_silabo','idm': {{ materia.id }},'idc': {{ clase.id }},'idl': {{ lecciongrupo.id }}, 'abierta': '{{ abierta }}' },
+                error:function(){
+                    $.unblockUI();
+                    smoke.alert("Error de conección.");
+                },
+                success:function(data){
+                    if (data.results == 'ok'){
+                        $("#silabos_temas").html(data.html);
+                    } else {
+                        $.unblockUI();
+                        smoke.alert("Error al cargar los temas del silabo");
+                    }
+                }
+            });
+        });
+
+    </script>
+    <style>
+        .fa fa-folder-open{background-position:-408px -120px;width:16px;}
+        .well{min-height:20px;padding:19px;margin-bottom:20px;background-color:#f5f5f5;border:1px solid #e3e3e3;-webkit-border-radius:4px;-moz-border-radius:4px;border-radius:4px;-webkit-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);-moz-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);}.well blockquote{border-color:#ddd;border-color:rgba(0, 0, 0, 0.15);}
+        .well-large{padding:24px;-webkit-border-radius:6px;-moz-border-radius:6px;border-radius:6px;}
+        .well-small{padding:9px;-webkit-border-radius:3px;-moz-border-radius:3px;border-radius:3px;}
+        .close{float:right;font-size:20px;font-weight:bold;line-height:20px;color:#000000;text-shadow:0 1px 0 #ffffff;opacity:0.2;filter:alpha(opacity=20);}.close:hover,.close:focus{color:#000000;text-decoration:none;cursor:pointer;opacity:0.4;filter:alpha(opacity=40);}
+        button.close{padding:0;cursor:pointer;background:transparent;border:0;-webkit-appearance:none;}
+        .tree {
+            min-height:20px;
+            padding:19px;
+            margin-bottom:20px;
+            background-color:#fbfbfb;
+            border:1px solid #999;
+            -webkit-border-radius:4px;
+            -moz-border-radius:4px;
+            border-radius:4px;
+            -webkit-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);
+            -moz-box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05);
+            box-shadow:inset 0 1px 1px rgba(0, 0, 0, 0.05)
+        }
+        .tree li {
+            list-style-type:none;
+            margin: 0;
+            padding:10px 5px 0 5px;
+            position:relative
+        }
+        .tree li::before, .tree li::after {
+            content:'';
+            left:-20px;
+            position:absolute;
+            right:auto
+        }
+        .tree li::before {
+            border-left:1px solid #999;
+            bottom:50px;
+            height:100%;
+            top:0;
+            width:1px
+        }
+        .tree li::after {
+            border-top:1px solid #999;
+            height:20px;
+            top:25px;
+            width:25px
+        }
+        .tree li span {
+            -moz-border-radius:5px;
+            -webkit-border-radius:5px;
+            border:1px solid #999;
+            border-radius:5px;
+            display:inline-block;
+            padding:3px 8px;
+            text-decoration:none
+        }
+        .tree li.parent_li>span {
+            cursor:pointer
+        }
+        .tree>ul>li::before, .tree>ul>li::after {
+            border:0
+        }
+        .tree li:last-child::before {
+            height:30px
+        }
+        .tree li.parent_li>span:hover, .tree li.parent_li>span:hover+ul li span {
+            background:#eee;
+            border:1px solid #94a0b4;
+            color:#000
+        }
+        .btn-flotante-close {
+            font-size: 12px; /* Cambiar el tamaño de la tipografia */
+            text-transform: uppercase; /* Texto en mayusculas */
+            font-weight: bold; /* Fuente en negrita o bold */
+            color: #ffffff; /* Color del texto */
+            border-radius: 15px; /* Borde del boton */
+            letter-spacing: 2px; /* Espacio entre letras */
+            /*background-color: #51a351;*/ /* Color de fondo */
+            padding: 15px 15px; /* Relleno del boton */
+            position: fixed;
+            bottom: 55px;
+            right: 10px;
+            transition: all 300ms ease 0ms;
+            box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.1);
+            z-index: 99;
+        }
+        .btn-flotante-close:hover {
+            /*background-color: #2c2fa5;*/
+            box-shadow: 0px 15px 20px rgba(0, 0, 0, 0.3);
+            color: #ffffff;
+            transform: translateY(-10px);
+        }
+        .btn-flotante-zoom {
+            font-size: 12px; /* Cambiar el tamaño de la tipografia */
+            text-transform: uppercase; /* Texto en mayusculas */
+            font-weight: bold; /* Fuente en negrita o bold */
+            color: #ffffff; /* Color del texto */
+            border-radius: 15px; /* Borde del boton */
+            letter-spacing: 2px; /* Espacio entre letras */
+            /*background-color: #51a351;*/ /* Color de fondo */
+            padding: 15px 15px; /* Relleno del boton */
+            position: fixed;
+            bottom: 55px;
+            right: 220px;
+            transition: all 300ms ease 0ms;
+            box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.1);
+            z-index: 99;
+
+        }
+        .btn-flotante-zoom:hover {
+            /*background-color: #2c2fa5;*/
+            box-shadow: 0px 15px 20px rgba(0, 0, 0, 0.3);
+            color: #ffffff;
+            transform: translateY(-10px);
+        }
+        @media only screen and (max-width: 600px) {
+            .btn-flotante-close, .btn-flotante-zoom  {
+                /*font-size: 14px;
+                padding: 12px 20px;
+                bottom: 55px;
+                right: 10px;*/
+                position: inherit;
+
+                padding: 12px 20px;
+                font-size: 14px;
+                padding: 7px 15px;
+                font-size: 14.5px;
+                -webkit-border-radius: 6px;
+                -moz-border-radius: 6px;
+                border-radius: 6px;
+                font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            }
+            /*.btn-flotante-zoom {
+                font-size: 14px;
+                padding: 12px 20px;
+                bottom: 110px;
+                right: 10px;
+            }*/
+        }
+    </style>
+{% endblock %}
+{% block atras %}/pro_clases{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table>
+                <tr>
+                    <td style="width: 60px"><img src="/static/images/iconosmini/notebook.png" style="width: 50px"></td>
+                    <td >
+                        <h4>{{ title }}</h4>
+                        <h5>Aula: {{ lecciongrupo.aula }}, Fecha: {{ lecciongrupo.fecha|date:"d-m-Y" }}, Hora Inicio: {{ lecciongrupo.horaentrada }} {% if not lecciongrupo.abierta %}Hora Fin: {{ lecciongrupo.horasalida }}{% endif %} {{ turno }}</h5>
+                    </td>
+                </tr>
+            </table>
+
+        </div>
+        {% if contar_llenos > 0 %}
+            <div id="contenidocentral">
+                {% with perfilprofesional=materia.asignaturamalla.malla.perfilprofesional %}
+                    {% if  perfilprofesional %}
+                        <div class="span{% if contar_llenos == 4 %}3{% elif contar_llenos == 3 %}4{% elif contar_llenos == 2 %}6{% elif contar_llenos == 1 %}12{% endif %}">
+                            <div class="alert alert-info" style="text-align: justify">
+                                <a  href="javascript:;" class="close" data-dismiss="alert">×</a>
+                                <h4 class="alert-heading">PERFIL PROFESIONAL</h4>
+                                <p id="menperfil">
+                                    {{  perfilprofesional|substraerconpunto:350|linebreaksbr }}
+                                </p>
+                                {% if  perfilprofesional|contarcaracter:350 %}
+                                    <a href="javascript:;" class="alert-link leer" id="nleer2" descripcion="{{  perfilprofesional|linebreaksbr }}" v="2" ver="1">Leer mas</a>
+                                {% endif %}
+
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endwith %}
+            </div>
+        {% endif %}
+    </div>
+    {% for leccion in lecciones %}
+        <div class='row-fluid'>
+            <div class='span8'>
+                {#            {% for leccion in lecciones %}#}
+                <h5>Materia: {{ leccion.clase.materia.nombre_completo }} - <span class="label label-default">{{ leccion.clase.tipoprofesor }}</span> - <span class="label label-default">{{ leccion.clase.get_tipohorario_display }}</span> {% if leccion.clase.tipoprofesor.id == 2 and leccion.clase.grupoprofesor and leccion.clase.grupoprofesor.paralelopractica %}- <span class="label label-info">{{ leccion.clase.grupoprofesor.get_paralelopractica_display }}</span>{% endif %}</h5>
+                <h5>Profesor: {{ leccion.clase.profesor.persona.nombre_completo }}</h5>
+                <br>
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        <th style="width: 5%; text-align: center; vertical-align: middle">#</th>
+                        {% if verfoto %}
+                            <th style="width: 6%; text-align: center; vertical-align: middle">Foto</th>
+                        {% endif %}
+                        <th style="width: 35%; text-align: center; vertical-align: middle">Estudiantes</th>
+                        <th style="width: 8%; text-align: center; vertical-align: middle">Obs.</th>
+                        <th style="width: 8%;text-align: center; vertical-align: middle">% Asist.</th>
+                        <th style="width: 8%;text-align: center; vertical-align: middle">
+                            {% if lecciongrupo.abierta %}
+                                {% if clase.tipohorario <= 1 or clase.tipohorario == 7 %}
+                                    <a  href="javascript:;" id="selectortotalasistencia" class="btn btn-success btn-tini tu" title="Marcar todas" idl="{{ lecciongrupo.id }}"><i class="fa fa-check" ></i></a>
+                                {% endif %}
+                            {% endif %}
+                        </th>
+                        <th colspan="2" style="width: 30%; text-align: center; vertical-align: middle">Actuación en Clase</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for asistencia in leccion.mis_asistencias %}
+                        <tr>
+                            <td style="vertical-align: middle; text-align: center">{{ forloop.counter }}</td>
+                            {% with materiaasignada=asistencia.materiaasignada alumno=asistencia.materiaasignada.matricula.inscripcion.persona foto=alumno.foto puede_tomar_asistencia=asistencia.puede_tomar_asistencia %}
+                                {% if verfoto %}
+                                    <td style="text-align: center; vertical-align: middle;">
+                                        {% if alumno.foto.foto %}
+                                            <a title="{{ alumno.nombre_completo }}" href='{{ alumno.foto.foto.url }}' class="fancybox" rel="group"><img src="{{ alumno.foto.foto.url }}" onerror="this.onerror=null;this.src='/static/images/image.png'" class="img-circle" width="40" height="40"></a>
+                                            {#                                            <a title="{{ alumno.nombre_completo }}" href='/media/{{ alumno.foto.foto.url }}' class="fancybox" rel="group"><img class="img-polaroid" src="{{ foto.foto.url }}" style="width: 20px; height: 20px;"></a>#}
+                                        {% else %}
+                                            {% if alumno.sexo_id == 1 %}
+                                                <img style="width: 20px; height: 20px;" class="img-circle" src="/static/images/iconos/mujer_small.png">
+                                            {% else %}
+                                                <img style="width: 20px; height: 20px;" class="img-circle" src="/static/images/iconos/hombre_small.png">
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                {% endif %}
+                                <td style="vertical-align: middle;">
+                                    {{ alumno }}
+                                    <br>
+                                    {% if materiaasignada.matricula.bloqueomatricula %}
+                                        <label class="label label-important">MATRICULA BLOQUEADA</label>
+                                    {% endif %}
+                                    {% if materiaasignada.retiramateria %}
+                                        <span class='label label-important'>RETIRADO</span>
+                                    {% else %}
+                                        {#                                    {% if alumno.tiene_deuda and leccion.abierta %}#}
+                                        {#                                        <span class='label label-important'>ADEUDA A LA FECHA ${{ materiaasignada.matricula.inscripcion.adeuda_a_la_fecha|floatformat:2 }}</span>#}
+                                        {#                                    {% endif %}#}
+                                        {% if alumno.datos_incompletos and incluyedatos %}
+                                            <span class='label label-info'>DATOS INCOMPLETOS</span>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if alumno.tiene_discapasidad_new %}
+                                        <span class='label label-warning'><i class="fa fa-bell"></i> {{ alumno.discapasidad.tipodiscapacidad.nombre }} ({{ alumno.discapasidad.porcientodiscapacidad|floatformat:0 }}%)</span>
+                                    {% endif %}
+                                    {% if materiaasignada.matricula.inscripcion.persona.ppl %}
+                                        <a class="btn btn-warning btn-mini verdetalleppl" idmat="{{ materiaasignada.matricula.id|encrypt }}" href="javascript:;">
+                                            <i class="fa fa-user"></i> PPL
+                                        </a>
+                                    {% endif %}
+                                    {% if asistencia.materiaasignada.matricula.inscripcion.persona.telefono and asistencia.materiaasignada.matricula.inscripcion.persona.telefono %}
+                                        <span>
+                                            <i class="fa fa-phone"></i> {{ asistencia.materiaasignada.matricula.inscripcion.persona.persona.telefono }}
+                                            <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ asistencia.materiaasignada.matricula.inscripcion.persona.telefono }}&text=Hola {{ asistencia.materiaasignada.matricula.inscripcion.persona }}'
+                                               target="_blank" class="btn btn-mini btn-success tu"
+                                               title="Enviar mensaje por whatsapp">
+                                                <i class="fa fa-whatsapp"></i>
+                                            </a>
+                                        </span>
+                                    {% endif %}
+                                    <div id="asistencia_virtual_{{ materiaasignada.id }}" class="label label-danger">{% if asistencia.virtual %}Ingresó a la clase a las {{ asistencia.virtual_hora|date:"h:i:s" }} desde {{ asistencia.browser }} con la IP {{ asistencia.ip_public }}{% endif %}</div>
+
+                                </td>
+                                <td style="text-align: center; vertical-align: middle">
+                                    {% if leccion.abierta and puede_tomar_asistencia %}
+                                        <a href="javascript:;" class="btn btn-mini action-observacion" id="btn_action_observacion_{{ asistencia.id }}" type="add" ida="{{ asistencia.id }}"><i class="fa fa-comments-o fa-2x"></i><sup style="top: -10px; left: -3px;"><label class="label label-warning" style="padding: 4px; font-size: 8px;line-height: 8px;"><b>{{ asistencia.num_observacion }}</b></label></sup></a>
+                                    {% else %}
+                                        <a href="javascript:;" class="btn btn-mini action-observacion" id="btn_action_observacion_{{ asistencia.id }}" type="view" ida="{{ asistencia.id }}"><i class="fa fa-commenting fa-2x"></i><sup style="top: -10px; left: -3px;"><label class="label label-warning" style="padding: 4px; font-size: 8px;line-height: 8px;"><b>{{ asistencia.num_observacion }}</b></label></sup></a>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle;">
+                                    <span id='porcientoasist{{ asistencia.id }}' class="badge {% if not materiaasignada.porciento_requerido %}badge-important{% else %}badge-success{% endif %}">{{ materiaasignada.asistenciafinal|floatformat:0 }}%</span>
+                                </td>
+                                <td style="text-align: center; vertical-align: middle;" id="tab{{ asistencia.id }}">
+                                    {% if leccion.abierta or leccion.solicitada  %}
+                                        {% if not materiaasignada.matricula.bloqueomatricula %}
+                                            <input class="selectorasistencia" type='checkbox' id_asist_ma="{{ materiaasignada.id }}" idasis='{{ asistencia.id }}' id='check{{ asistencia.id }}' {% if asistencia.asistio %} checked="true" {% endif %} {% if not puede_tomar_asistencia %} disabled="disabled" {% endif %}/>
+                                        {% else %}
+                                            <i class="fa fa-remove tu" style="color: red" title="Falta"></i>
+                                        {% endif %}
+
+                                    {% else %}
+                                        {% if asistencia.asistio %}
+                                            <i class="fa fa-check tu check_presente check_count" style="color: darkgreen" title="Presente"></i>
+                                        {% else %}
+                                            <i class="fa fa-remove tu check_ausente check_count" style="color: red" title="Falta"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle; width: 150px">
+                                    {% if leccion.abierta and puede_tomar_asistencia %}
+                                        <a href="javascript:;" idasis='{{ asistencia.id }}' class='evalbutton btn btn-mini'><i class="fa fa-plus"></i></a>
+                                    {% endif %}
+                                    <span id='eval{{ asistencia.id }}'>
+                                        {% for evaluacion in asistencia.evaluaciones %}
+                                            <span class='badge {% if evaluacion.evaluacion < 5 %}badge-error{% elif evaluacion.evaluacion < 8 %}badge-warning{% else %}badge-success{% endif %}' evalid="{{ evaluacion.id }}">{{ evaluacion.evaluacion|floatformat:0 }}</span>
+                                        {% endfor %}
+                                    </span>
+                                    {% if leccion.abierta and puede_tomar_asistencia %}
+                                        <a href="javascript:;" idasis='{{ asistencia.id }}' class='removeevalbutton removeevalbutton{{ asistencia.id }} btn btn-mini'><i class="fa fa-caret-left"></i></a>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle; width: 50px">
+                                    <span id='prom{{ asistencia.id }}'><span class='badge'>{{ asistencia.promedio_evaluacion|floatformat:0 }}</span></span>
+                                </td>
+                            {% endwith %}
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {#                    {% endfor %}#}
+                {#                {% if lecciongrupo.abierta %}#}
+                {#                    <div class='row-fluid'>#}
+                {#                        <div class='span12'>#}
+                {#                            <br>#}
+                {#                            {% if lecciongrupo.permite_cerrarla %}#}
+                {#                                <a id="cerrarclase1" href="javascript:;" class='btn btn-success btn-large'><i class="fa fa-time" ></i> Cerrar Clase</a>#}
+                {#                            {% endif %}#}
+                {#                            {% if asistencia_en_grupo %}#}
+                {#                                <a href="javascript:;"  class="btn btn-primary btn-large enviarasistencia tu" title="Guardar asistencias" idl="{{ lecciongrupo.id }}"><i class="fa fa-save" ></i> Guardar Asist.</a>#}
+                {#                            {% endif %}#}
+                {#                        </div>#}
+                {#                    </div>#}
+                {#                {% endif %}#}
+            </div>
+            <div class='span4'>
+                {#                <a class="btn btn-success" href="/pro_cronograma?action=aadtutoriaclase&id={{ materia.id }}"><i class="fa fa-plus"></i> Adicionar Tutoría</a>#}
+                {#                <a class="btn btn-success" href="/pro_cronograma?action=aadtutoriaclase&id={{ leccion.clase.materia.id|encrypt }}"><i class="fa fa-plus"></i> Adicionar Tutoría</a>#}
+                {% if forloop.first %}
+                    <div class="row-fluid">
+                        <div class="span12">
+{#                        utiliza_zoom: {{ utiliza_zoom }}#}
+                            {% if utiliza_zoom %}
+                                {% if not url %}
+                                    <div class="alert alert-info" style="text-align: justify">
+                                        <h4 class="alert-heading">AVISO</h4>
+                                        <p>
+                                            <b>{% if clase.profesor.persona.es_mujer %}Estimada{% else %}Estimado{% endif %} docente no registra enlace de ZOOM.</b>
+                                        </p>
+                                    </div>
+                                {% else %}
+{#                                    {% if clase.aula and clase.aula.bloque and not clase.aula.bloque.in_home %}#}
+                                    {% if url and not clase.tipohorario == 1 %}
+                                        <a href="{{ url }}" target="_blank" class='btn btn-primary btn-large'><i class="fa fa-video-camera" ></i> Ir al Meet</a>
+                                    {% elif url and clase.tipohorario == 1 and autorizado_clase_virtual %}
+                                        <a href="{{ url }}" target="_blank" class='btn btn-primary btn-large'><i class="fa fa-video-camera" ></i> Ir al Meet</a>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                            {% if lecciongrupo.abierta %}
+                                <a href="javascript:;" class='btn btn-success btn-large action_close_class'><i class="fa fa-close" ></i> Cerrar Clase</a>
+                            {% endif %}
+                            {% if asistencia_en_grupo and lecciongrupo.abierta %}
+                                <a href="javascript:;"  class="btn btn-info btn-large enviarasistencia tu" title="Guardar asistencias" idl="{{ lecciongrupo.id }}"><i class="fa fa-save" ></i> Guardar Asistencia</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th colspan="3" style="text-align: center">Asistencias</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td style="text-align: center; width: 33%">Presentes</td>
+                            <td style="text-align: center; width: 33%">Ausentes</td>
+                            <td style="text-align: center; width: 33%">Total</td>
+                        </tr>
+                        <tr>
+                            <td style="text-align: center" id="presentes">{{ presentes }}</td>
+                            <td style="text-align: center" id="ausentes">{{ ausentes }}</td>
+                            <td style="text-align: center" id="totalasistencias">{{ totalasistencias }}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+
+                    <div id="silabos_temas" style="color: #0a677e; font-weight: bold"> <img src="/static/images/tigrillo_loader.gif" width="100px" height="100px"></img> Cargando Sílabo</div>
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th colspan="2">Notificaciones:</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td style="width: 25px;%">
+                                <div style="width: 15px; height: 15px;background-color: rgb(240, 128, 128)"></div>
+                            </td>
+                            <td style="font-size:10px;">Error al enviar los datos, debido a fallas de conectividad.</td>
+                        </tr>
+                        <tr>
+                            <td style="width: 25px;%">
+                                <div style="width: 15px; height: 15px;background-color: rgb(148, 255, 183)"></div>
+                            </td>
+                            <td style="font-size:10px;">Los datos fueron enviados correctamente.</td>
+                        </tr>
+                        <tr>
+                            <td style="width: 25px;%">
+                                <div style="width: 15px; height: 15px;background-color: rgb(217, 237, 247)"></div>
+                            </td>
+                            <td style="font-size:10px;">Los datos estan en proceso de ser enviados.</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2"> </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <div class="row-fluid">
+                        <div class="span12">
+                            {% if url and clase.tipohorario != 1 %}
+                                <a href="{{ url }}" target="_blank" class='btn btn-primary btn-large'><i class="fa fa-video-camera" ></i> Ir al Meet</a>
+                            {% elif url and clase.tipohorario == 1 and profesor.autorizado_clase_virtual %}
+                                <a href="{{ url }}" target="_blank" class='btn btn-primary btn-large'><i class="fa fa-video-camera" ></i> Ir al Meet</a>
+                            {% endif %}
+                            {% if lecciongrupo.abierta %}
+                                <a href="javascript:;" class='btn btn-success btn-large action_close_class'><i class="fa fa-close" ></i> Cerrar Clase</a>
+                            {% endif %}
+                            {% if asistencia_en_grupo and lecciongrupo.abierta %}
+                                <a href="javascript:;"  class="btn btn-info btn-large enviarasistencia tu" title="Guardar asistencias" idl="{{ lecciongrupo.id }}"><i class="fa fa-save" ></i> Guardar Asistencia</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+
+    <div class="modal fade static" id="incidenciaspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 id="paneltitle">Adicionar Incidencia de Clase</h3>
+        </div>
+        <div class="modal-body">
+            <form class="form-horizontal">
+                <fieldset class="control-group nomargins">
+                    <label class="control-label" for="id_tipo">Tipo</label>
+                    <div class="controls">
+                        <select id="id_tipo">
+                            {% for tipoincidencia in tiposincidencias %}
+                                <option value="{{ tipoincidencia.id }}">{{ tipoincidencia.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </fieldset>
+                <fieldset class="control-group nomargins">
+                    <label class="control-label" for="id_contenido">Descripci&oacute;n</label>
+                    <div class="controls">
+                        <textarea name="id_contenido" id="id_contenido"></textarea>
+                    </div>
+                </fieldset>
+            </form>
+            <div id="panelalert">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn" id="btn-cerrar">Cerrar</a>
+            <a href="javascript:;" class="btn btn-primary" id="btn-ejecutar"><span class="fa fa-plus " ></span> Adicionar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="mensajepanel" data-backdrop="static" data-keyboard="false" >
+        <div class="modal-header">
+            <h4>Mensaje</h4>
+        </div>
+        <div class="modal-body" style="height: 60px;">
+            <div id='mensaje'>
+            </div>
+        </div>
+        <div class="modal-footer" hidden="hidden">
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalViewAsistenciaObservacion" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Observaciones<span></span></h4>
+        </div>
+        <div class="modal-body panelbody">
+
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-inverse action-close"> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalAddAsistenciaObservacion" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle"><span></span> Observación</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <input type="hidden" value="" name="ida">
+            <input type="hidden" value="" name="ido">
+            <input type="hidden" value="{{ type }}" name="type">
+            <textarea style="width: 100%" rows="5" name="observacion"></textarea>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success action-save"> Guardar</a>
+            <a href="javascript:;" class="btn btn-info action-close"> Cancelar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelverdetalleppl" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle de PPL</h3>
+        </div>
+        <div class="modal-body panelbodydetalleppl">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info cerrardetalleppl">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+{% block extraJs %}
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script>
+        $(function(){
+            var elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+            elems.forEach(function (html) {
+                var switchery = new Switchery(html, {size: 'small', color: '#5DADE2'});
+            });
+            const key_room = '{{ key_room }}';
+            {% if websocket and ePeriodoAcademia and ePeriodoAcademia.utiliza_asistencia_ws %}
+                let endPoint = ''
+                {% if DEBUG %}
+                    endPoint = `ws://127.0.0.1:8000/ws/room/${key_room}`
+                {% else %}
+                    endPoint = `{{ websocket.url }}/ws/room/${key_room}`
+                {% endif %}
+                console.log(endPoint);
+                const socket = new WebSocket(endPoint);
+
+                socket.onopen = function (e) {
+                    console.log('[open] Conexión establecida clases');
+                    socket.send(JSON.stringify({
+                      'message': "ping",
+                      'type': "puede_entrar_clases",
+                      'datos': ""
+                    }));
+                };
+                socket.onmessage = function (event) {
+                    console.log(`[message] Datos recibidos del servidor: ${event.data}`);
+                    const data = JSON.parse(event.data);
+                    console.log(data);
+                    if ('type' in data){
+                        const type = data['type']
+                        if (type == 'entro_clase'){
+                            const datos = data['datos']
+                            $("#porcientoasist"+datos.id).html(datos.asistenciafinal+"%");
+                            if (!datos.porciento_requerido){
+                                $("#porcientoasist"+datos.id).removeClass("badge-success");
+                                $("#porcientoasist"+datos.id).addClass("badge-important");
+                            }else{
+                                $("#porcientoasist"+datos.id).removeClass("badge-important");
+                                $("#porcientoasist"+datos.id).addClass("badge-success");
+                            }
+                            if (datos.virtual){
+                                let $span = $(`#asistencia_virtual_${datos.materiaasignada}`);
+                                //$span.show();
+                                $span.html(`Ingresó a la clase a las ${datos.virtual_hora} desde ${datos.browser} con la IP ${datos.ip_public}`);
+                            }
+                            if (datos.asistio && datos.virtual){
+                                //console.log("EN LINEA: " + value.asistio && value.virtual);
+                                let $el = $("#check"+datos.id);
+                                if (!$el.is(':checked')){
+                                    $el.prop("checked", true);
+                                    $("#porcientoasist"+datos.id).html(datos.asistenciafinal+"%");
+                                    if (!datos.porciento_requerido){
+                                        $("#porcientoasist"+datos.id).removeClass("badge-success");
+                                        $("#porcientoasist"+datos.id).addClass("badge-important");
+                                    }else{
+                                        $("#porcientoasist"+datos.id).removeClass("badge-important");
+                                        $("#porcientoasist"+datos.id).addClass("badge-success");
+                                    }
+                                }
+                            }
+                            actualiza_asistencia();
+                        }
+                    }
+                };
+                socket.onclose = function (event) {
+                    console.log('[close] Conexión cerrada correctamente clases');
+                };
+                socket.onerror = function (error) {
+                    console.log(`[error] ${error.message}`);
+                };
+            {% endif %}
+        });
+    </script>
+{% endblock %}

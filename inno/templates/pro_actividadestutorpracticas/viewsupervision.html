@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+{#    <link href="/static/x-editable/bootstrap-editable.css?0.24" rel="stylesheet"/>#}
+{#    <script src="/static/x-editable/bootstrap-editable.min.js?0.24"></script>#}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src="/static/bootstrap4/plugins/moment/moment.min.js"></script>
+    <link type='text/css' rel='stylesheet' href="/static/bootstrap4/plugins/daterangepicker/daterangepicker.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/bootstrap4/plugins/daterangepicker/daterangepicker.js'></script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <style>
+        .dataTables_wrapper .dataTables_info {
+            display: none;
+         }
+        div.dataTables_wrapper div.dataTables_filter label, div.dataTables_wrapper .dataTables_paginate.paging_full_numbers, div.dataTables_wrapper .dataTables_paginate.paging_full_numbers ul.pagination {
+            justify-content: center; !important;
+        }
+        .dropdown-item i {
+            margin-right: 3px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(function () {
+            $("#empresa, #itinerario, #carrera").select2();
+            $("#id_mes").select2({width: '100%'});
+
+            busquedasp = function () {
+                var term = $("#buscador").val().trim().toUpperCase();
+                var e = $("#empresa").val();
+                var c = $("#carrera").val();
+                var i = $("#itinerario").val();
+                let href = "{{ request.path }}?action=viewsupervisiontutor&id={{ detalledistributivo.pk|encrypt }}&s=" + term;
+                if (parseInt(e)){
+                    href += "&e=" + e;
+                }
+                if (parseInt(c)){
+                    href += "&c=" + c;
+                }
+                if (parseInt(i)){
+                    href += "&i=" + i;
+                 }
+                bloqueointerface();
+                location.href = href;
+            };
+
+            tooltips();
+
+            $("#btn_buscar").click(function () { busquedasp(); });
+            $('#buscador').keyup(function (e) {
+                if (e.keyCode == 13) { busquedasp(); }
+            });
+
+
+            $('#empresa, #itinerario, #carrera').on('select2:select', function(){ busquedasp(); });
+            if ('{{ e }}'.length){ $('#empresa').val('{{ e }}').trigger('change'); }
+            if ('{{ c }}'.length){ $('#carrera').val('{{ c }}').trigger('change'); }
+            if ('{{ i }}'.length){ $('#itinerario').val('{{ i }}').trigger('change'); }
+
+            {% for tid in tableIds %}
+            let my_table_responsive{{ tid }} = $('.my_data_table_sp{{ tid }}').DataTable({
+                responsive: true,
+                ordering: false,
+                paging: true,
+                searching: true,
+                language: {
+                    "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+                },
+                bInfo: false,
+                dom: 'Bfrtip',
+                buttons: [],
+                columnDefs: [
+                    {targets: 0, width:'25%', className:'text-center'},
+                    {targets: 1, width:'30%', className:'text-center'},
+                    {targets: 2, width:'40%', className:'text-justify'},
+                    {targets: 3, width:'5%', className:'text-left'},
+                ],
+            });
+
+            $('.my_data_table_sp{{ tid }} tbody').on('click', 'tr', function () {
+                var data = my_table_responsive{{ tid }}.row(this).data();
+            });
+            {% endfor %}
+
+            $(".cargodepartamento").change(function () {
+                actualiza_cargo($(this));
+            });
+            actualiza_cargo = function (elemento) {
+                var idestudiantesup = elemento.attr("cid");
+                var desanterior = elemento.attr("ca");
+                var des = elemento.val();
+                if (des !== '') {
+                    bloqueointerface();
+                    $.post(`{{ request.path }}`, {'action': 'updatecargodepartamento', 'id': idestudiantesup, 'des': des }, function (data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            elemento.val(desanterior);
+                            mensajeDanger("Problemas al actualizar los datos, intente nuevamente más tarde.");
+                        }
+
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(desanterior);
+                        mensajeDanger("Error de conexión. Intente nuevamente más tarde.");
+                    });
+                }
+            };
+
+            habilitagenerarhorario = function () {
+                console.log('se activa');
+                if (parseInt($('#id_mes').val()) > 0 && parseInt($('#id_empresahorario').val()) > 0 && parseInt($('#id_itinerariohorario').val()) > 0){
+                    document.getElementById('submithorario').style.display = '';
+                }else{
+                    document.getElementById('submithorario').style.display = 'none';
+                }
+            };
+
+            $("#id_empresahorario, #id_mes").select2({width: '100%'}).on('select2:select', function (e){ habilitagenerarhorario(); });
+            $("#id_itinerariohorario").select2({
+                 width:'100%',
+                 placeholder:"Seleccionar una rotación"
+            }).on('select2:select', function (e){
+                 bloqueointerface();
+                 if(parseInt($(this).val())>0){
+                     $.get(window.location.pathname, {'action': 'listadodatoshorario', 'mes': $('#id_mes').val(), 'iditinerario': $(this).val(), 'iddistributivo': '{{ detalledistributivo.pk }}'},
+                         function (data) {
+                             $.unblockUI();
+                             if (data.result === true) {
+                                 for (elemento in data.lista) {
+                                     $('#id_empresahorario').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                 }
+                             } else {
+                                 $(this).val(0).trigger("change");
+                                 alertaDanger(data.mensaje);
+                             }
+                     }, 'json');
+                 }
+                 habilitagenerarhorario();
+            });
+
+
+
+        });
+
+        function formModal(idp, id, text, action, dimension, footer = true, idex) {
+            bloqueointerface();
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp':idp,
+                    'idex':idex,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-lg').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbody").empty();
+                        });
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function generarasistenciamensual(action, text, id) {
+            bloqueointerface();
+            document.getElementById('submithorario').style.display = 'none';
+            $('#id_empresahorario').empty().append('<option value="0">- - - Seleccione una empresa- - -</option>').val(0).trigger("change");
+            $('#id_itinerariohorario').val(0).trigger("change");
+            $('#id_mes').empty().append('<option value="0">- - - Seleccione un mes- - -</option>').val(0).trigger("change");
+            $('#id_observacion').val('')
+            $.get(`{{ request.path }}`, {'action': action, 'id': id }, function (data) {
+                if (data.result === true) {
+                    for (elemento in data.lista) {
+                         $('#id_mes').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                    }
+                    $('#footermodal').show();
+                    $('#itemspanelhorariomensual .paneltitle').html(text);
+                    $("#itemspanelhorariomensual").modal({backdrop: 'static', width: '900px'}).modal('show').on('hidden.bs.modal', function (e) {
+                        $(".panelbody").empty();
+                    });
+                    $("#itemspanelhorariomensual").modal({backdrop: 'static'}).modal('show');
+                    $('#id_distributivo').val(id);
+                    $.unblockUI();
+
+                } else {
+                    $.unblockUI();
+                    mensajeDanger("Problemas al obtener los datos, intente nuevamente más tarde.");
+                }
+
+            }).fail(function () {
+                $.unblockUI();
+                mensajeDanger("Error de conexión. Intente nuevamente más tarde.");
+            });
+
+        }
+
+        function generarAnexoHorarioSupervisionMensual(action, idd) {
+            bloqueointerface();
+            var idmes = $('#id_mes').val();
+            var iditinerario = $('#id_itinerariohorario').val();
+            var idempresa = $('#id_empresahorario').val();
+            var observacion = $('#id_observacion').val();
+            var url = "{{ request.path }}?action=" + action + "&id=" + idd+ "&mes=" + idmes + "&iditinerario=" + iditinerario + "&idempresa=" + idempresa + "&observacion=" + observacion;
+            window.open(url, '_blank');
+            $("#itemspanelhorariomensual").modal('hide');
+            $.unblockUI();
+        }
+    </script>
+{% endblock %}
+{% block atras %}/pro_cronograma?action=listasupervision{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-sm-12'>
+            <div class="headtitle ps-0 ms-0">
+                <h3 class="texto-blue mt-0 pt-0">{{ title }}</h3>
+                <h6>Registros de visitas a estudiantes en sus prácticas pre profesionales</h6>
+            </div>
+        </div>
+    </div>
+    <div class='row'>
+        <div class="col-sm-12">
+            <a class="btn btn-success" href="{{ request.path }}?action=visitasupervisorsalud&id={{ detalledistributivo.pk|encrypt }}"><i class="fas fa-user-check"></i> Adicionar</a>
+            <a class="btn btn-info" href="{{ request.path }}?action=planificacionmensualsalud&id={{ detalledistributivo.pk|encrypt }}"><i class="fa fa-calendar"></i> Planificación mensual</a>
+
+            <a class="btn btn-warning" href="javascript:void(0);" onclick="generarasistenciamensual('listadomesestutor' , 'Generar asistencia mensual', '{{ detalledistributivo.pk }}')">
+                                            <i class="fa fa-file-pdf-o"></i>&nbsp;Generar anexo Horario supervición Mensual (PDF)</a>
+
+
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+{#            <form method="GET">#}
+{#                <input type="hidden" name="action" value="{{ action }}">#}
+                <div class="row">
+                    <div class="col-sm-3 pe-1">
+                        <select id='empresa' style="width: 100%" name="empresa">
+                            <option value="0" {% if not e %}selected{% endif %}> TODAS EMPRESAS</option>
+                            {% for em in empresas %}
+                                <option {% if e == em.0 %}selected{% endif %} value="{{ em.0 }}" >{{ em.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-3 pe-1">
+                        <select id='carrera' style="width: 100%" name="carrera">
+                            <option value="0" {% if not c %}selected{% endif %}> TODAS CARRERAS</option>
+                            {% for ca in carreras %}
+                                <option {% if c == ca.0 %}selected{% endif %} value="{{ ca.0 }}" >{{ ca.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-3 pe-1">
+                        <select id='itinerario' style="width: 100%" name="itinerario">
+                            <option value="0" {% if not i %}selected{% endif %}> TODOS ITINERARIOS</option>
+                            {% for it in itinerarios %}
+                                <option {% if i == it.0 %}selected{% endif %} value="{{ it.0 }}" >{{ it.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-3 ps-1">
+                        <div class="input-group">
+                            <input id="buscador" type="text" class="form-control" placeholder="Ingrese la cédula o apellidos del estudiante..." aria-label="Buscar" autocomplete="off" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                            <div class="input-group-append">
+                                <button class="btn bg-sga bloqueo_pantalla" type="submit" id="btn_buscar"><i class="fa fa-search text-light"></i></button>
+                                {% if ids or e or i or s %}
+                                    <a title="Ver todo" href="{{ request.path }}?action={{ action }}&id={{ detalledistributivo.pk|encrypt }}" class="btn btn-default tr bloqueo_pantalla"><i class="fas fa-sync-alt"></i></a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+{#            </form>#}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+            <table class="table table_primary table_striped">
+                <thead>
+                    <tr>
+                        <th style="width: 5%; text-align: center"></th>
+                        <th style="width: 20%; text-align: left">Empresa</th>
+                        <th style="width: 25%; text-align: center">Estudiante</th>
+                        <th style="width: 50%; text-align: center">Detalle</th>
+{#                        <th style="width: 5%; text-align: center"></th>#}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for l in listado %}
+                    <tr>
+                        <td style="text-align: center">
+                            {{ forloop.counter }}
+                        </td>
+                        <td style="height: auto">
+                            <i class="fas fa-hospital"></i> <b>{{ l.supervisarpractica.empresapractica.nombre }}</b> <br>
+                            <p class="h7" style="margin-bottom:0rem"> <i class="fas fa-sync-alt"></i> {{ l.practicappp.itinerariomalla.nombre|lower|title|default_if_none:"Sin itinerario" }}</p>
+                            <i class="far fa-clock"></i> {{ l.supervisarpractica.periodo.nombre }}
+                        </td>
+                        {%  with inscripcion=l.practicappp.inscripcion %}
+                        <td style="text-align: left">
+                            <div class="d-flex align-items-center">
+                                <div class='d-flex bd-highlight mb-0'>
+                                    <span class="avatar avatar-lg">
+                                        {% if inscripcion.persona.foto.foto %}
+                                            <a href="https://sga.unemi.edu.ec{{ inscripcion.persona.foto.foto.url }}" class="fancybox">
+                                            <img style="border:2px solid white;" src="https://sga.unemi.edu.ec{{ inscripcion.persona.foto.foto.url }}" class="rounded-circle">
+                                            </a>
+                                        {% else %}
+                                            {% if inscripcion.persona.sexo_id == 1 %}
+                                                <img style="border:2px solid white;" src="/static/images/iconos/mujer.png" class="rounded-circle">
+                                            {% else %}
+                                                <img style="border:2px solid white;" src="/static/images/iconos/hombre.png" class="rounded-circle">
+                                            {% endif %}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="ms-0">
+                                    <h6 class="mb-0">
+                                        <i class="far fa-user"></i>&nbsp;{{ inscripcion.persona|lower|title }}<br>
+                                        <i class="far fa-address-card"></i>&nbsp;{% if inscripcion.persona.cedula %}{{ inscripcion.persona.cedula }}{% else %}{{ inscripcion.persona.pasaporte }}{% endif %}
+                                    </h6>
+                                    <p class="mb-0 text-muted">
+                                        {%  for email in inscripcion.persona.lista_emails %}
+                                            <span class="fa fa-envelope"></span> <a href="mailto:{{ email }}">{{ email }}</a>
+                                            {% if not forloop.last %}| {% endif %}
+                                        {% endfor %}
+                                    </p>
+                                    <p class="h6" style="color: #7C7C7C;margin-bottom:0rem"><i class="fas fa-graduation-cap"></i> {{ inscripcion.carrera|lower|capfirst|default_if_none:"Sin carrera asignada" }}</p>
+                                    <p style="margin-bottom:0rem" class="{% if l.cargodepartamentoest != '' %}text-success tu{% endif %}" title="Cargo/Departamento"><i class="fas fa-user-md"></i>
+                                        <input style="width: 90%" cid='{{ l.id }}' type="text" id="cargo_{{ silasemanal.id }}" class='cargodepartamento' placeholder="Sin cargo/departamento" ca="{{ l.cargodepartamentoest }}" value='{{ l.cargodepartamentoest }}'/>
+                                    </p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td style="text-align: center">
+                            <div class="accordion accordion-flush" id="items_{{ l.id }}">
+                                {% with listadoregistros=l.listado_registros_supervisar %}
+                                    <div class="accordion-item">
+                                        <h4 class="accordion-header">
+                                            <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#id_descripcion_{{ l.id }}" aria-expanded="true">
+                                                <h6 class="mb-0 texto-blue">
+                                                    Registros de supervisión ({{ listadoregistros.count }})
+                                                </h6>
+                                            </button>
+                                        </h4>
+                                        <div id="id_descripcion_{{ l.id }}" class="accordion-collapse collapse" data-bs-parent="#items_{{ l.id }}" aria-expanded="false">
+                                            <div class="accordion-body">
+                                                <p class="lh-15" style="text-align: left;">
+                                                {% if listadoregistros.count > 0 %}
+                                                    <table class="table my_data_table_sp{{ l.id }}" border="0px">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="text-align:center;vertical-align:middle;">Fecha</th>
+                                                                <th style="text-align:center;vertical-align:middle;">Turno</th>
+                                                                <th style="text-align:center;vertical-align:middle;">Observación</th>
+                                                                <th style="text-align:center;vertical-align:middle;"></th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                             {% for r in listadoregistros %}
+                                                                <tr>
+                                                                    <td style="text-align:center;vertical-align:middle;">
+                                                                        <p class="text-info">{{ r.fecha|diaenletra_fecha|lower|title }}</p>
+                                                                        {{ r.fecha|date:'d-m-Y' }}
+                                                                    </td>
+                                                                    <td style="text-align:center;vertical-align:middle;">
+                                                                        <p style="color: {{ r.turno.color }}">{% if r.turno.nombre != '' or r.turno.abreviatura != '' %}{{ r.turno.nombre|lower|title }} [{{ r.turno.abreviatura }}]{% endif %}</p>
+                                                                        De {{ r.turno.turno.nombre_horario }}
+                                                                    </td>
+                                                                    <td style="text-align:justify;vertical-align:middle;">
+                                                                        <p>{{ r.observacion }}</p>
+                                                                        {% if r.detalletemapm %}<p><b>Actividad/tema: </b>{{ r.detalletemapm.descripcion_detalle }}</p>{% endif %}
+                                                                    </td>
+                                                                    <td style="text-align:center;vertical-align:middle;">
+                                                                        <div class="dropdown dropstart">
+                                                                            <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                                                                <i class="fa fa-ellipsis-v" style="font-size: 9px"></i>
+                                                                            </a>
+                                                                            <div class="dropdown-menu">
+                                                                                <div class="dropdown-header">ACCIONES</div>
+                                                                                <a class="dropdown-item" onclick="formModal('','{{ r.id }}','EDITAR REGISTRO','editdetestsupervisar','modal-md')"
+                                                                                    href="javascript:void(0);"> <i class="fa fa-edit"></i>&nbsp;Editar </a>
+                                                                                <a class="dropdown-item text-danger" onclick="eliminarajax('{{ r.id }}', '{{ inscripcion.persona|lower|title }} - {{ r.fecha|diaenletra_fecha|lower|title }}, {{ r.fecha|date:'d-m-Y' }}: {{ r.observacion }}', 'deletedetestsupervisar')"
+                                                                                    href="javascript:;"> <i class="fa fa-trash"></i>&nbsp;Eliminar </a>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                {% else %}
+                                                    No existen registros..
+                                                {% endif %}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endwith %}
+                            </div>
+                        </td>
+{#                        <td style="text-align: center">#}
+{#                            <span class="dropdown" title="ACCIONES">#}
+{#                                <a class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle" href="#" role="button" id="courseDropdown7" data-bs-toggle="dropdown" data-bs-offset="-20,20" aria-expanded="false">#}
+{#                                    <i class="fa fa-ellipsis-v fs-6"></i>#}
+{#                                </a>#}
+{#                                <span class="dropdown-menu dropdown-menu-end" aria-labelledby="courseDropdown7">#}
+{#                                    <span class="dropdown-header">ACCIONES</span>#}
+{#                                        <a class="dropdown-item" href='javascript:void(0)' onclick="generarAnexoEstudiante('asistenciaestudiantepdf','{{ l.id|encrypt }}')"  style="margin-top: 5px">#}
+{#                                            <i class="fa fa-file-pdf-o"></i> Generar Anexo asistencia</a>#}
+{##}
+{#                                        <a class="dropdown-item" href="javascript:void(0);" onclick="generarasistenciamensual('{{ l.id }}', 'Generar asistencia mensual')">#}
+{#                                            <i class="fa fa-file-pdf-o"></i>&nbsp;Generar anexo asistencia</a>#}
+{#                                        {% if not l.en_uso %}#}
+{#                                        <a class="dropdown-item text-danger" href="javascript:;" onclick="eliminarajax('{{ l.id }}', '{{ l.supervisarpractica.empresapractica.nombre }} - {{ inscripcion.persona|lower|title }}', 'deleteestudiantesupervisar')">#}
+{#                                            <i class="fa fa-trash"></i>&nbsp;Eliminar </a>#}
+{#                                        {% endif %}#}
+{#                                </span>#}
+{#                            </span>#}
+{#                        </td>#}
+                        {% endwith %}
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="14">No existen registros</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="col-sm-12">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal" id="cerrar"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelhorariomensual" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+{#                    <form method="get" enctype="multipart/form-data" id="cargaForm" class="form-horizontal form-label-left">#}
+{#                        {% csrf_token %}#}
+{#                        <input type="hidden" name="action" value="asistenciaestudiantepdf">#}
+{#                        <input type="hidden" name="distributivo" id="id_distributivo" value="0">#}
+                        <label><b>Meses de prácticas:</b></label>
+                        <select name="mes" id="id_mes">
+                            <option selected value="0">- - - Seleccione un mes- - -</option>
+                        </select><br>
+                        <label><b>Rotación:</b></label>
+                        <select id='id_itinerariohorario' style="width: 100%" name="itinerariohorario">
+                            <option selected value="0">- - - Seleccione una rotación - - -</option>
+                            {% for it in itinerarios %}
+                                <option value="{{ it.0 }}" >{{ it.1|title2 }}</option>
+                            {% endfor %}
+                        </select><br>
+                        <label><b>Empresa:</b></label>
+                        <select name="empresahorario" id="id_empresahorario">
+                            <option selected value="0">- - - Seleccione una empresa- - -</option>
+                        </select><br>
+                        <label><b>Observación:</b></label>
+                        <textarea name="observacion" id='id_observacion' rows="3" style="width: 100%;"></textarea><br><br>
+
+                        <div class="form-group" align='right'>
+                            <a id="submithorario" style="display: none" class="btn btn-success" href="javascript:void(0);" onclick="generarAnexoHorarioSupervisionMensual('asistenciaestudiantepdf', '{{ detalledistributivo.pk|encrypt }}')">
+                                            <i class="fa fa-gear"></i>&nbsp;Generar</a>
+{#                            <button id="submithorario" style="display: none" class="btn btn-success"> <i class="fa fa-gear"></i> Generar </button>#}
+                            &nbsp;
+                            <button type="button" class="btn btn-danger" data-bs-dismiss="modal" id="cerrar"><i class="fa fa-times"></i> Cerrar</button>
+                        </div>
+                        <br>
+{#                    </form>#}
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

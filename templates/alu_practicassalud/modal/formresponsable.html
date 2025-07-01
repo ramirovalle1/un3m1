@@ -1,0 +1,175 @@
+{% load sga_extras %}
+<input type="hidden" name="habilita" id="habilita" value="1"/>
+<input type="hidden" name="id" value="{{ responsable.id }}"/>
+<input type="hidden" name="action" value="{{ action }}"/>
+
+{% for field in form %}
+    {% if field.field.widget.attrs.separator %}
+        {% if field.field.widget.attrs.blanklinebefore %}
+        {% endif %}
+        <div style="width: 100%; height: max-content">
+            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                 </span>
+            </h6>
+        </div>
+    {% endif %}
+    <div id="fieldset_{{ field.name }}"
+         class="col-sm-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}"
+         style="float: left; padding-right: 10px;">
+        <label class="control-label pr-2" for="id_{{ field.name }}">
+            <b>{{ field.label }}&nbsp;:</b>
+        </label>
+         <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+            {% if field.field.widget.attrs.select2search %}
+                <select id="id_{{ field.name }}_select2" style="width: 100%"
+                        {% if field.field.widget.attrs.disabled %}disabled=""{% endif %}>
+                    <option value="0" selected="selected">---------</option>
+                </select>
+                <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}"
+                       hidden="hidden"
+                       type="hidden"
+                       {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %}
+                       class="select2hidden">
+            {% else %}
+                {{ field }}
+            {% endif %}
+            <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0"></p>
+        </div>
+    </div>
+{% endfor %}
+
+<div class="row-fluid">
+    <div style="text-align: right; float: left; width: 100%">
+        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</button>
+        <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-times-circle"></i> Cancelar {{ reques.path }}</a>
+    </div>
+</div>
+
+<script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+<link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+<link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+<script src="/static/switchery/switchery.min.js"></script>
+<script type="text/javascript">
+    $(function () {
+        $("select").select2({width: '100%'});
+        var elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+        elems.forEach(function (html) {var switchery = new Switchery(html, {size: 'small', color: '#5DADE2'});});
+        validarcampos = function (valor, campo) {
+            if (campo === 'asigemp'){
+                if (valor) {
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").removeClass("validate[required]");
+                    $("#id_otraempresaempleadora").prop("disabled", true);
+                } else {
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").addClass("validate[required]");
+                    $("#id_otraempresaempleadora").prop("disabled", false);
+                }
+            }
+            if (campo === 'otraemp'){
+                if (valor > 0) {
+                    $("#id_asignacionempresapractica").val(0);
+                    $("#id_asignacionempresapractica").change();
+                    $("#id_asignacionempresapractica").removeClass("validate[required]").prop("disabled", true);
+                } else {
+                    $("#id_asignacionempresapractica").val(0);
+                    $("#id_asignacionempresapractica").change();
+                    $("#id_asignacionempresapractica").addClass("validate[required]").prop("disabled", false);
+                }
+            }
+        }
+        $("#id_asignacionempresapractica").change(function () { validarcampos($(this).val(), 'asigemp'); });
+        $("#id_otraempresaempleadora").change(function () { validarcampos($(this).val().length, 'otraemp'); });
+        if ('{{ responsable.asignacionempresapractica }}'.length){ validarcampos(true, 'asigemp'); }
+        if ('{{ responsable.otraempresaempleadora }}'.length){ validarcampos('{{ responsable.otraempresaempleadora }}'.length, 'otraemp'); }
+
+        let iter = false;
+        let identificacion = document.querySelector("#id_identificacion");
+        let tipo = $("#id_tipoidentificacion");
+        identificacion.onchange = function () {
+            if (iter) {
+                limpiarInputs()
+                iter = false
+            }
+            tipo = $("#id_tipoidentificacion");
+            consultarIdentificacion($(this), tipo)
+        }
+        {% if responsable %}
+            $("#id_identificacion").change();
+        {% endif %}
+        $("#id_tipoidentificacion").change(function () {
+            $("#id_identificacion").trigger('change');
+        });
+        function consultarIdentificacion(objeto, tipo) {
+            $('#errorMessageidentificacion').html('');
+            if (objeto.val().trim().length > 0) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: '{{ request.path }}',
+                    data: {'action': 'consultacedulaexterno', "cedula": objeto.val(), "tipo": tipo.val()},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'bad'){
+                            $("#id_identificacion").val('');
+                            $('#errorMessageidentificacion').html(data.mensaje);
+                            limpiarInputs();
+                        }else if (data.result) {
+                            $("#id_nombre").val(data.nombres);
+                            $("#id_nombre").prop("disabled", true);
+                            document.getElementById("id_nombre").removeAttribute("required");
+                            $("#id_apellido1").val(data.apellido1);
+                            $("#id_apellido1").prop("disabled", true);
+                            document.getElementById("id_apellido1").removeAttribute("required");
+                            $("#id_apellido2").val(data.apellido2);
+                            $("#id_apellido2").prop("disabled", true);
+                            document.getElementById("id_apellido2").removeAttribute("required");
+                            $("#id_nacimiento").val(data.nacimiento);
+                            $("#id_nacimiento").prop("disabled", true);
+                            document.getElementById("id_nacimiento").removeAttribute("required");
+                            $("#id_sexo").val(data.sexo).trigger('change');
+                            $("#id_sexo").prop("disabled", true);
+                            document.getElementById("id_sexo").removeAttribute("required");
+                            $("#id_email").val(data.email);
+                            $("#id_telefono").val(data.telefono);
+                            $("#id_telefono_conv").val(data.telefono_conv);
+                            $("#habilita").val('0');
+                            iter=true
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        alertaDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            } else {
+                $("#id_identificacion").focus();
+                limpiarInputs();
+            }
+        }
+    });
+
+    function limpiarInputs() {
+        console.log('se limpia');
+        $("#id_nombre").val('').prop("disabled", false);
+        $("#id_apellido1").val('').prop("disabled", false);
+        $("#id_apellido2").val('').prop("disabled", false);
+        $("#id_sexo").val('').prop("disabled", false);
+        $("#id_nacimiento").val('').prop("disabled", false);
+        $("#id_telefono").val('');
+        $("#id_telefono_conv").val('');
+        $("#id_email").val('');
+        document.getElementById("id_nombre").setAttribute("required", "");
+        document.getElementById("id_apellido1").setAttribute("required", "");
+        document.getElementById("id_apellido2").setAttribute("required", "");
+        document.getElementById("id_nacimiento").setAttribute("required", "");
+        document.getElementById("id_sexo").setAttribute("required", "");
+        $("#habilita").val("1");
+    }
+
+</script>

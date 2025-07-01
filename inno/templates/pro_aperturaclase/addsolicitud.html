@@ -1,0 +1,265 @@
+<script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+<script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+<link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+<script type="text/javascript" src="/static/js/bootstrap-filestyle.min.js?v=1.0.1"> </script>
+<script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+<link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+<link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+<script src="/static/switchery/switchery.min.js"></script>
+
+<script type="text/javascript">
+    var elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+
+    elems.forEach(function (html) {
+        var switchery = new Switchery(html, {size: 'small', color: '#2f96b4'});
+    });
+    $(function(){
+        $("#{{ frmName }}").validationEngine({autoHidePrompt:true, autoHideDelay:1000 });
+        $("#id_fechainasistencia, #id_fechadiferido", $("#{{ frmName }}")).datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+            $(this).datepicker('hide');
+        });
+        {% for field in form %}
+            {% if field.field.required %}
+                $("[name='{{ field.name }}']", $("#{{ frmName }}")).css({'text-transform': 'none'}).addClass("validate[required]");
+            {% endif %}
+        {% endfor %}
+        $(":file", $('#modalRequest')).filestyle({"input": false});
+
+        var eliminar_alertas = function(){
+            setInterval(function() {
+                $('.help-text', $("#{{ frmName }}")).html("");
+            }, 8000);
+        };
+
+        $("#id_fechainicioinasistencia, #id_fechafininasistencia", $("#{{ frmName }}")).datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+            $(this).datepicker('hide');
+            let fechainicioinasistencia = $("#id_fechainicioinasistencia", $("#{{ frmName }}")).val();
+            let fechafininasistencia = $("#id_fechafininasistencia", $("#{{ frmName }}")).val();
+            if (fechainicioinasistencia.length >= 10 && fechafininasistencia.length >=10){
+                $('#id_materia', $("#{{ frmName }}")).empty().append('<option value="">---------</option>').val(0).trigger("change");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_aperturaclase",
+                    data: {'action': 'listMateriaEnFecha', 'fi': fechainicioinasistencia, 'ff': fechafininasistencia},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok')
+                        {
+                            for (let elemento in data.lista) {
+                                $('#id_materia', $("#{{ frmName }}")).append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                        }
+                        else
+                        {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                type: 'error',
+                                title: data.mensaje,
+                                showConfirmButton: false,
+                                timer: 6000
+                            });
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'error',
+                            title: "Error de conexion.",
+                            showConfirmButton: false,
+                            timer: 6000
+                        });
+                    },
+                    dataType: "json"
+                });
+            }
+        });
+
+        $('#id_tipoincoveniente',  $("#{{ frmName }}")).change(function(){
+            let tipo_incoveniente = $(this).val();
+
+            $("#id_tipomotivo",  $("#{{ frmName }}")).empty().append('<option value="">---------</option>').val(0).trigger("change");
+            if (tipo_incoveniente > 0){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/reportes",
+                    data: {"action": 'data', 'model': 'MotivoTipoInconvenienteClaseDiferido:tipo_id='+tipo_incoveniente, 'q': '' },
+                    success: function(data) {
+
+                        if (data.result == 'ok')
+                        {
+                            for (let elemento in data.results) {
+                                $("#id_tipomotivo",  $("#{{ frmName }}")).append('<option value="' + data.results[elemento]['id'] + '">' + data.results[elemento]['name'] + '</option>');
+                            }
+                            $("#id_tipomotivo",  $("#{{ frmName }}")).val(0).trigger("change");
+                        }
+                        else
+                        {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                type: 'error',
+                                title: data.mensaje,
+                                showConfirmButton: false,
+                                timer: 6000
+                            });
+                        }
+                        $.unblockUI();
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'error',
+                            title: "Error de conexion.",
+                            showConfirmButton: false,
+                            timer: 6000
+                        });
+                    },
+                    dataType: "json",
+                });
+            }
+
+        });
+
+        $("#id_tipomotivo",  $("#{{ frmName }}")).change(function (){
+            let valor = $(this).val();
+            if (valor > 0){
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/pro_aperturaclase",
+                    data: {"action": 'loadMotivo', 'id': valor },
+                    success: function(data) {
+
+                        if (data.result == 'ok')
+                        {
+                            console.log(eval(data.aData));
+                            let results = eval(data.aData);
+                            for (let elemento in results) {
+                                let fields = results[elemento]['fields'];
+                                if (fields['es_otro'])
+                                {
+                                    $("#fieldset_especifique").show();
+                                    $("[name='especifique']", $("#{{ frmName }}")).addClass("validate[required]");
+                                }
+                                else
+                                {
+                                    $("#fieldset_especifique").hide();
+                                    $("[name='especifique']", $("#{{ frmName }}")).removeClass("validate[required]");
+                                }
+                                if (fields['obligar_archivo'])
+                                {
+                                    $("[name='documento']", $("#{{ frmName }}")).addClass("validate[required]");
+                                }
+                                else{
+                                    $("[name='documento']", $("#{{ frmName }}")).removeClass("validate[required]");
+                                }
+                            }
+
+                        }
+                        else
+                        {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                type: 'error',
+                                title: data.mensaje,
+                                showConfirmButton: false,
+                                timer: 6000
+                            });
+                        }
+                        $.unblockUI();
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'error',
+                            title: "Error de conexion.",
+                            showConfirmButton: false,
+                            timer: 6000
+                        });
+                    },
+                    dataType: "json",
+                });
+            }
+            /*if (valor == 6){
+                $("#fieldset_especifique").show();
+                $("[name='especifique']", $("#{{ frmName }}")).addClass("validate[required]");
+            } else {
+                $("#fieldset_especifique").hide();
+                $("[name='especifique']", $("#{{ frmName }}")).removeClass("validate[required]");
+            }*/
+        });
+
+        eliminar_alertas();
+        $("#id_tipoincoveniente, #id_tipomotivo, #id_materia, #id_aula",  $('#modalRequest')).select2({minimumResultsForSearch: 20, width: '100%', dropdownParent: $('#modalRequest') });
+
+        $("#id_fechainasistencia, #id_tipomotivo").change();
+    });
+
+
+</script>
+<div class="row-fluid">
+    <div class="span12">
+        <form id="{% if frmName %}{{ frmName }}{% else %}frmDemo{% endif %}" class="form-horizontal" onsubmit="return false">
+            <div class="alert alert-info">
+                <i class="fa fa-exclamation"></i> No puede solicitar registro de asistencias del mismo día
+            </div>
+            <input type='hidden' name='action' value='saveAddRequest'/>
+            <input type='hidden' name='id' value='0'/>
+            {% for field in form %}
+                {% if field.field.widget.attrs.separator %}
+                    <hr noshade="noshade" style="clear: both; color: #0c0c0c; height: 4px; width: 100%; align-content: center" />
+                {% endif %}
+                {% if field.field.widget.attrs.separator2 %}
+                    <div id="separator2_{{ field.name }}" style="width: 100%; height: max-content; display: inline-block">
+                        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_{{ field.name }}" style="padding:0 10px; background: #f5f5f5;">{% if field.field.widget.attrs.separatortitle %}{{ field.field.widget.attrs.separatortitle }}{% endif %}</span></h6>
+                    </div>
+                {% endif %}
+                {% if field.field.widget.attrs.separator3 %}
+                    <div style="clear: both; height: 4px; width: 100%; align-content: center" ></div>
+                {% endif %}
+                {% if field.field.widget.attrs.showmsginfo and field.field.widget.attrs.msgloc == 'top' %}
+                    <div class="alert alert-info">
+                        {% if field.field.widget.attrs.msgtitle %}
+                            <h4 class="alert-heading">{{ field.field.widget.attrs.msgtitle }}</h4>
+                        {% endif %}
+                        {% if field.field.widget.attrs.msgtext %}
+                            {{ field.field.widget.attrs.msgtext }}<br>
+                        {% endif %}
+                        {% if field.field.widget.attrs.msglist %}
+                            <ul>
+                                {% for item in field.field.widget.attrs.msglist %}
+                                    <li>{{ item }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                    <div style="clear: both; height: 4px; width: 100%; align-content: center" ></div>
+                {% endif %}
+
+                <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}span12{% endif %}" style="padding: 5px; min-height:45px; margin-left: 0 !important;" >
+
+                    <div class="control-label label-text" style="display: table;height: 30px;">
+                        <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                            <label for="id_{{ field.name }}" style="padding-right: 20px"><b>{{ field.label }}</b></label>
+                        </div>
+                    </div>
+                    <div class="control">
+                        {{ field }}
+                        <div class="text-info" style="font-size: x-small; margin-bottom: 0; height: 100%; line-height: 14px">{{ field.help_text }} </div>
+                        <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></p>
+                    </div>
+                </fieldset>
+            {% endfor %}
+        </form>
+    </div>
+</div>

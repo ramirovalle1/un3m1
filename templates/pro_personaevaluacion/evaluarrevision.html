@@ -1,0 +1,212 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script>
+        var rubricas = [{% for x in rubricas %}{{ x.id }}{% if not forloop.last %},{% endif %}{% endfor %}];
+        $(function() {
+            $("#guardar").click(function() {
+                var lista = "";
+                for (r in rubricas){
+                    if(!$("input[name='opcion_"+rubricas[r]+"']").is(':checked')){
+                        smoke.alert("Favor de seleccionar una opción.");
+                        return false;
+                    }
+                    var rubrica = rubricas[r];
+                    var selectedVal = "1";
+                    var selected = $("input[type='radio'][name='opcion_"+rubrica+"']:checked");
+                    if (selected.length > 0) {
+                        selectedVal = selected.val();
+                    }
+                    lista += rubrica+":"+selectedVal+";";
+                }
+
+                if (lista.length > 0){
+                    lista = lista.substring(0, lista.length-1);
+                }
+
+                var mejoras = $("#mejoras").val();
+                {#var formacion = $("#formacion").val();#}
+                var nommejorascab = $("#nommejorascab").val();
+                var nommejoras = $("#nommejoras").val();
+                {#var nomcontinua = $("#nomcontinua").val();#}
+
+                if (mejoras.trim().length  && nommejorascab.trim().length && nommejoras!=0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_personaevaluacion",
+                        data: {'action': 'evaluarrevision', 'lista': lista, 'idp': '{{ profesor.id }}', 'nommejoras': nommejoras, 'tipo': '{{ tipoinstrumento }}',  'accionmejoras': mejoras, 'codimate': {{ codimate }}, 'tipoprofe': {{ tipoprofe }} },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        success: function (data) {
+                            if (data.result == "ok") {
+                                location.href = '/pro_personaevaluacion';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        }
+                    });
+                } else {
+                    smoke.alert("Debe completar todos los campos del formulario.");
+                }
+
+            });
+            $('#nommejorascab').change(function(){
+                $('#nommejoras').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt($("#nommejorascab").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_personaevaluacion",
+                        data: {'action': 'listasubmejoras', 'id': id,'tipoins': '{{ tipoinstrumento }}'},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#nommejoras').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_personaevaluacion{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Profesor: {{ profesor }}</h5>
+        </div>
+    </div>
+    {% for rubrica in rubricas %}
+        <div class='row-fluid'>
+            <div class='span12'>
+                <h4>{{ rubrica.nombre }} ({{ rubrica.tipo_criterio_evaluacion }})</h4>
+                <table class='table table-bordered table-striped' >
+                    <thead>
+                    <tr>
+                        {% if tipoinstrumento == 3 %}
+                            <th>Actividades: {% for a in actividadespar %}{{ a.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}</th>
+                        {% else %}
+                            <th>Actividades: {% for a in rubrica.mis_actividades %}{{ a.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}</th>
+                        {% endif %}
+                    </tr>
+                    <tr>
+                        <th>Caracteristicas: {% for c in rubrica.mis_caracteristicas %}{{ c.caracteristica.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td>
+                            <p>{{ rubrica.descripcion }}</p>
+                            <ol>
+                                {% for rubricapregunta in rubrica.mis_preguntas %}
+                                    <li>{{ rubricapregunta.preguntacaracteristica.pregunta }}</li>
+                                {% endfor %}
+                            </ol>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <form action="">
+                                <table class="table table-condensed">
+                                    <thead>
+                                    <tr>
+                                        {% if rubrica.val_nosastifactorio %}
+                                            <th style="width: 20%"><label class="radio"><input type="radio" name="opcion_{{ rubrica.id }}" {% if rubrica.precalificada %} {% if rubrica.valorprecalificada == 1 %}checked{% endif %} disabled{% endif %}  id="{{ rubrica.id }}_1" value="1"><b>NO SATISFACTORIO</b></label></th>
+                                        {% endif %}
+                                        {% if rubrica.val_basico %}
+                                            <th style="width: 20%"><label class="radio"><input type="radio" name="opcion_{{ rubrica.id }}" {% if rubrica.precalificada %} {% if rubrica.valorprecalificada == 2 %}checked{% endif %} disabled{% endif %}  id="{{ rubrica.id }}_2" value="2"><b>BASICO</b></label></th>
+                                        {% endif %}
+                                        {% if rubrica.val_competente %}
+                                            <th style="width: 20%"><label class="radio"><input type="radio" name="opcion_{{ rubrica.id }}" {% if rubrica.precalificada %} {% if rubrica.valorprecalificada == 3 %}checked{% endif %} disabled{% endif %}  id="{{ rubrica.id }}_3" value="3"><b>COMPETENTE</b></label></th>
+                                        {% endif %}
+                                        {% if rubrica.val_muycompetente %}
+                                            <th style="width: 20%"><label class="radio"><input type="radio" name="opcion_{{ rubrica.id }}" {% if rubrica.precalificada %} {% if rubrica.valorprecalificada == 4 %}checked{% endif %} disabled{% endif %}  id="{{ rubrica.id }}_4" value="4"><b>MUY COMPETENTE</b></label></th>
+                                        {% endif %}
+                                        {% if rubrica.val_destacado %}
+                                            <th style="width: 20%"><label class="radio"><input type="radio" name="opcion_{{ rubrica.id }}" {% if rubrica.precalificada %} {% if rubrica.valorprecalificada == 5 %}checked{% endif %} disabled{% endif %}  id="{{ rubrica.id }}_5" value="5"><b>DESTACADO</b></label></th>
+                                        {% endif %}
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tr>
+                                        {% if rubrica.val_nosastifactorio %}
+                                            <td>{{ rubrica.texto_nosatisfactorio|default_if_none:"" }}</td>
+                                        {% endif %}
+                                        {% if rubrica.val_basico %}
+                                            <td>{{ rubrica.texto_basico|default_if_none:"" }}</td>
+                                        {% endif %}
+                                        {% if rubrica.val_competente %}
+                                            <td>{{ rubrica.texto_competente|default_if_none:"" }}</td>
+                                        {% endif %}
+                                        {% if rubrica.val_muycompetente %}
+                                            <td>{{ rubrica.texto_muycompetente|default_if_none:"" }}</td>
+                                        {% endif %}
+                                        {% if rubrica.val_destacado %}
+                                            <td>{{ rubrica.texto_destacado|default_if_none:"" }}</td>
+                                        {% endif %}
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% endfor %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h5>Categoría de mejoras</h5>
+            <select id="nommejorascab" name="nommejorascab" style="width: 100%">
+                <option value="0" selected="selected">--SELECCIONE--</option>
+                {% for combomejora in combomejoras %}
+                    <option value="{{ combomejora.id }}">{{ combomejora }}</option>
+                {% endfor %}
+            </select>
+            <h5>Acción propuesta</h5>
+            <select id="nommejoras" name="nommejoras" style="width: 100%">
+                <option value="0" selected="selected">--SELECCIONE--</option>
+            </select>
+            <h5>Descripción de mejoras</h5>
+            <textarea class="input-block-level" id="mejoras"></textarea><br>
+{#            <h5>Criterios de formación</h5>#}
+{#            <select id="nomcontinuacab" name="nomcontinuacab" style="width: 100%">#}
+{#                <option value="0" selected="selected">--SELECCIONE--</option>#}
+{#                {% for combocontinua in combocontinuas %}#}
+{#                    <option value="{{ combocontinua.id }}">{{ combocontinua }}</option>#}
+{#                {% endfor %}#}
+{#            </select>#}
+{#            <h5>Categoría de formación</h5>#}
+{#            <select id="nomcontinua" name="nomcontinua" style="width: 100%">#}
+{#                <option value="0" selected="selected">--SELECCIONE--</option>#}
+{#            </select>#}
+{#            <h5>Descripción formacion continua</h5>#}
+{#            <textarea class="input-block-level" id="formacion"></textarea>#}
+        </div>
+    </div>
+    <a  href="javascript:;" class="btn btn-success btn-large" id="guardar"><i class="fa fa-save"></i> Guardar</a>
+{% endblock %}

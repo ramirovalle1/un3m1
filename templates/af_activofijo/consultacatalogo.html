@@ -1,0 +1,247 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        $(function(){
+
+            $("#id_fechadesde, #id_fechahasta").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+                $(this).datepicker('hide');
+                cargar_datos();
+            });
+
+
+{#            $("#id_fechadesde, #id_fechahasta").change(function () {#}
+{#                $("#itemsbody").empty();#}
+{#                $("#id_responsable").html('').append('<option selected="selected" value="">---------</option>');#}
+{#                $("#id_catalogo_select2").val(0).trigger("change");#}
+{#                $("#id_responsable_select2").val(0).trigger("change");#}
+{#                $("#id_responsable").val(0).trigger("change");#}
+{#                $("#id_responsable, #id_catalogo").attr({"value": "0"});#}
+{#            });#}
+
+
+            $("#id_responsable").html('').append('<option selected="selected" value="">---------</option>');
+            $("#id_catalogo_select2").val(0).trigger("change");
+            $("#id_responsable_select2").val(0).trigger("change");
+            $("#id_responsable").val(0).trigger("change");
+            $("#id_responsable, #id_catalogo").attr({"value": "0"});
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+            actualizar_reporte = function () {
+                var cat = $("#id_catalogo_select2").val();
+                var resp = $("#id_responsable").val();
+                var fechai = $("#id_fechadesde").val();
+                var fechaf = $("#id_fechahasta").val();
+                if (cat && resp){
+                    $("#reporte_catalogo").attr({"nhref": "/reportes?action=run&n={{ reporte_0.nombre }}&catalogo="+cat+"&responsable="+resp+"&fecha_inicio="+fechai+"&fecha_fin="+fechaf});
+                }
+            };
+
+            cargar_datos = function () {
+                var id = $("#id_responsable").val();
+                var idc = $("#id_catalogo").val();
+                var fechai = $("#id_fechadesde").val();
+                var fechaf = $("#id_fechahasta").val();
+                $("#itemsbody").empty();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "activos_catalogo", "id": id, "idc": idc, "fi": fechai, "ff": fechaf },
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#itemsbody").html(data.data);
+                                if ($(".activos").length > 0){
+                                    $("#reporte").show();
+                                }
+                                actualizar_reporte();
+                            } else {
+                                {#                                $("#id_catalogo").val(0).trigger("change");#}
+                                {#                                $("#id_responsable").val(0).trigger("change");#}
+                                $("#reporte").hide();
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_catalogo").val(0).trigger("change");
+                            $("#id_responsable").val(0).trigger("change");
+                            $("#reporte").hide();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+
+            };
+
+            $("#id_catalogo_select2").change(function(){
+                $("#id_responsable").html('').append('<option selected="selected" value="">---------</option>');
+                $("#id_responsable_select2").val(0).trigger("change");
+                $("#id_responsable").val(0).trigger("change");
+                $("#id_responsable").attr({"value": "0"});
+                $("#reporte").hide();
+                var id = $(this).val();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "consult_cat", "id": id},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                for (x=0; x < data.lista.length; x++){
+                                    elemento = data.lista[x];
+                                    $("#id_responsable").append('<option value="'+elemento[0]+'">'+elemento[1]+'</option>');
+                                }
+                                if (data.lista.length == 1){
+                                    $("#id_responsable").prop("selectedIndex", 1).trigger("change");
+                                }
+                            } else {
+                                $("#id_catalogo_select2").val(0).trigger("change");
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_catalogo").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#id_catalogo_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CatalogoBien:activofijo__isnull=False&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_catalogo").attr({"value":(evt.params.data.id)});
+            });
+
+
+            $("#id_responsable").change(function(){
+                var id = $(this).val();
+                {#                var id = $("#id_responsable").val();#}
+                var idc = $("#id_catalogo").val();
+                var fechai = $("#id_fechadesde").val();
+                var fechaf = $("#id_fechahasta").val();
+                $("#itemsbody").empty();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "activos_catalogo", "id": id, "idc": idc, "fi": fechai, "ff": fechaf },
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#itemsbody").html(data.data);
+                                if ($(".activos").length > 0){
+                                    $("#reporte").show();
+                                }
+                                actualizar_reporte();
+                            } else {
+                                $("#id_catalogo").val(0).trigger("change");
+                                $("#id_responsable").val(0).trigger("change");
+                                $("#reporte").hide();
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_catalogo").val(0).trigger("change");
+                            $("#id_responsable").val(0).trigger("change");
+                            $("#reporte").hide();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/af_activofijo{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/af_activofijo{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/af_activofijo{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editacta'/>
+    <input type='hidden' name='id' value='{{ acta.id }}'/>
+{% endblock %}
+{% block formback %}/af_activofijo{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <b>ACTIVOS REGISTRADOS</b>
+        <div id="detalleactivos" style="width: 100%; max-height: 400px; overflow: auto">
+            <table class="table table-bordered filterable">
+                <thead>
+                <tr>
+                    <th style="width: 100px">C&oacute;digo Gobierno</th>
+                    <th style="width: 100px">C&oacute;digo Interno</th>
+                    <th style="width: 70px">Fecha Ing.</th>
+                    <th>Activo</th>
+                    <th style=" width: 300px">Ubicaci&oacute;n</th>
+                    <th style=" width: 120px">Serie</th>
+                    <th style="width: 120px">Modelo</th>
+                    <th style=" width: 100px">Marca</th>
+                    <th style=" width: 120px">Estado</th>
+                </tr>
+                </thead>
+                <tbody id="itemsbody" class="datatable">
+                <tr>
+                    <td colspan="10">NO EXISTEN ACTIVOS</td>
+                </tr>
+                </tbody>
+                <tfoot id="reporte" style="display: none">
+                <tr>
+                    <td colspan="10">
+                        <a id="reporte_catalogo" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="" class="reportedirecto btn btn-success reporte tu"> <i class='fa fa-print'></i> Imprimir</a>
+                    </td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+{% endblock %}

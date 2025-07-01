@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+{#    <link href="/static/x-editable/bootstrap-editable.css?0.24" rel="stylesheet"/>#}
+{#    <script src="/static/x-editable/bootstrap-editable.min.js?0.24"></script>#}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src="/static/bootstrap4/plugins/moment/moment.min.js"></script>
+    <link type='text/css' rel='stylesheet' href="/static/bootstrap4/plugins/daterangepicker/daterangepicker.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/bootstrap4/plugins/daterangepicker/daterangepicker.js'></script>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <style>
+        .dataTables_wrapper .dataTables_info {
+            display: none;
+         }
+        div.dataTables_wrapper div.dataTables_filter label, div.dataTables_wrapper .dataTables_paginate.paging_full_numbers, div.dataTables_wrapper .dataTables_paginate.paging_full_numbers ul.pagination {
+            justify-content: center; !important;
+        }
+        .dropdown-item i {
+            margin-right: 3px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(function () {
+
+            $("#mes, #itinerario").select2();
+            busquedasp = function () {
+                var term = $("#buscador").val().trim().toUpperCase();
+                var m = $("#mes").val();
+                var i = $("#itinerario").val();
+                let href = "{{ request.path }}?action={{ action }}&id={{ detalledistributivo.pk|encrypt }}&s=" + term;
+                if (parseInt(m)){
+                    href += "&m=" + m;
+                }
+                if (parseInt(i)){
+                    href += "&i=" + i;
+                 }
+                bloqueointerface();
+                location.href = href;
+            };
+
+            tooltips();
+
+            $("#btn_buscar").click(function () { busquedasp(); });
+            $('#buscador').keyup(function (e) {
+                if (e.keyCode == 13) { busquedasp(); }
+            });
+
+
+            $('#mes, #itinerario').on('select2:select', function(){ busquedasp(); });
+            if ('{{ m }}'.length){ $('#mes').val('{{ m }}').trigger('change'); }
+            if ('{{ i }}'.length){ $('#itinerario').val('{{ i }}').trigger('change'); }
+
+            {% for tid in tableIds %}
+            let my_table_responsive{{ tid }} = $('.my_data_table_sp{{ tid }}').DataTable({
+                responsive: true,
+                ordering: false,
+                paging: true,
+                searching: true,
+                language: {
+                    "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+                },
+                bInfo: false,
+                dom: 'Bfrtip',
+                buttons: [],
+                columnDefs: [
+                    {targets: 0, width:'25%', className:'text-center'},
+                    {targets: 1, width:'30%', className:'text-center'},
+                    {targets: 2, width:'40%', className:'text-center'},
+                    {targets: 3, width:'5%', className:'text-left'},
+                ],
+            });
+
+            $('.my_data_table_sp{{ tid }} tbody').on('click', 'tr', function () {
+                var data = my_table_responsive{{ tid }}.row(this).data();
+            });
+            {% endfor %}
+
+            $(".cargodepartamento").change(function () {
+                actualiza_cargo($(this));
+            });
+
+            actualiza_cargo = function (elemento) {
+                var idestudiantesup = elemento.attr("cid");
+                var desanterior = elemento.attr("ca");
+                var des = elemento.val();
+                if (des !== '') {
+                    bloqueointerface();
+                    $.post(`{{ request.path }}`, {'action': 'updatecargodepartamento', 'id': idestudiantesup, 'des': des }, function (data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            elemento.val(desanterior);
+                            mensajeDanger("Problemas al actualizar los datos, intente nuevamente más tarde.");
+                        }
+
+                    }).error(function () {
+                        $.unblockUI();
+                        elemento.val(desanterior);
+                        mensajeDanger("Error de conexión. Intente nuevamente más tarde.");
+                    });
+                }
+            };
+
+        });
+
+        function formModalPM(idp, id, text, action, dimension, footer = true, idex) {
+            bloqueointerface();
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp':idp,
+                    'idex':idex,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension){
+                        $('#wmodal').removeClass('modal-lg').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbody").empty();
+                        });
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        {#function formModal(id, text, action, footer = false) {#}
+        function generarAnexoPlanificacionmensual(action, id, idd, genera, footer = false) {
+            bloqueointerface();
+            $('#itemspanelfirma .modal-footer').hide();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'iddistributivo': idd,
+                    'genera': genera
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result === 'ok') {
+                        if (data.data) {
+                            footer && $('#itemspanelfirma .modal-footer').show();
+                            $('#itemspanelfirma .panelbodyevidencia').html(data.data);
+                            $('#itemspanelfirma .paneltitle').html('Firmar evidencia Planificación Mensual');
+                            $("#itemspanelfirma").modal({
+                                backdrop: 'static',
+                                width: '90%'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $('#itemspanelfirma .panelbodyevidencia').empty();
+                                $('#itemspanelfirma .modal-footer').show();
+                            });
+                        } else {
+                            location.reload();
+                        }
+                    } else {
+                        mensajeDanger(data.message + ' ' + data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        };
+
+
+        {#function generarAnexoPlanificacionmensual(action, id, idd, genera) {#}
+        {#    var url = "{{ request.path }}?action=" + action + "&id=" + id+ "&iddistributivo=" + idd+ "&genera=" + genera;#}
+        {#    window.open(url, '_blank');#}
+        {# }#}
+    </script>
+{% endblock %}
+{% block atras %}/pro_actividadestutorpracticas?action=viewsupervisiontutor&id={{ detalledistributivo.pk|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-sm-12'>
+            <div class="headtitle ps-0 ms-0">
+                <h3 class="texto-blue mt-0 pt-0">{{ title }}</h3>
+                <h6>Registros de planificaciones mensuales</h6>
+            </div>
+        </div>
+    </div>
+    <div class='row'>
+        <div class="col-sm-12">
+            <a class="btn btn-success" onclick="formModalPM('{{ supervisor.pk|encrypt }}','','Adicionar registro','addplanificacion','modal-md', true,'{{ ePeriodo.pk|encrypt }}')" href="javascript:void(0);"> <i class="fa fa-plus"></i>&nbsp;Adicionar </a>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+{#            <form method="GET">#}
+{#                <input type="hidden" name="action" value="{{ action }}">#}
+                <div class="row">
+                    <div class="col-sm-3 pe-1">
+                        <select id='mes' style="width: 100%" name="mes">
+                            <option value="0" {% if not e %}selected{% endif %}> TODOS MESES</option>
+                            {% for me in meses %}
+                                <option {% if m == me.mes %}selected{% endif %} value="{{ me.mes }}" >{{ me.get_mes|upper }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-3 pe-1">
+                        <select id='itinerario' style="width: 100%" name="itinerario">
+                            <option value="0" {% if not i %}selected{% endif %}> TODOS ITINERARIOS</option>
+                            {% for it in itinerarios %}
+                                <option {% if i == it.0 %}selected{% endif %} value="{{ it.0 }}" >{{ it.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-6 ps-1">
+                        <div class="input-group">
+                            <input id="buscador" type="text" class="form-control" placeholder="Ingrese descripción..." aria-label="Buscar" autocomplete="off" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                            <div class="input-group-append">
+                                <button class="btn bg-sga bloqueo_pantalla" type="submit" id="btn_buscar"><i class="fa fa-search text-light"></i></button>
+                                {% if ids or m or i or s %}
+                                    <a title="Ver todo" href="{{ request.path }}?action={{ action }}&id={{ detalledistributivo.pk|encrypt }}" class="btn btn-default tr bloqueo_pantalla"><i class="fas fa-sync-alt"></i></a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+{#            </form>#}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12">
+            <table class="table table_primary table_striped">
+                <thead>
+                    <tr>
+                        <th style="width: 5%; text-align: center"></th>
+                        <th style="width: 60%; text-align: left">Rotación</th>
+                        <th style="width: 10%; text-align: center">Mes</th>
+                        <th style="width: 10%; text-align: center">Total horas</th>
+                        <th style="width: 10%; text-align: center">Archivo</th>
+                        <th style="width: 5%; text-align: center"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for l in listado %}
+                    <tr>
+                        <td style="text-align: center">
+                            {{ forloop.counter }}
+                        </td>
+                        <td style="height: auto">
+                            <p class="h7" style="margin-bottom:0rem"> <i class="fas fa-sync-alt"></i> {{ l.itinerariomalla.nombre }}</p>
+                            <p class="text-info"> <i class="far fa-clock"></i> {{ l.periodo.nombre }} </p>
+                        </td>
+                        <td style="text-align: center">
+                            <p class="mb-0 text-muted"> {{ l.get_mes_display|upper }} </p>
+                        </td>
+                        <td style="text-align: center">
+                            {{ l.totalhoras }}
+                        </td>
+                        <td style="text-align: center">
+                            {% if l.archivo %}
+                                <a href="{{ l.archivo.url }}" class="text-secondary lh-15" data-width="2048" data-height="1380" data-fancybox="adjunto_{{ l.id }}"
+                                    title="Ver informe" data-bs-toggle="tooltip" data-caption="{{ l.get_mes|upper }} - {{ l.itinerariomalla.nombre }}" data-placement="top">
+                                    <img style="margin-top: 2px;" src="/static/images/pdf.png"/>
+                                </a>
+                            {% endif %}
+                            {% with estado=l.get_estado_aprobacion %}
+                                {% if estado %}
+                                   <br><span class="text{% if estado.estado == 1 %}-warning{% elif estado.estado == 2 %}-success {% elif estado.estado == 3 %}-success {% elif estado.estado == 4 %}-success {% else %}-danger{% endif %}">{{ estado.get_estado_display }}</span>
+                                    {% if estado.estado == 4 %}
+                                        &nbsp;<p class="text-danger"><i class="fa fa-info-circle"></i> {{ estado.observacion }}</p>
+                                    {% endif %}
+                                    <br>
+                                    <a class="btn-mini btn-info tu" title="Detalle estado aprobación" href="javascript:void(0);" onclick="formModalPM('','{{ estado.id }}','DETALLE ESTADO {{ estado.nombre_evidencia }}','viewdetalleestadopm','modal-lg', true,'')">
+                                        <i class="fas fa-list"></i></a>
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                        <td style="text-align: center">
+                            <span class="dropdown" title="ACCIONES">
+                                <a class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle" href="#" role="button" id="courseDropdown7" data-bs-toggle="dropdown" data-bs-offset="-20,20" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v fs-6"></i>
+                                </a>
+                                <span class="dropdown-menu dropdown-menu-end" aria-labelledby="courseDropdown7">
+                                    <span class="dropdown-header">ACCIONES</span>
+                                        <a class="dropdown-item" href="{{ request.path }}?action=viewdetalleplanificacion&id={{ l.id|encrypt }}&iddistributivo={{ detalledistributivo.pk|encrypt }}" style="margin-top: 5px">
+                                            <i class="fa fa-list"></i>&nbsp;Ver detalle</a>
+                                        {%  if l.en_uso %}
+                                        <a class="dropdown-item" href='javascript:void(0);' onclick="generarAnexoPlanificacionmensual('viewdetalleplanificacion','{{ l.id|encrypt }}','{{ detalledistributivo.pk|encrypt }}', 1)" style="margin-top: 5px">
+                                            <i class="fa fa-file-pdf-o"></i>&nbsp;Generar y firmar Planificación Mensual</a>
+                                        <a class="dropdown-item" href="{{ request.path }}?action=viewinformesemanales&id={{ l.id|encrypt }}&iddistributivo={{ detalledistributivo.pk|encrypt }}" style="margin-top: 5px">
+                                            <i class="fas fa-paperclip"></i>&nbsp;Informes Semanales</a>
+                                        {% endif %}
+                                        <a class="dropdown-item" href="javascript:void(0);" onclick="formModalPM('','{{ l.id }}','Cargar informe','informeplanificacion','modal-md', true,'')">
+                                            <i class="fas fa-cloud-upload-alt"></i>&nbsp;Cargar informe Mensual</a>
+                                        {% if not l.en_uso %}
+                                        <a class="dropdown-item" href="javascript:void(0);" onclick="formModalPM('','{{ l.id }}','Editar registro','editplanificacion','modal-md', true,'')">
+                                            <i class="fa fa-edit"></i>&nbsp;Editar </a>
+
+                                        <a class="dropdown-item text-danger" href="javascript:;" onclick="eliminarajax('{{ l.id }}', '{{ l.supervisarpractica.empresapractica.nombre }} - {{ inscripcion.persona|lower|title }}', 'deleteestudiantesupervisar')">
+                                            <i class="fa fa-trash"></i>&nbsp;Eliminar </a>
+                                        {% endif %}
+                                </span>
+                            </span>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="14">No existen registros</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="col-sm-12">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal" id="cerrar"><i class="fa fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itemspanelfirma" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl">
+            <div class="modal-content px-2">
+                <div class="modal-header border-0">
+                    <div class="headtitle mt-3 ms-0"><h4 class="ps-1 py-0 paneltitle"></h4></div>
+                    <button type="button" class="btn btn-close p-3 my-0" style="padding:10px!important;" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbodyevidencia"></div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0 my-2 pe-4">
+                    <a href="javascript:;" class="btn btn-aprobarcerrar btn-success"><i class="bi bi-check-circle"></i> Guardar</a>
+                    <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

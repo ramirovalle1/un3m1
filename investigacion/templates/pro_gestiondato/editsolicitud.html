@@ -1,0 +1,173 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function(){
+            $('[data-bs-toggle="tooltip"]').tooltip();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#id_baseinstitucional, #id_tipotrabajo, #id_motivo, #id_archivoselecc").addClass("validate[required]");
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' }
+                    ],
+                    removeButtons: 'Image,Flash',
+                    removePlugins: 'elementspath'
+                });
+
+                let campo = '<input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="'+nombreCampo+'_aux" value="">';
+                $("#fieldset_"+nombreCampo2).append(campo);
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('id_contexto', 'contexto', false);
+
+            archivoSeleccionado = function (){
+                $("#id_archivoselecc").val($(this).attr("idd"));
+            };
+
+            $('#id_baseinstitucional').change(function(){
+                let id = parseInt($(this).val());
+                $("#id_archivoselecc").val("");
+                if(!isNaN(id)){
+                    cargarInformacionBase(id);
+                }else{
+                    CKEDITOR.instances['id_contexto'].setData("");
+                    agregarFilaDefaultArchivo();
+                }
+            });
+
+            cargarInformacionBase = function (id){
+                let nuevaFila = '';
+                let ndetalle = 0;
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_gestiondato",
+                    data: {'action': 'informacionbase', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            CKEDITOR.instances['id_contexto'].setData(data.contexto);
+                            vaciarTabla();
+                            for (let detalle of data.detalles){
+                                ndetalle ++;
+                                nuevaFila = `<tr><td class="text-end">${ndetalle}</td><td class="text-justify"><label class="form-check-label" for="seleccionado${ndetalle}">${detalle.descripcion}</label></td><td class="text-center"><i class="fa ${detalle.icono} fs-4"></i></td><td class="text-center"><input class="form-check-input archivoseleccionado" idd="${detalle.id}" type="radio" name="seleccionado" id="seleccionado${ndetalle}"></td></tr>`;
+                                $("#detalle_archivos").append(nuevaFila);
+                                $(".archivoseleccionado").unbind("click.archivoseleccionado");
+                                $(".archivoseleccionado").bind("click.archivoseleccionado", archivoSeleccionado);
+                            }
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            agregarFilaDefaultArchivo = function (){
+                $("#detalle_archivos").empty();
+                filadefault = '<tr id="fila_default_archivo">'+
+                              '<td colspan="4" class="text-center">No existen detalles de archivos</td>'+
+                              '</tr>';
+                $("#detalle_archivos").append(filadefault);
+            };
+
+            vaciarTabla = function (){
+                $("#detalle_archivos").empty();
+            };
+
+            $(".archivoseleccionado").unbind("click.archivoseleccionado");
+            $(".archivoseleccionado").bind("click.archivoseleccionado", archivoSeleccionado);
+            $("#id_motivo").css("padding", "3px");
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_gestiondato{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/pro_gestiondato{% endblock %}
+{% block formdestinationswal %}pro_gestiondato{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editsolicitud'/>
+    <input type='hidden' id='id' name='id' value='{{ solicitudbase.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/pro_gestiondato{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div id="fieldset_tabla_anexos" class="col-md-12" style="float: left;">
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_detalle_archivos" style="padding-right: 10px;">Archivos:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left;">
+                <div class="table-responsive-xxl">
+                    <table class="table table-bordered table_primary table-striped mb-0" id="tbdetallearchivos">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="w-3 text-center">#</th>
+                                <th class="w-77 text-center">Descripción</th>
+                                <th class="w-10 text-center">Tipo</th>
+                                <th class="w-10 text-center">Seleccionar</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_archivos">
+                            {% for detalle in solicitudbase.baseinstitucional.archivos %}
+                                <tr>
+                                    <td class="text-end">{{ forloop.counter }}</td>
+                                    <td class="text-justify"><label class="form-check-label" for="seleccionado{{ forloop.counter }}">{{ detalle.descripcion }}</label></td>
+                                    <td class="text-center"><i class="fa {{ detalle.icono_archivo }} fs-4"></i></td>
+                                    <td class="text-center"><input class="form-check-input archivoseleccionado" idd="{{ detalle.id }}" type="radio" name="seleccionado" id="seleccionado{{ forloop.counter }}" {% if detalle.id == idarchivosolicitado %}checked{% endif %}></td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div>
+                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_archivoselecc" name="archivoselecc" value="{{ idarchivosolicitado }}">
+                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="fieldset_motivo" class="col-md-12" style="float: left;">
+        <div class="row">
+
+        </div>
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_motivo" style="padding-right: 10px;">Motivo Solicitud:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">
+                <textarea name="motivo" cols="40" rows="3" col="12" class="form-control" data-nameinput="motivo" id="id_motivo">{{ solicitudbase.motivo }}</textarea>
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"> </div>
+            </div>
+        </div>
+    </div>
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">Datos de la Cita</span></h6>
+    </div>
+    <div id="textohorarioseleccionado" class="alert alert-info text-justify">
+        <b>Estimado docente usted agendó una cita con el Centro de Estudios Estadísticos para el asesoramiento y validación de su solicitud para el día {{ mensajehorario }}.
+        En caso de requerir cambiar la fecha y hora de la cita deberá utilizar la opcion Re-agendar Cita</b>
+    </div>
+{% endblock %}

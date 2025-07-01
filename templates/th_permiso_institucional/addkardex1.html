@@ -1,0 +1,327 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function(){
+            var itemstime = 1;
+            $("#id_persona, #id_regimenlaboral, #id_fechaingreso,#id_fechasalida").addClass("validate[required]");
+            $("#id_fechaingreso,#id_fechasalida").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            ItemsDisplay = function (item) {
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+
+            $("#id_persona_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=Persona&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_persona").attr({"value":(evt.params.data.id)});
+            });
+
+            $("#id_persona_select2").change(function(){
+                $('#id_regimenlaboral').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = parseInt(control.val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/th_aprobarpermiso_th",
+                        data: {'action': 'listarregimen', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.regimen) {
+                                    var dato =  data.regimen[elemento];
+                                    $('#id_regimenlaboral').append('<option value="' + dato.id + '">' + dato.descripcion + '</option>');
+                                }
+                                for (element in data.permisos) {
+                                    var dato =  data.permisos[element];
+                                    $('#id_permiso').append('<option value="' + dato.idper + '">' + dato.nombre + '</option>');
+                                }
+                                if(data.count > 0){
+                                    $("#id_regimenlaboral").removeAttr("disabled").val(0).addClass("validate[required]").trigger("change");
+                                    $("#id_permiso").removeAttr("disabled").val(0).addClass("validate[required]").trigger("change");
+                                    $("#id_estado").removeAttr("disabled").val(0).addClass("validate[required]").trigger("change");
+                                    if(data.countper > 0){
+                                        $("#id_permiso").removeAttr("disabled").val(0).addClass("validate[required]").trigger("change");
+                                    }else{
+                                        $("#id_permiso").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                                    }
+                                }else{
+                                    $("#id_regimenlaboral").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                                    $("#id_permiso").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                                    $("#id_estado").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                $("#id_regimenlaboral").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            $("#id_denominacionpuesto").attr({"disabled": "disabled"}).val(0).removeClass("validate[required]").trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                $("#incompletovalores").hide();
+                $("#diasplazo").hide();
+                return false;
+            });
+
+            $("#itemsadicionar").click(function() {
+                $("#itemspanel").modal({backdrop: 'static', width: '400px'}).modal('show');
+                $("#id_permiso").val(0);
+                $("#id_operacion").val(0);
+                $("#id_diava").val(0);
+                $("#id_horava").val(0);
+                $("#id_minva").val(0);
+                $("#editar").hide();
+                $("#adicionarycerrar").show();
+                return false;
+            });
+
+            $("#adicionarycerrar").click(function() {
+                adicionar_fechas();
+            });
+            adicionar_fechas = function() {
+                var id_permiso = $("#id_permiso option:selected").text();
+                var id_operacion1 = $("#id_operacion").val();
+                var id_permiso1 = $("#id_permiso").val();
+                var id_fecha = $("#id_fecha").val();
+                var id_operacion =$("#id_operacion option:selected").text();
+                var id_diava = $("#id_diava").val();
+                var id_horava = $("#id_horava").val();
+                var id_minva = $("#id_minva").val();
+                if (id_diava>30 || id_diava<1){
+                    $("#incompletovalores").show();
+                    return false;
+                }
+                if (id_horava>24 ){
+                    $("#incompletovalores").show();
+                    return false;
+                }
+                if (id_minva>60 ){
+                    $("#incompletovalores").show();
+                    return false;
+                }
+                if (id_operacion1<1){
+                    $("#incompletocampos").show();
+                    return false;
+                }
+                $("#incompletovalores").hide();
+                $("#incompletocampos").hide();
+                $("#diasplazo").hide();
+                $("#itemsbody").append('<tr class="elementos" idp="'+id_permiso1+'" ido="'+id_operacion1+'" idd="'+id_diava+'" idh="'+id_horava+'" idm="'+id_minva+'" id="fila_'+itemstime+'">' +
+                    '<td style="text-align: center" class="id_permiso">'+id_permiso+'</td>' +
+                    '<td style="text-align: center" class="id_fecha">'+id_fecha+'</td>' +
+                    '<td style="text-align: center" class="id_operacion">'+id_operacion+'</td>' +
+                    '<td style="text-align: center" class="vacaciones"   >'+id_diava +' : '+ id_horava+' : '+ id_minva +'</td>' +
+                    '<td style="text-align: center">' +
+                    '<a class="btn btn-tini btn-info tu editar" title="Editar" idf="'+itemstime+'" idd="'+id_diava+'" idh="'+id_horava+'" idm="'+id_minva+'" ><i class="fa fa-edit"></i></a> ' +
+                    '<a class="btn btn-tini btn-danger tu eliminar" title="Eliminar"><i class="fa fa-remove"></i></a>' +
+                    '</td>' +
+                    '</tr>');
+                $("#itemspanel").modal("hide");
+                itemstime += 1;
+                tooltips();
+                conectar_controles();
+                actualizar_lista();
+            };
+            actualizar_lista = function () {
+                lista_items1 = [];
+                $(".elementos").each(function () {
+                    var item = {
+                        permiso: $(this).attr('idp'),
+                        operacion: $(this).attr('ido'),
+                        diava: $(this).attr('idd'),
+                        horava: $(this).attr('idh'),
+                        minva: $(this).attr('idm'),
+                    };
+                    lista_items1.push(item);
+                });
+            };
+            conectar_controles = function () {
+                $(".eliminar").unbind();
+                $(".eliminar").click(function () {
+                    var padre = $(this).parent().parent();
+                    padre.remove();
+                    actualizar_lista();
+                });
+                $(".editar").unbind();
+                $(".editar").click(function() {
+                    var idf = $(this).attr('idf');
+                    var padre = $("#fila_"+idf);
+                    var id_permiso = padre.find(".id_permiso").val();
+                    var id_operacion = padre.find(".id_operacion").html();
+                    var idd = $(this).attr('idd');
+                    var idh = $(this).attr('idh');
+                    var idm = $(this).attr('idm');
+                    $("#id_permiso").val(id_permiso);
+                    $("#id_operacion").val(id_operacion);
+                    $("#id_diava").val(idd);
+                    $("#id_horava").val(idh);
+                    $("#id_minva").val(idm);
+                    $("#alertaingreso").hide();
+                    $("#itemspanel .incompletocampos").hide();
+                    $("#itemspanel .incompletovalores").hide();
+                    $("#adicionarycerrar").hide();
+                    $("#editar").show().attr({'idf': idf});
+                    $("#itemspanel").modal({backdrop:'static', width: '400px'}).modal('show');
+                    return false;
+                });
+            };
+            $("#editar").click(function() {
+                actualizar_fechas();
+            });
+            actualizar_fechas = function () {
+                var idf = $("#editar").attr('idf');
+                $("#fila_"+idf).remove();
+                adicionar_fechas();
+            };
+            actualizar_lista();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/th_aprobarpermiso_th{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/th_aprobarpermiso_th{% endblock %}
+{% block form-type %}form-vertical{% endblock %}
+{% block formdestination %}/th_aprobarpermiso_th?action=kardexvacaciones{% endblock %}
+{% block formwidth %}form-m{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addkardex'/>
+{% endblock %}
+{% block formback %}/th_aprobarpermiso_th?action=kardexvacaciones{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <fieldset class="control-group nomargins" style="float: left; width: 100%">
+        <div class="controls">
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="text-align: center" colspan="6">Detalle Kardex <a href="javascript:;" id="itemsadicionar" class="btn btn-success btn-mini"><span class="fa fa-plus"></span></a></th>
+                </tr>
+                <tr>
+                    <th style="width: 300px; text-align: center">Permiso</th>
+                    <th style="width: 100px; text-align: center">Fecha</th>
+                    <th style="width: 50px; text-align: center">Operación</th>
+                    <th style="width: 100px; text-align: center">Vacación<br> Dias/Horas/Minutos </th>
+                    <th style="width: 80px; text-align: center">Acciones</th>
+                </tr>
+                </thead>
+                <tbody id="itemsbody" class="datatable">
+                {% for detalle in detalles %}
+                    <tr id="fila_{{ detalle.id }}">
+                        <td style='text-align: center'>{{ detalle.fechainicio|date:"d-m-Y" }}</td>
+                        <td style='text-align: center'>{{ detalle.fechafin|date:"d-m-Y" }}</td>
+                        <td style='text-align: center'>{{ detalle.horainicio|time:'h:i' }}</td>
+                        <td style='text-align: center'>{{ detalle.horafin|time:'h:i' }}</td>
+                        <td style='text-align: center'></td>
+                        <td style='text-align: center'>
+                            <a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' idd="{{ detalle.id }}" title='Eliminar'><i class='fa fa-remove'></i></a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                </tfoot>
+            </table>
+        </div>
+    </fieldset>
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar detalle de horas</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info incompleto" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Revise los valores: Dias / Horas / Minutos
+            </div>
+            <div class="alert alert-danger" id="incompletocampos" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="alertaingreso" style="display: none;"> FECHAS YA FUERON INGRESADAS</div>
+            <div class="alert alert-danger" id="diasplazo" style="display: none;"></div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-horizontal' action="" method="POST" >
+                    {% for field in form2 %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins" style="min-height:35px; float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}" >
+                            <div class="control-label label-text" {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %} style="display: table;height: 30px;">
+                                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                    <label for="id_{{ field.name }}" style="padding-right: 20px">{{ field.label }}</label>
+                                </div>
+                            </div>
+                            <div class="control" style="float: left; width: {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}0{% endif %}">
+                                {% if field.field.widget.attrs.select2search %}
+                                    <select id="id_{{ field.name }}_select2" {% if field.field.widget.attrs.disabled %}disabled=""{% endif %} >
+                                        <option value="0" selected="selected">---------</option>
+                                    </select>
+                                    <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}" hidden="hidden" {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %} class="select2hidden">
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+                                <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="adicionarycerrar"><i class="fa fa-save"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="editar"><i class="fa fa-edit"></i> Editar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

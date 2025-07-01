@@ -1,0 +1,341 @@
+{% load sga_extras %}
+<style>
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        background-color: #dff5ff;
+    !important;
+        border: 1px solid #03a9f4;
+    !important;
+    }
+
+    .dropify-wrapper .dropify-message span.file-icon {
+        font-size: 25px;
+        color: #CCC;
+    }
+
+</style>
+<input type="hidden" name="id" value="{{ filtro.id|encrypt }}"/>
+<input type="hidden" name="action" value="addresponsable"/>
+<input type="hidden" name="idpadre" value="{{ idpadre|encrypt }}"/>
+
+<div class="row">
+    {% for field in form %}
+        {% if field.field.widget.attrs.separator %}
+            {% if field.field.widget.attrs.blanklinebefore %}
+            {% endif %}
+            <div style="width: 100%; height: max-content">
+                <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                </span>
+                </h6>
+            </div>
+        {% endif %}
+        <div id="fieldset_{{ field.name }}" class="col-lg-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}"
+             style="float: left; padding-right: 10px;">
+            <label class="control-label pr-2" for="id_{{ field.name }}">
+                <b>{{ field.label }}&nbsp;:</b></label>
+            <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+                {{ field }}
+                <p class="help-text">{{ field.help_text }} </p>
+                <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0"></p>
+            </div>
+        </div>
+    {% endfor %}
+    <div class="col-lg-2 mt-lg-4">
+        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-12">
+        <table class='tabla_responsive table table_primary' width="100%">
+            <thead class="table-light">
+            <tr>
+                <th style="text-align: center">&nbsp;<b><i class="fa fa-users"></i> Responsables de Servicio
+                    (<b id="total">{{ listado|length }}</b>)</b></th>
+                <th class="text-center"><i class="fa fa-edit"></i>Activo</th>
+                <th style="text-align: center; width: 250px"><i class="fa fa-edit"></i> Tipo</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for list in listado %}
+                <tr id="box_{{ list.id }}">
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar avatar-md">
+                                <img src="{{ list.responsable.get_foto }}" class="rounded-circle">
+                            </div>
+                            <div class="ms-3">
+                                <h6 class="mb-0"><a href="#" class="text-inherit">{{ list.responsable }}</a></h6>
+{#                                <p class="mb-0 text-muted">{{ list.responsable.departamentopersona }}</p>#}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <input type="checkbox" {% if list.activo %}checked{% endif %} name="activo" class="activo"
+                               id="activo_{{ list.id }}" ida="{{ list.id }}">
+                    </td>
+                    <td style="text-align: left">
+                        <select class="tipoedit" data-id="{{ list.id }}" id="tipo_{{ list.id }}">
+                            {% for tp in tipos %}
+                                <option value="{{ tp.0 }}"
+                                        {% if tp.0 == list.tipo %}selected{% endif %}>{{ tp.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="text-center">
+                        <a href="javascript:void(0);"
+                           onclick="eliminarajaxl('{{ list.id }}', '{{ list }}','delresponsable')"
+                           class="btn btn-mini btn-outline-danger"><i class="fa fa-trash"></i></a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <h6 class="text-danger">*<i class="fa fa-info-circle"></i> Los responsables registrados podran ser utilizados en
+            horarios.*</h6>
+    </div>
+</div>
+<input type="hidden" id="idagregados"
+       value="{% for cl in listado %}{{ cl.responsable.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
+<script>
+    var total ={{ listado|length }};
+    var iter = false;
+    $(function () {
+        $('select').select2({width: '100%', minimumResultsForSearch: -1});
+
+        $.fn.select2.defaults.set('language', 'es');
+
+        const cbPersona = $('#id_responsable');
+
+        function formatRepo(repo) {
+            if (repo.loading) {
+                return 'Buscando..'
+            }
+            var option = '';
+            if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                option = $(`<b>${repo.text}</b>`);
+            } else {
+                option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-2 text-center"><img src="${repo.foto}" width="50px" height="50px" class="w-25px rounded-circle me-2"></div><div class="col-lg-10 text-left"><b>Documento:</b> ${repo.documento}<br><b>Nombres:</b> ${repo.text}</div></div></div>`);
+            }
+            return option;
+        }
+
+        ItemsDisplayPersonas = function (item) {
+            if (item.text && item.documento) {
+                return $(`<img src="${item.foto}" width="25px" height="25px" class="w-25px rounded-circle me-2"><span>${item.text}</span>`);
+            } else if (item) {
+                return item.text;
+            } else {
+                return 'Consultar Personas';
+            }
+        };
+
+        cbPersona.select2({
+            width: '100%',
+            placeholder: "Consultar Personas",
+            allowClear: true,
+            ajax: {
+                url: function (params) {
+                    return `{{ reques.path }}?action=buscarpersonaservicio&q=${params.term}&args={{ filtro.serviciocita.departamentoservicio.id|encrypt }}&idsagregados=${$('#idagregados').val()}`;
+                },
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term,
+                        page: params.page
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.results,
+                        pagination: {
+                            more: (params.page * 30) < data.total_count
+                        }
+                    };
+                },
+                cache: true
+            },
+            escapeMarkup: function (markup) {
+                return markup;
+            }, // let our custom formatter work
+            minimumInputLength: 1,
+            templateResult: formatRepo, // omitted for brevity, see the source of this page
+            templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+        });
+
+        CheckActivation()
+        ActualizarTipo()
+        $('#cerrar').click(function () {
+            if (iter) {
+                location.reload()
+            }
+        });
+    });
+
+    $(document).ready(function () {
+        const tabla_paginada = $('.tabla_paginada').DataTable({
+            responsive: false,
+            scrollX: true,
+            ordering: false,
+            paging: true,
+            searching: false,
+            pageLength: 5,
+            bInfo: false,
+            dom: 'Bfrtip',
+            language: {
+                "url": '/static/js/i18n/Spanish.json'
+            },
+            buttons: []
+        });
+        $('.tabla_paginada tbody').on('click', 'tr', function () {
+            var data = tabla_paginada.row(this).data();
+        });
+    });
+
+    //Actualizar estados de checks
+    function ActualizarEstado(id, action, check) {
+        bloqueointerface();
+        $.ajax({
+            type: "POST",
+            url: "{{ request.path }}",
+            data: {'action': action, 'id': id, 'val': check},
+            success: function (data) {
+                if (data.result === true) {
+                    $.unblockUI();
+                    alertaSuccess(data.mensaje)
+                } else {
+                    $.unblockUI();
+                    CheckError(check, id)
+                    alertaDanger(data.mensaje);
+                }
+            },
+            error: function () {
+                $.unblockUI();
+                CheckError(check, id)
+                alertaInfo("Error al enviar los datos.");
+            },
+            dataType: "json"
+        });
+        iter = true
+    }
+
+    function CheckActivation() {
+        $('.activo').click(function () {
+            var id = $(this).attr('ida');
+            var check = $(this).is(':checked');
+            ActualizarEstado(id, 'editresponsable', check)
+        });
+    }
+
+    function CheckError(check, id) {
+        if (check) {
+            $("#activo_" + id).prop('checked', false);
+        } else {
+            $("#activo_" + id).prop('checked', true);
+        }
+    }
+
+    function limpiar(id) {
+        $('#box_' + id).empty()
+        total -= 1
+        iter = true
+        $('#total').text(`${total}`)
+        if (total == 0) {
+            $('.tabla_paginada tbody').append($('<tr>', {}).append(
+                $('<td>', {'class': 'text-center dataTables_empty', 'colspan': 5}).append($('<p>', {
+                    'class': 'text-secondary',
+                    'text': `Ningún dato disponible en esta tabla`,
+                })),
+            ))
+        }
+    }
+
+    /*Actualizar Tabla con nuevos elementos*/
+    function ActualizarTabla(data) {
+        $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_${data.id}`, 'rol': 'row', 'class': 'odd'}).append(
+            $('<td>', {'class': 'text-center'}).append($('<div>', {
+                'class': 'd-flex align-items-center',
+                'html': `<div class="avatar avatar-md">
+                                <img src="${data.foto}" class="rounded-circle">
+                            </div>
+                            <div class="ms-3">
+                                <h6 class="mb-0"><a href="#" class="text-inherit">${data.responsable}</a></h6>
+                            </div>`,
+            })),
+            $('<td>', {'class': 'text-center'}).append($('<input>', {
+                'class': 'activo',
+                'type': 'checkbox',
+                'checked': data.activo,
+                'ida': `${data.id}`,
+                'id': `activo_${data.id}`,
+                'name': `activo`,
+            })),
+            $('<td>').append($('<select>', {
+                'id':`tipo_${data.id}`,
+                'class': 'tipoedit',
+                'data-id': `${data.id}`,
+                'html': `{% for tp in tipos %}<option value="{{ tp.0 }}">{{ tp.1 }}</option>{% endfor %}`,
+            })),
+            $('<td>', {'class': 'text-center'}).append($('<a>', {
+                'class': 'btn btn-mini btn-outline-danger',
+                'href': 'javascript:void(0);',
+                'onclick': `eliminarajaxl('${data.id}', '${data.responsable}','delresponsable')`,
+                'html': `<i class="fa fa-trash"></i>`
+            })),
+        ));
+        $(`#tipo_${data.id}`).val(`${data.tipo}`).trigger('change')
+        $("#id_responsable").select2("val", "");
+        total += 1
+        iter = true
+        $('.tipoedit').select2({width: '100%', minimumResultsForSearch: -1});
+        $('#total').text(`${total}`)
+        $('#id_requisitos tr .dataTables_empty').hide()
+        $('.errorMessage').empty()
+        CheckActivation()
+        ActualizarTipo()
+    }
+
+    //Actualizar tipo de responsable
+    function ActualizarTipo(){
+        $('.tipoedit').on('change', function () {
+            var tipo = $(this)
+            Swal.fire({
+                title: `Alerta!`,
+                text: `¿Está seguro de modificar el tipo de este responsable?`,
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    var id = $(this).attr('data-id');
+                    var value = $(this).val();
+                    bloqueointerface();
+                    $.post("{{ request.path }}", {
+                        'action': 'editresponsable',
+                        'ids': id,
+                        'val': value
+                    }, function (data) {
+                        $.unblockUI();
+                        if (data.result) {
+                            alertaSuccess('Tipo cambiado con exito')
+                        } else {
+                            alertaDanger(data.mensaje)
+                            tipo.val(false)
+                        }
+                    });
+                    $.unblockUI();
+                }else{
+
+                }
+            })
+        })
+    }
+</script>

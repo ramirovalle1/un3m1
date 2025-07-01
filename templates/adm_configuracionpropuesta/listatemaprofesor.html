@@ -1,0 +1,222 @@
+{% load sga_extras %}
+<script type="text/javascript">
+    var ids = 0;
+    var idm = 0;
+    $(function() {
+
+        $(".itemspanelaprobarsilabos .btn-cerrar").click(function() {
+            document.getElementById("observacion").value="";
+            $(".itemspanelaprobarsilabos").modal("hide");
+            $("#mensaje").hide();
+            ids=0;
+        });
+        $(".cerraradetalle").click(function () {
+            $(".itemspaneldetalle").modal("hide");
+        });
+        $(".aprobrasilabo").click(function () {
+            $(".itemspanelaprobarsilabos").modal({backdrop:'static', width: '800px'}).modal('show');
+            var id = $(this).attr('ids');
+            ids=id;
+        });
+        $(".btn-adicionar").click(function() {
+            var observacion = $(".observacion").val();
+            var estado = $(".estado").val();
+            if(observacion.length<1){
+                smoke.alert("Ingrese una observación.");
+                $("#id_observaciones").focus();
+                return false;
+            }
+            if(estado == "0"){
+                smoke.alert("Selecione el estado de la aprobación.");
+                $("#cb_estado_solicitud").focus();
+                return false;
+            }
+            if($('#id_archivo').length && $('#id_archivo')[0].files.length==0){
+                smoke.alert("Debe subir un archivo de sustento.");
+                return false;
+            }
+            bloqueointerface();
+            var _data = new FormData();
+            _data.append('id', ids);
+            _data.append('st', estado);
+            _data.append('obs', observacion);
+            _data.append('action', 'aprobar_tema_profesor');
+            if($('#id_archivo').length){
+                _data.append('archivo', $('#id_archivo')[0].files[0]);
+            }
+            $.ajax({
+                type: "POST",
+                url: "/adm_configuracionpropuesta",
+                contentType: false,
+                cache: false,
+                processData: false,
+                data:  _data,
+                success: function(data) {
+                    if (data.result=='ok') {
+                        $.unblockUI();
+                        $(".itemspanelaprobarsilabos").modal("hide");
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function() {
+                    desbloqueoUi();
+                    smoke.alert("Error al enviar los datos al servidor.");
+                },
+                dataType: "json"
+            });
+
+        });
+
+        $(".detalle").click(function () {
+            var id = $(this).attr('ids');
+            $.unblockUI();
+            bloqueointerface();
+            $.post("/adm_configuracionpropuesta", {'action':'detalleaprobacion_profesor', 'id': id}, function(data) {
+                if (data.result == 'ok') {
+                    $.unblockUI();
+                    bloqueointerface();
+                    idm=data.materia;
+                    $(".panelbodydetalle").html(data.data);
+                    $(".itemspaneldetalle").modal({backdrop:'static', width: '1000px'}).modal('show');
+                }
+            }, 'json');
+        });
+    });
+</script>
+<style>
+    textarea {text-transform: uppercase;}
+</style>
+<div class='row-fluid' >
+    <table class="table table-bordered">
+        <thead>
+        <th style="width: 15px">N.V</th>
+        <th>Tema</th>
+{#        <th style="width: 80px">Estado de Aprobación</th>#}
+        <th style="width: 60px">Historial de aprobación.</th>
+        <th style="width: 80px">Acciones</th>
+        </thead>
+        <tbody>
+        {% for tema in temas %}
+            <tr>
+                <td>V{{ forloop.counter }}</td>
+                <td>{{ tema.tematitulacionposgradomatricula.propuestatema }}</td>
+                {% with tieneapro=tema|call:'tiene_aprobaciones' estadoaprobacion=tema|call:'estado_aprobacion' %}
+{#                    <td style="text-align: center">#}
+{#                        {% if tieneapro %}#}
+{#                            {%  if estadoaprobacion %}#}
+{#                                {% if estadoaprobacion.estado == aprobar %}#}
+{#                                    <span class="label label-success">{{ estadoaprobacion.get_estado_display }}</span>#}
+{#                                {% else %}#}
+{#                                    {% if estadoaprobacion.estado == rechazar %}#}
+{#                                        <span class="label label-important">{{ estadoaprobacion.get_estado_display }}</span>#}
+{#                                    {% else %}#}
+{#                                        <span class="label label-warning">{{ estadoaprobacion.get_estado_display }}</span>#}
+{#                                    {% endif %}#}
+{#                                {% endif %}#}
+{#                            {% endif %}#}
+{#                        {% endif %}#}
+{#                    </td>#}
+                    <td style="text-align: center">
+                        {% if tieneapro %}
+                            <a class="btn btn-mini btn-info tu detalle" ids="{{ tema.id }}" title="Información de aprobación"><span class="fa fa-list"></span></a>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center; width: 50px">
+                        {% if not estadoaprobacion %}
+                            <a class="btn btn-success aprobrasilabo" ids="{{ tema.id }}"><i class="fa fa-check"></i> Aprobar/Rechazar</a>
+                        {% else %}
+                            <a class="btn btn-success aprobrasilabo" ids="{{ tema.id }}"><i class="fa fa-check"></i> Aprobar/Rechazar</a>
+                        {% endif %}
+                    </td>
+                {% endwith %}
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="5" STYLE="text-align: center">NO TIENE TEMAS REGISTRADOS</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="modal fade static itemspanelaprobarsilabos" id="itemspanelaprobarsilabos"  style="display: none;">
+    <div class="modal-header">
+        <h3 class="paneltitle">Aprobar Tema</h3>
+    </div>
+    <div style="width: 80%; border: 5px; background-color: #f2dede; margin-left: 10%"><h5 id="mensaje" style="text-align: center; color: #CC3434"></h5></div>
+    <div class="modal-body panelbody">
+        {#        <strong>Asignatura: </strong>{{ materia.asignaturamalla }}<br>#}
+        {#        <strong>Profesor/a: </strong>{{ profesor}}#}
+    </div>
+    <div class="modal-footer">
+        <table class=" table table-condensed" border="0px" style="border: none;">
+            <tr>
+                <td><span>Observación</span><br>
+                    <textarea id="observacion" class="observacion" rows="5" style="text-align: justify; width: 100%;"></textarea>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: left">
+                    {% for field in form %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset class="control-group nomargins" style="float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}">
+                            <label class="control-label" for="id_{{ field.name }}">{{ field.label }}</label>
+                            <div class="controls">
+                                {{ field }}
+                                <p class="help-text">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                </td>
+            </tr>
+            <tr>
+                <td><span>Aprobar/Rechazar </span>
+                    <select id="estado" class="imp-50 estado" name="estado">
+                        <option value="0">--------</option>
+                        <option value="{{ aprobar }}">APROBADO</option>
+                        <option value="{{ rechazar }}">RECHAZADO</option>
+                    </select>
+                </td>
+            </tr>
+            <tr></tr>
+            <tr>
+                <td style="text-align: right">
+                    <a href="javascript:;" class="btn btn-adicionar btn-success">Guardar</a>
+                    <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
+<div class="modal fade static itemspaneldetalle" id="itemspaneldetalle" style="display: none;">
+    <div class="modal-header">
+        <h3 class="paneltitle">Listado de aprobación</h3>
+    </div>
+    <div class="modal-body panelbodydetalle">
+    </div>
+    <div class="modal-footer">
+        <table class="pull-right">
+            <tr>
+                <td><a href="javascript:;" class="btn cerraradetalle btn-info">Cerrar</a></td>
+            </tr>
+        </table>
+    </div>
+</div>
+{#<div class="modal fade static itemspaneldetalle_temas_subtemas" id="itemspaneldetalle_temas_subtemas" style="display: none;">#}
+{#    <div class="modal-header">#}
+{#        <h3 class="paneltitle">Temas y subtemas por planificar</h3>#}
+{#    </div>#}
+{#    <div class="modal-body panelbodydetalle_temas_subtemas">#}
+{##}
+{#    </div>#}
+{#    <div class="modal-footer">#}
+{#        <table class="pull-right">#}
+{#            <tr>#}
+{#                <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>#}
+{#            </tr>#}
+{#        </table>#}
+{#    </div>#}
+{#</div>#}

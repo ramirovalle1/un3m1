@@ -1,0 +1,932 @@
+{% extends "basebs.html" %}
+{% block atras %}{% if matriculacion_libre %}/niveles?action=materias&id={{ materia.nivel.id }}&mallaid={{ materia.asignaturamalla.malla.id }}&nivelmallaid={{ materia.asignaturamalla.nivelmalla.id }}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}{% else %}/adm_horarios/clases{% endif %}{% endblock %}
+{% load sga_extras %}
+{% block heading %}
+	<script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+	<link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+	<style>
+        .swal2-cancel{
+            border-radius: 20px;
+        }
+        .swal2-close{
+            background: rgb(0 0 0 / 73%);
+            position: absolute;
+            border-radius: 100%;
+            top: 8px!important;
+            right: 8px!important;
+            font-size: 25px;
+            width: 30px;
+            height: 30px;
+            opacity: 1;
+        }
+        .swal-table{
+            height: 135px!important;
+        }
+        .swal2-popup{
+            border-radius: 25px;
+        }
+
+	</style>
+	<script type="text/javascript">
+        var actualizarpagina = false;
+        var finalizar_limpieza = false;
+        $(function() {
+
+            $("select").select2({minimumResultsForSearch: 2 });
+
+            $(".limpiar_seleccion").click(function(){
+                if (finalizar_limpieza){
+                    finalizar_limpieza =false;
+                    if (actualizarpagina){
+                        bloqueointerface();
+                        location.reload(true);
+                    }
+                    else{
+                        $(".adicionarclase").show();
+                        $(".opciones").show();
+                        $(".limpiar").show();
+                        $(".div_limpiar").hide();
+                        $(this).html('<i class="fa fa-trash"></i> Limpiar por selección');
+                    }
+                }
+                else{
+                    $(".adicionarclase").hide();
+                    $(".opciones").hide();
+                    $(".limpiar").hide();
+                    $(".div_limpiar").show();
+                    $(this).html('<i class="fa fa-reply"></i> Finalizar limpieza');
+                    finalizar_limpieza =true;
+                }
+            });
+
+            $(".select_limpiar").click(function(){
+                var idc = $(this).attr('idc');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_horarios/clases",
+                    data: {'action': 'delclase','id':idc },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $("#horario_normal_"+idc).hide();
+                            actualizarpagina = true;
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $(".copiarhorario").click(function(){
+                var idc = $(this).attr('idc');
+                $(".adicionarclase").hide();
+                $(".opciones").hide();
+                $(".pegarhorario").attr('idc', idc).show();
+                $(".regresarpegada").hide();
+                $("#regresar_"+idc).show();
+            });
+
+            $(".finalizarpegada").click(function(){
+                if (actualizarpagina){
+                    bloqueointerface();
+                    location.reload(true);
+                } else {
+                    $(".adicionarclase").show();
+                    $(".opciones").show();
+                    $(".pegarhorario").removeAttr('idc').hide();
+                    $(".regresarpegada").hide();
+                }
+            });
+
+            $(".pegarhorario").click(function(){
+                actualizarpagina = true;
+                var idpegado = '#pegar_'+$(this).attr('idt')+'_'+$(this).attr('idd');
+                if ($(this).attr('iddc')){
+                    add_del_clase({'action': 'delclasepegar', 'iddc':$(this).attr('iddc')}, idpegado);
+                }
+                else{
+                    add_del_clase({'action': 'addclasepegar', 'idt':$(this).attr('idt'), 'idd':$(this).attr('idd'), 'idc':$(this).attr('idc')}, idpegado);
+                }
+            });
+
+            add_del_clase = function (parametros, idpegado) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_horarios/clases",
+                    data: parametros,
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $.unblockUI();
+                            if (data.existeconflicto == 'ok') {
+                                $("#conflictopegado_body").html(data.segmento);
+                                $("#conflictopegado").modal({backdrop:'static', width: 1000}).modal('show');
+                            } else {
+                                if (data.adicionado == 'ok'){
+                                    $(idpegado).html('<i class="fa fa-check" style="color: green"></i>');
+                                    $(idpegado).attr({"iddc": data.iddc});
+                                } else{
+                                    $(idpegado).html('<i class="fa fa-paste"></i>');
+                                    $(idpegado).removeAttr('iddc');
+                                }
+                                if (data.notificar_excedio){
+                                    $("#mensaje_notificacion").html(data.notificacion_excedio_hora);
+                                    $("#notificacion").modal({backdrop:'static', width: 800}).modal('show');
+                                }
+                            }
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            };
+
+            $("#conflictopegado_cerrar").click(function() {
+                $("#conflictopegado").modal("hide");
+            });
+
+            $("#notificacion_cerrar").click(function() {
+                $("#notificacion").modal("hide");
+            });
+
+            $(".btn-conflicto").click(function(){
+                var mensaje = $(this).attr("mensaje");
+                $("#observacion").html("<p>"+mensaje+"</p>");
+                $("#observacionespanel").modal("show");
+            });
+
+            $("#carrera").change(function() {
+                var id;
+                var nivelmid;
+                bloqueointerface();
+                id = $(this).val();
+                if ($("#nivelm").val() > 0){
+                    nivelmid = $("#nivelm").val();
+                }
+                nid = $(this).attr('nid');
+                if (id>0 && nivelmid>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&carreraid='+id+'&nivelmid='+nivelmid;
+                    return false;
+                }
+                if (nivelmid>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&nivelmid='+nivelmid;
+                    return false;
+                }
+                if (id>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&carreraid='+id;
+                } else {
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid;
+                }
+            });
+
+            $("#nivelm").change(function() {
+                var id;
+                var carreraid;
+                bloqueointerface();
+                id = $(this).val();
+                if ($("#carrera").val() > 0 ){
+                    carreraid = $("#carrera").val();
+                }
+                nid = $(this).attr('nid');
+                if (id>0 && carreraid>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&nivelmid='+id+'&carreraid='+carreraid;
+                    return false;
+                }
+                if (carreraid>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&carreraid='+carreraid;
+                    return false;
+                }
+                if (id>0){
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid+'&nivelmid='+id;
+                } else {
+                    location.href = '/adm_horarios/clases?action=horario&id='+nid;
+                }
+            });
+
+            {% if horario_resumido %}
+                $(".horario_normal").hide();
+                $(".horario_resumido").show();
+            {% endif %}
+
+            $(".horario_resumido_btn").click(function(){
+                $(".horario_resumido_btn").hide();
+                $(".horario_normal").hide();
+                id = $(this).attr('idc');
+                $("#horario_resumido_"+id).hide();
+                $("#horario_resumido").hide();
+                $("#horario_normal_"+id).show();
+            });
+
+            $(".horario_resumido_btn_up").click(function(){
+                $(".horario_resumido_btn").show();
+                $(".horario_normal").hide();
+                id = $(this).attr('idc');
+                $("#horario_resumido_"+id).show();
+            });
+
+            $(".duplicarhorario").click(function(){
+                var cid = $(this).attr('cid');
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_horarios/clases",
+                    data: {'action': 'duplicarhorario','id':cid },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            if (data.existeconflicto) {
+                                $.unblockUI();
+                                $("#conflicto_body").html(data.segmento);
+                                $("#conflicto").modal({backdrop:'static', width: 1000}).modal('show');
+                            }
+                            else{
+                                location.reload();
+                            }
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $("#conflicto_cerrar").click(function() {
+                bloqueointerface();
+                $("#conflicto").modal("hide");
+                location.reload(true);
+            });
+
+            $(".asignarayudante").click(function(){
+                var control = $('#id_ayudante');
+                control.empty().append('<option value="0">---------</option>').val(0).trigger("change");
+                var idc = $(this).attr('idc');
+                $(".ayudante_guardar").attr('idc',idc);
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_horarios/clases",
+                    data: {'action': 'listarprofesorayudante','idc':idc },
+                    error: function () {
+                        $.unblockUI();
+                        control.val(0).trigger("change");
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $.unblockUI();
+                            for (elemento in data.lista) {
+                                control.append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                            $("#ayudanteclase").modal({backdrop:'static', width: 500}).modal('show');
+                        } else {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+            $(".ayudante_cerrar").click(function() {
+                $("#ayudanteclase").modal("hide");
+            });
+
+            $(".ayudante_guardar").click(function() {
+                var idc = $(this).attr('idc');
+                var idp = $('#id_ayudante').val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_horarios/clases",
+                    data: {'action': 'addprofesorayudante', 'idc':idc, 'idp':idp},
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $("#ayudanteclase").modal("hide");
+                            if (data.existeconflicto == 'ok') {
+                                $.unblockUI();
+                                $("#conflictopegado_body").html(data.segmento);
+                                $("#conflictopegado").modal({backdrop:'static', width: 1000}).modal('show');
+                            }
+                            else{
+                                location.reload(true);
+                            }
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+
+        });
+        function mostrarmodalconfirmareditarhorario(idc, materiaid, paraleloid ) {
+            console.log(idc);
+            $.ajax({
+                type: "POST",
+                url: "/adm_horarios/clases",
+                data: {'action': 'listarleccionesfalso', 'idc':idc},
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al obtener los datos.");
+                },
+                success: function (data) {
+                    console.log(data, idc, materiaid, paraleloid );
+                    if (data.result == "ok") {
+                        $.unblockUI();
+                        var lecciones = data.lecciones;
+                        var modalContent = "";
+                        modalContent += "<h2>" + "<b>" + "Advertencia" +"</b>"  + "</h2>"  ;
+                        modalContent += "<h4>" + "Si editas esta opción se eliminarán las siguientes lecciones que no han sido abiertas" + "</h4>" + "<br>";
+
+                        modalContent += '<div class="table-responsive swal-table" '+  'style="overflow-y: scroll;height:100px"> '+
+                            ' <table class="table table-bordered">';
+                        for (var i = 1; i <= lecciones.length; i++) {
+                            //modalContent += "" + i + ".- " + lecciones[i-1] + "\n";
+                            modalContent += "<tr>" + "<td>" +"<b>" +i  + ".- " + "</b>" + lecciones[i-1] + "</td>" + "</tr>";
+
+                        }
+                        modalContent += "</table>" +"</div>"
+
+                        Swal.fire({
+                            title: ``,
+                            //text: modalContent,
+                            html:
+                            modalContent,
+                            type: 'warning',
+                            icon: 'warning',
+                            showCloseButton: true,
+                            showCancelButton: true,
+                            allowOutsideClick: false,
+                            confirmButtonColor: '#3085d6',
+                            cancelButtonColor: '#d33',
+                            reverseButtons: true,
+                            customClass: {
+                                cancelButton: 'swal2-cancel btn btn-primary btn-expand btn-rounded btn-lg',
+                                confirmButton: 'swal2-acept btn btn-orange btn-expand btn-rounded btn-lg',
+                                closeButton: 'btn-sm rounded-circle'
+                            },
+                            cancelButtonText: 'Cancelar',
+                            confirmButtonText: 'Aceptar'
+
+                        }).then((result) => {
+                            if (result.value) {
+                                //self.loading();
+                                window.location.href = "/adm_horarios/clases?action=editclase&id="+idc+"&materiaid="+materiaid+"&paraleloid="+paraleloid;
+                            }
+                        }).catch(error => {
+                            //self.loading();ç
+                            location.reload();
+                        });
+
+                        //$("#modallecciondoby").html(modalContent);
+                        //$("#modalconfirmareditarhorario").modal({backdrop:'static', width: 1000}).modal('show');
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                }
+            });
+
+        }
+	</script>
+{% endblock %}
+
+{% block canvas %}
+	<div class='row-fluid'>
+		<div class='span12'>
+			<h4>{{ title }}</h4>
+			{% if nivel.nivelmalla %}
+				<h5>Nivel: {{ nivel.nivelmalla }}</h5>
+			{% endif %}
+			<h5>{{ nivel.coordinacion }} </h5>
+			<h5>{{ nivel.paralelo }} - FECHAS DE NIVEL: {{ nivel.inicio|date:"d-m-Y" }} - {{ nivel.fin|date:"d-m-Y" }}</h5>
+			{% if materiaid %}
+				<h5>Materia: {{ materia }} - <span class="badge badge-info tu" title="Tiempo dedicación">{{ materia.abreviatura_dedicacion }}</span> {% if materia.profesor_principal %}- <span class="badge badge-info tu" title="Pais/Provincia/Canton/Parroquia">{{ materia.profesor_principal.persona.pais|default_if_none:' ' }}-{{ materia.profesor_principal.persona.provincia|default_if_none:' ' }}-{{ materia.profesor_principal.persona.canton|default_if_none:' ' }}-{{ materia.profesor_principal.persona.parroquia|default_if_none:' ' }}</span>{% endif %}</h5>
+				<h5>Fechas de materia: {{ materia.inicio|date:"d-m-Y" }} - {{ materia.fin|date:"d-m-Y" }}</h5>
+			{% endif %}
+			{% if nivel.cerrado %}
+				<label class='label label-important'>CERRADO</label>
+			{% endif %}
+		</div>
+	</div>
+	<div class="row-fluid margeninferior">
+		<div class="span12">
+			<a href="{% if matriculacion_libre %}/niveles?action=materias&id={{ materia.nivel.id }}&mallaid={{ materia.asignaturamalla.malla.id }}&nivelmallaid={{ materia.asignaturamalla.nivelmalla.id }}{% else %}/adm_horarios/clases{% endif %}" class="btn"><i class="fa fa-table"></i> Materias</a>
+			{% if perms.sga.puede_modificar_horarios %}
+				<a href="/matriculas?action=matricula&id={{ nivel.id }}" class="btn"><i class="fa fa-group"></i> Matr&iacute;cula - {{ nivel.matricula_set.count }}</a>
+				<a href="/niveles?action=pagos&id={{ nivel.id }}" class="btn"><i class="fa fa-money"></i> Pagos</a>
+				<a href="javascript:;" tipos="{{ reporte_3.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_3.nombre }}&nivel={{ nivel.id }}&carrera={{ carreraid }}&materia={{ materia.id }}" class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Imprimir horario materia</a>
+				{% if carreraid %}
+					{% if carreraid and reporte_1 and not nivelmid %}
+						<a href="javascript:;" tipos="{{ reporte_1.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_1.nombre }}&nivel={{ nivel.id }}&carrera={{ carreraid }}" class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Imprimir</a>
+					{% endif %}
+					{% if carreraid and nivelmid and reporte_2 %}
+						<a href="javascript:;" tipos="{{ reporte_2.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_2.nombre }}&nivel={{ nivel.id }}&carrera={{ carreraid }}&nivelmid={{ nivelmid }}" class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Imprimir</a>
+					{% endif %}
+				{% else %}
+					{% if reporte_0 %}
+						<a href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_0.nombre }}&nivel={{ nivel.id }}" class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Imprimir</a>
+					{% endif %}
+				{% endif %}
+				{% if not materia.tiene_matriculas  %}
+					<a href="javascript:;" class="btn btn-danger eliminacionmodal limpiar" nhref="adm_horarios/clases?action=clear&id={{ nivel.id }}{% if carreraid %}&carreraid={{ carreraid }}{% endif %}&materiaid={{ materia.id }}&mallaid={{ materia.asignaturamalla.malla.id }}&nivelmallaid={{ nivelmallaid }}"><i class="fa fa-trash"></i> Limpiar</a>
+				{% endif %}
+				{% if not tienelink %}
+					<a href="javascript:;" class="btn btn-danger limpiar_seleccion"><i class="fa fa-trash"></i> Limpiar por selección</a>
+				{% endif %}
+			{% endif %}
+		</div>
+	</div>
+
+	{% if turnos_fuera %}
+		<div class='row-fluid'>
+			<div class='span12'>
+				<table class='table table-striped table-bordered'>
+					<thead>
+					<tr>
+						<th colspan="8" style=""><b>HORARIOS FUERA DE SECCIÓN</b></th>
+					</tr>
+					<tr>
+						<th></th>
+						<th style="width: 166px">Lunes</th>
+						<th style="width: 166px">Martes</th>
+						<th style="width: 166px">Miercoles</th>
+						<th style="width: 166px">Jueves</th>
+						<th style="width: 166px">Viernes</th>
+						<th style="width: 166px">Sabado</th>
+						<th style="width: 166px">Domingo</th>
+					</tr>
+					</thead>
+					<tbody>
+					{% for turno in turnos_fuera %}
+						<tr>
+							<th style="font-weight: normal;">{{ turno.nombre_horario }} (<b>{{ turno.sesion.nombre }}</b>)</th>
+							{% for dia in semana %}
+								<th>
+									{% with clases=nivel|args:forloop.counter|args:turno|args:materia|call:"clases_activas_horario" %}
+										{% if clases %}
+											<table class='cell table table-bordered' dia='{{ forloop.counter }}' turno='{{ turno.id }}' style="margin-bottom: 3px">
+												{% for clase in clases %}
+													<tr id='horario_normal_{{ clase.id }}' class='horario_normal'>
+														<th style='font-weight: normal;
+																{% if clase.tipohorario != 2 and clase.conflicto_aula %}background-color: #ebcccc; border: 1px solid red;{% endif %}
+																{% if clase.tipohorario == 2 %}background-color: #cce5f6; border: 1px solid blue;{% endif %}
+																'>
+															{% if horario_resumido %}
+																<div class='btn btn-mini horario_resumido_btn_up' idc='{{ clase.id }}' style='float: right'><i class='fa fa-chevron-up'></i></div>
+															{% endif %}
+															<b>{{ clase.materia.asignatura.nombre }}</b>
+															<span class="smaller">
+                                                            <br><b>{{ clase.fechas_horarios }}</b>
+                                                            <br/>Aula: {{ clase.aula.nombre }}
+                                                            <br/>Tipo: {{ clase.tipoprofesor }}
+                                                            <br/>Tipo Hor.: {{ clase.get_tipohorario_display }}
+																{% if clase.tipoprofesor.id == 2 or clase.tipoprofesor.id == 13 %}
+																	<br/>Grupo: {{ clase.grupoprofesor.get_paralelopractica_display }}
+																{% endif %}
+																{% if clase.profesor %}
+																	<br/><span style='color: red;'>Profesor: {{ clase.profesor.persona.nombre_completo_inverso }}</span>
+																{% endif %}
+																{% if clase.profesorayudante %}
+																	<br/><span style='color: #0c6251;'>Ayudante: {{ clase.profesorayudante.persona.nombre_completo_inverso }}</span>
+																{% endif %}<br>
+																{% if clase.subirenlace %}
+																	<label class="label label-success tu" title="Opción de subir enlace de la clase">Enlace</label>
+																{% endif %}
+																{% if persona.usuario.is_superuser %}
+																	<label class="label label-info">idclase: {{ clase.id }}</label>
+																{% endif %}
+																<div class='opciones' style='text-align: left;'>
+                                                            {% if perms.sga.puede_modificar_horarios  %}
+																{% if not DEBUG %}
+																	{% if not bloqueado and not clase.materia.cerrado %}
+																		{% if not tienelink or clase.materia.nivel.coordinacion.id == 1 or  clase.materia.nivel.coordinacion.id == 9  or  clase.materia.nivel.coordinacion.id == 7 or not clase.es_asincronica or persona.usuario.is_superuser or perms.sga.puede_modificar_todos_los_horarios %}
+																			{% if clase.leccion_en_falso %}
+																				<a href='javascript:;' onclick="mostrarmodalconfirmareditarhorario({{ clase.id }}, {% if materiaid %}{{ materiaid }}{% endif %},{% if paraleloid %}{{ paraleloid }}{% endif %} )" class='btn btn-info btn-mini tu bloqueo_pantalla ' title="Editar"><i class='fa fa-edit'></i></a>
+																			{% else %}
+																				<a href='/adm_horarios/clases?action=editclase&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class='btn btn-info btn-mini tu bloqueo_pantalla' title="Editar"><i class='fa fa-edit'></i></a>
+																			{% endif %}
+																		{% endif %}
+																		{% if not clase.tiene_lecciones or  clase.materia.nivel.coordinacion.id == 9 or perms.sga.puede_modificar_todos_los_horarios%}
+																			{#                                                                            <a href='/adm_horarios/clases?action=right&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}' class='btn btn-mini btn-form tu' title="Duplicar"><i class='fa fa-arrow-right'></i></a>#}
+																			<a href='javascript:;' cid="{{ clase.id|encrypt }}" class='btn btn-mini btn-form tu duplicarhorario opciones' title="Duplicar"><i class='fa fa-arrow-right'></i></a>
+																			{% if not tienelink or  clase.materia.nivel.coordinacion.id == 9 or perms.sga.puede_modificar_todos_los_horarios %}
+																				<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=delclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																			{% endif %}
+																		{% else %}
+																			{% if not tienelink or perms.sga.puede_modificar_todos_los_horarios %}
+																				<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=hideclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																			{% endif %}
+																		{% endif %}
+																		<a class='btn btn-mini btn-default asignarayudante tu' idc="{{ clase.id|encrypt }}" title="Ayudante"><i class='fa fa-user'></i></a>
+																		<a class='btn btn-mini btn-inverse copiarhorario tu' idc="{{ clase.id|encrypt }}" title="Copiar"><i class='fa fa-copy'></i></a>
+																	{% endif %}
+																{% else %}
+																	{% if not tienelink or clase.materia.nivel.coordinacion.id == 1 or  clase.materia.nivel.coordinacion.id == 9  or  clase.materia.nivel.coordinacion.id == 7 or not clase.es_asincronica or persona.usuario.is_superuser or perms.sga.puede_modificar_todos_los_horarios %}
+																		{% if clase.leccion_en_falso %}
+																			<a href='javascript:;' onclick="mostrarmodalconfirmareditarhorario({{ clase.id }}, {% if materiaid %}{{ materiaid }}{% endif %},{% if paraleloid %}{{ paraleloid }}{% endif %} )" class='btn btn-info btn-mini tu bloqueo_pantalla ' title="Editar"><i class='fa fa-edit'></i></a>
+																		{% else %}
+																			<a href='/adm_horarios/clases?action=editclase&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class='btn btn-info btn-mini tu bloqueo_pantalla' title="Editar"><i class='fa fa-edit'></i></a>
+																		{% endif %}
+																	{% endif %}
+																	{% if not clase.tiene_lecciones or  clase.materia.nivel.coordinacion.id == 9 or perms.sga.puede_modificar_todos_los_horarios%}
+																		{#                                                                            <a href='/adm_horarios/clases?action=right&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}' class='btn btn-mini btn-form tu' title="Duplicar"><i class='fa fa-arrow-right'></i></a>#}
+																		<a href='javascript:;' cid="{{ clase.id|encrypt }}" class='btn btn-mini btn-form tu duplicarhorario opciones' title="Duplicar"><i class='fa fa-arrow-right'></i></a>
+																		{% if not tienelink or  clase.materia.nivel.coordinacion.id == 9 or perms.sga.puede_modificar_todos_los_horarios %}
+																			<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=delclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																		{% endif %}
+																	{% else %}
+																		{% if not tienelink or perms.sga.puede_modificar_todos_los_horarios %}
+																			<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=hideclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																		{% endif %}
+																	{% endif %}
+																	<a class='btn btn-mini btn-default asignarayudante tu' idc="{{ clase.id|encrypt }}" title="Ayudante"><i class='fa fa-user'></i></a>
+																	<a class='btn btn-mini btn-inverse copiarhorario tu' idc="{{ clase.id|encrypt }}" title="Copiar"><i class='fa fa-copy'></i></a>
+																{% endif %}
+															{% endif %}
+																	{% if clase.conflicto_aula %}
+																		<a class='btn btn-mini btn-warning btn-conflicto tu' title="Conflicto en el horario" mensaje='{{ clase.conflicto_aula.nombre_conflicto }}'>Aula</a>
+																	{% endif %}
+                                                        </div>
+                                                        <div class="regresarpegada" id="regresar_{{ clase.id|encrypt }}" style="display: none">
+                                                            <a class='btn btn-mini btn-info finalizarpegada tu' id="finalizar_{{ clase.id|encrypt }}" idc="{{ clase.id|encrypt }}" > Finalizar pegado</a>
+                                                        </div>
+                                                        <div class="div_limpiar" style="display: none">
+                                                            <a class='btn select_limpiar tu' idc="{{ clase.id }}"><i class='fa fa-trash'></i></a>
+                                                        </div>
+                                                    </span>
+														</th>
+													</tr>
+													<tr id='horario_resumido_{{ clase.id }}' class='horario_resumido' style='display: none'>
+														<th style='font-weight: normal;
+																{% if clase.tipohorario != 2 and clase.conflicto_aula %}background-color: #ebcccc; border: 1px solid red;{% endif %}
+																{% if clase.tipohorario == 2 %}background-color: #cce5f6; border: 1px solid blue;{% endif %}
+																'>
+															<div class='btn btn-mini horario_resumido_btn' idc='{{ clase.id }}' style='float: right'><i class='fa fa-chevron-down '></i></div>
+															<b>{{ clase.materia.identificacion }}</b>
+															<span class="smaller">
+                                                            <br/>{{ clase.fechas_horarios }}
+                                                            <br/>{{ clase.materia.nivel.paralelo }}
+                                                            <br/>Aula: {{ clase.aula.nombre }}
+                                                            <br/>Tipo: {{ clase.tipoprofesor }}
+                                                            <br/>Tipo Hor.: {{ clase.get_tipohorario_display }}
+																{% if clase.tipoprofesor.id == 2 or clase.tipoprofesor.id == 13 %}
+																	<br/>Grupo: {{ clase.grupoprofesor.get_paralelopractica_display }}
+																{% endif %}
+																{% if clase.profesor %}
+																	<br/><span style='color: red;'>Profesor: {{ clase.profesor.persona.nombre_completo_inverso }}</span>
+																{% endif %}
+                                                    </span>
+														</th>
+													</tr>
+												{% endfor %}
+
+											</table>
+										{% endif %}
+									{% endwith %}
+									{% with preferencias=turno|args:forloop.counter|args:materia|call:"horariopreferencia" %}
+										{% if preferencias %}
+											{% for pre in preferencias %}
+												<span class="label label-info tl" title="{{ pre.profesor }}">PREFERENCIA</span>
+											{% endfor %}
+										{% endif %}
+									{% endwith %}
+
+								</th>
+							{% endfor %}
+						</tr>
+					{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{% endif %}
+
+	<div class='row-fluid'>
+		<div class='span12'>
+			<table class='table table-striped table-bordered'>
+				<thead>
+				<tr>
+					<th colspan="8" style=""><b>{{ nivel.paralelo }}</b></th>
+				</tr>
+				<tr>
+					<th></th>
+					<th style="width: 166px">Lunes</th>
+					<th style="width: 166px">Martes</th>
+					<th style="width: 166px">Miercoles</th>
+					<th style="width: 166px">Jueves</th>
+					<th style="width: 166px">Viernes</th>
+					<th style="width: 166px">Sabado</th>
+					<th style="width: 166px">Domingo</th>
+				</tr>
+				</thead>
+				<tbody>
+				{% for turno in turnos %}
+					<tr>
+						<th style="font-weight: normal;">{{ turno.nombre_horario }}</th>
+						{% for dia in semana %}
+							<th>
+								<table class='cell table table-bordered' dia='{{ forloop.counter }}' turno='{{ turno.id }}' style="margin-bottom: 3px">
+									{% with clases=nivel|args:forloop.counter|args:turno|args:materia|call:"clases_activas_horario" %}
+										{% for clase in clases %}
+											<tr id='horario_normal_{{ clase.id }}' class='horario_normal'>
+												<th style='font-weight: normal;
+														{% if clase.tipohorario != 2 and clase.conflicto_aula %}background-color: #ebcccc; border: 1px solid red;{% endif %}
+														{% if clase.tipohorario == 2 %}background-color: #cce5f6; border: 1px solid blue;{% endif %}'
+												>
+													{% if horario_resumido %}
+														<div class='btn btn-mini horario_resumido_btn_up' idc='{{ clase.id }}' style='float: right'><i class='fa fa-chevron-up'></i></div>
+													{% endif %}
+													<b>{{ clase.materia.asignatura.nombre }}</b>
+													<span class="smaller">
+                                                            <br><b>{{ clase.fechas_horarios }}</b>
+                                                            <br/>Aula: {{ clase.aula.nombre }}
+                                                            <br/>Tipo: {{ clase.tipoprofesor }}
+                                                            <br/>Tipo Hor.: {{ clase.get_tipohorario_display }}
+														{% if clase.tipoprofesor.id == 2 or clase.tipoprofesor.id == 13 %}
+															<br/>Grupo: {{ clase.grupoprofesor.get_paralelopractica_display }}
+														{% endif %}
+														{% if clase.profesor %}
+															<br/><span style='color: red;'>Profesor: {{ clase.profesor.persona.nombre_completo_inverso }}</span>
+														{% endif %}
+														{% if clase.profesorayudante %}
+															<br/><span style='color: #0c6251;'>Ayudante: {{ clase.profesorayudante.persona.nombre_completo_inverso }}</span>
+														{% endif %}<br>
+														{% if clase.subirenlace %}
+															<label class="label label-success tu" title="Opción de subir enlace de la clase">Enlace</label>
+														{% endif %}
+														{% if persona.usuario.is_superuser %}
+															<label class="label label-info">idclase: {{ clase.id }}</label>
+														{% endif %}
+
+
+
+														<div class='opciones' style='text-align: left;'>
+                                                            {% if perms.sga.puede_modificar_horarios or clase.materia.nivel.coordinacion.id == 7 %}
+																{% if not bloqueado and not clase.materia.cerrado or clase.materia.nivel.coordinacion.id == 7 %}
+																	{% if not tienelink or  clase.materia.nivel.coordinacion.id == 1 or  clase.materia.nivel.coordinacion.id == 9 or  clase.materia.nivel.coordinacion.id == 7 or not clase.es_asincronica or persona.usuario.is_superuser or perms.sga.puede_modificar_todos_los_horarios %}
+																		{% if clase.leccion_en_falso %}
+																			<a href='javascript:;' onclick="mostrarmodalconfirmareditarhorario({{ clase.id }}, {% if materiaid %}{{ materiaid }}{% endif %},{% if paraleloid %}{{ paraleloid }}{% endif %} )" class='btn btn-info btn-mini tu bloqueo_pantalla ' title="Editar"><i class='fa fa-edit'></i></a>
+																		{% else %}
+																			<a href='/adm_horarios/clases?action=editclase&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}' class='btn btn-info btn-mini tu bloqueo_pantalla' title="Editar"><i class='fa fa-edit'></i></a>
+																		{% endif %}
+																	{% endif %}
+																	{% if not clase.tiene_lecciones or  clase.materia.nivel.coordinacion.id == 9  or clase.materia.nivel.coordinacion.id == 7 or perms.sga.puede_modificar_todos_los_horarios %}
+																		{#                                                                            <a href='/adm_horarios/clases?action=right&id={{ clase.id }}{% if materiaid %}&materiaid={{ materiaid }}{% endif %}' class='btn btn-mini btn-form tu' title="Duplicar"><i class='fa fa-arrow-right'></i></a>#}
+																		<a href='javascript:;' cid="{{ clase.id|encrypt }}" class='btn btn-mini btn-form tu duplicarhorario opciones' title="Duplicar"><i class='fa fa-arrow-right'></i></a>
+																		{% if not tienelink or  clase.materia.nivel.coordinacion.id == 9 or clase.materia.nivel.coordinacion.id == 7 or perms.sga.puede_modificar_todos_los_horarios %}
+																			<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=delclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																		{% endif %}
+																	{% else %}
+																		{% if not tienelink or perms.sga.puede_modificar_todos_los_horarios %}
+																			<a class='eliminacionmodal btn btn-mini btn-danger btn-form tu' href='javascript:;' nhref='/adm_horarios/clases?action=hideclase&id={{ clase.id }}' title="Eliminar"><i class='fa fa-remove'></i></a>
+																		{% endif %}
+																	{% endif %}
+																	<a class='btn btn-mini btn-default asignarayudante tu' idc="{{ clase.id|encrypt }}" title="Ayudante"><i class='fa fa-user'></i></a>
+																	<a class='btn btn-mini btn-inverse copiarhorario tu' idc="{{ clase.id|encrypt }}" title="Copiar"><i class='fa fa-copy'></i></a>
+																{% endif %}
+															{% endif %}
+															{% if clase.conflicto_aula %}
+																<a class='btn btn-mini btn-warning btn-conflicto tu' title="Conflicto en el horario" mensaje='{{ clase.conflicto_aula.nombre_conflicto }}'>Aula</a>
+															{% endif %}
+                                                        </div>
+                                                        <div class="regresarpegada" id="regresar_{{ clase.id|encrypt }}" style="display: none">
+                                                            <a class='btn btn-mini btn-info finalizarpegada tu' id="finalizar_{{ clase.id|encrypt }}" idc="{{ clase.id|encrypt }}" > Finalizar pegado</a>
+                                                        </div>
+                                                        <div class="div_limpiar" style="display: none">
+                                                            <a class='btn select_limpiar tu' idc="{{ clase.id }}"><i class='fa fa-trash'></i></a>
+                                                        </div>
+                                                    </span>
+												</th>
+											</tr>
+											<tr id='horario_resumido_{{ clase.id }}' class='horario_resumido' style='display: none'>
+												<th style='font-weight: normal;
+														{% if clase.tipohorario != 2 and clase.conflicto_aula %}background-color: #ebcccc; border: 1px solid red;{% endif %}
+														{% if clase.tipohorario == 2 %}background-color: #cce5f6; border: 1px solid blue;{% endif %}
+														'>
+													<div class='btn btn-mini horario_resumido_btn' idc='{{ clase.id }}' style='float: right'><i class='fa fa-chevron-down '></i></div>
+													<b>{{ clase.materia.identificacion }}</b>
+													<span class="smaller">
+                                                            <br/>{{ clase.fechas_horarios }}
+                                                            <br/>{{ clase.materia.nivel.paralelo }}
+                                                            <br/>Aula: {{ clase.aula.nombre }}
+                                                            <br/>Tipo: {{ clase.tipoprofesor }}
+                                                            <br/>Tipo Hor.: {{ clase.get_tipohorario_display }}
+														{% if clase.tipoprofesor.id == 2 or clase.tipoprofesor.id == 13 %}
+															<br/>Grupo: {{ clase.grupoprofesor.get_paralelopractica_display }}
+														{% endif %}
+														{% if clase.profesor %}
+															<br/><span style='color: red;'>Profesor: {{ clase.profesor.persona.nombre_completo_inverso }}</span>
+														{% endif %}
+                                                    </span>
+												</th>
+											</tr>
+										{% endfor %}
+									{% endwith %}
+								</table>
+								{% with disponible=nivel.sesion|args:forloop.counter|call:"dia_habilitado" %}
+									{% if perms.sga.puede_modificar_horarios  %}
+										{% if not DEBUG %}
+											{% if not bloqueado and disponible %}
+												<a href="/adm_horarios/clases?action=addclase&nivel={{ nivel.id }}&dia={{ forloop.counter }}&turno={{ turno.id }}&materiaid={{ materiaid }}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}" class='btn btn-success btn-mini adicionarclase tu bloqueo_pantalla' title="Adicionar"><i class="fa fa-plus"></i></a>
+											{% endif %}
+										{% else %}
+											<a href="/adm_horarios/clases?action=addclase&nivel={{ nivel.id }}&dia={{ forloop.counter }}&turno={{ turno.id }}&materiaid={{ materiaid }}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}" class='btn btn-success btn-mini adicionarclase tu bloqueo_pantalla' title="Adicionar"><i class="fa fa-plus"></i></a>
+										{% endif %}
+									{% endif %}
+								{% endwith %}
+								<a class='btn btn-lg pegarhorario tu' id="pegar_{{ turno.id|encrypt }}_{{ forloop.counter|encrypt }}" idt="{{ turno.id|encrypt }}"  idd="{{ forloop.counter|encrypt }}" style='display: none'><i class='fa fa-paste'></i></a>
+
+								{% with preferencias=turno|args:forloop.counter|args:materia|call:"horariopreferencia" %}
+									{% if preferencias %}
+										{% for pre in preferencias %}
+											<span class="label label-info tl" title="{{ pre.profesor }}">PREFERENCIA</span>
+										{% endfor %}
+									{% endif %}
+								{% endwith %}
+
+							</th>
+						{% endfor %}
+					</tr>
+				{% endfor %}
+				</tbody>
+			</table>
+			{% if materiasfaltantes %}
+				{% if not bloqueo %}
+					<table class="table table-bordered table-striped">
+						<thead>
+						<tr>
+							<th>Materias aun por a&ntilde;adir</th>
+						</tr>
+						</thead>
+						<tbody>
+						{% for materia in materiasfaltantes %}
+							{% if materia.horas_restantes_horario != materia.horassemanales %}
+								<tr>
+									<td><a href="/adm_horarios/clases?action=addclase&nivel={{ nivel.id }}&materia={{ materia.id }}" class="btn btn-mini btn-success adicionarclase bloqueo_pantalla"><i class="fa fa-arrow-up"></i> A&ntilde;adir</a> {{ materia.nombre_completo }} - ({{ materia.horas_restantes_horario|floatformat:0 }} de {{ materia.horassemanales|floatformat:0 }}) [Prof: {{ materia.profesor_principal }}]</td>
+								</tr>
+							{% endif %}
+						{% endfor %}
+						</tbody>
+					</table>
+				{% endif %}
+			{% endif %}
+		</div>
+	</div>
+
+	{% if materia.asignaturamalla.malla.carrera.mi_coordinacion2 == 7 %}
+		<div class='row-fluid'>
+			<div class='span12'>
+				<table class='table table-bordered table-striped'>
+					<thead>
+					<tr>
+						<th colspan="7" style=""><b>TUTORÍAS ACADÉMICAS</b></th>
+					</tr>
+					<tr>
+						<th style="width: 50px"></th>
+						<th style="width: 160px">Lunes</th>
+						<th style="width: 160px">Martes</th>
+						<th style="width: 160px">Miercoles</th>
+						<th style="width: 160px">Jueves</th>
+						<th style="width: 160px">Viernes</th>
+						<th style="width: 160px">Sábado</th>
+					</tr>
+					</thead>
+					<tbody>
+					{% for turno in turnostutoria %}
+						<tr>
+							<td>{{ turno.nombre_horario }}</td>
+							{% for dia in semanatutoria %}
+								<td style="text-align: center; ">
+
+									{% with horariotutoria=turno|args:dia.0|args:materia.profesor_principal|args:periodo|call:"horario_tutorias_academicas_tutor" %}
+										{#                                    {% if not horariotutoria %}#}
+										{#                                        <a style="cursor: pointer; padding-top: 20px"><span class="label label-success addturno"><i class="fa fa-plus"></i></span></a>#}
+										{#                                    {% endif %}#}
+										{% if horariotutoria %}
+											<table class='cell table table-bordered' dia='{{ forloop.counter }}' turno='{{ turno.id }}' style="margin-bottom: 5px">
+												{% for tuto in horariotutoria %}
+													<tr>
+														<td style='background-color: #1b6d85; border: 1px solid #1b6d85;text-align: center; color:#ffffff'>
+															<b class="smaller">
+																ORIENTACIÓN Y ACOMPAÑAMIENTO A TRAVÉS DE TUTORÍAS PRESENCIALES O VIRTUALES, INDIVIDUALES O GRUPALES<br></b>
+														</td>
+														{#                                                    <td>#}
+														{#                                                        {% if  suma <= sumaactividad %}#}
+														{##}
+														{#                                                              <a  href="javascript:;" class="eliminacionmodal tu btn btn-mini btn-danger" title="Eliminar" nhref="/adm_criteriosactividadesdocentes?action=delhorario&id={{ tuto.id|encrypt }}{% if suma > sumaactividad  %}&max=1{% endif %}"><i class="fa fa-close" ></i></a>#}
+														{#                                                            <a class="eliminacionmodal tu btn btn-mini btn-danger" title="Eliminar" nhref="/adm_criteriosactividadesdocente?action=delhorario&idprofesor={{ profesor.id }}&id={{ tuto.id|encrypt }}{% if suma > sumaactividad %}&max=1{% endif %}"><i class="fa fa-close"></i></a>#}
+														{##}
+														{#                                                        {% endif %}#}
+														{#                                                    </td>#}
+													</tr>
+												{% endfor %}
+											</table>
+										{% endif %}
+										{#                                    {% if suma  < sumaactividad %}#}
+										{##}
+										{#                                        <a href="javascript:;" class="btn btn-success addturno" idd="{{ dia.0 }}"><i class="fa fa-plus fa-lg"></i></a>#}
+										{##}
+										{#                                    {% endif %}#}
+									{% endwith %}
+								</td>
+							{% endfor %}
+						</tr>
+						{% empty %}
+						<tr>
+							<td colspan="7" style="text-align: center">
+								NO EXISTEN TUTORÍAS REGISTRADAS
+							</td>
+						</tr>
+						{#                    <tr style="text-align: center">#}
+						{#                        <td></td>#}
+						{#                        {% for dia in semana %}#}
+						{#                            <td>#}
+						{#                                {% if suma  < sumaactividad %}#}
+						{#                                    {% if puede_registrar %}#}
+						{#                                        <a href="javascript:;" class="btn btn-success addturno" idd="{{ dia.0 }}"><i class="fa fa-plus fa-lg"></i></a>#}
+						{#                                    {% endif %}#}
+						{#                                {% endif %}#}
+						{#                            </td>#}
+						{#                        {% endfor %}#}
+						{#                    </tr>#}
+					{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{% endif %}
+
+	<div class="modal fade static" id="observacionespanel" >
+		<div class="modal-header">
+			<h4>Alerta - Conflicto en horario</h4>
+		</div>
+		<div class="modal-body" style="overflow: auto;">
+			<div id='observacion'></div>
+		</div>
+	</div>
+	<div class="modal static" id="conflicto" style="display: none;">
+		<div class="modal-header">
+			<h3 class="paneltitle">Conflicto del docente</h3>
+		</div>
+		<div class="modal-body" id="conflicto_body">
+		</div>
+		<div class="modal-footer">
+			<a href="javascript:;" class="btn btn-info" id="conflicto_cerrar"> Cerrar</a>
+		</div>
+	</div>
+	<div class="modal static" id="conflictopegado" style="display: none;">
+		<div class="modal-header">
+			<h3 class="paneltitle">Conflicto del docente</h3>
+		</div>
+		<div class="modal-body" id="conflictopegado_body">
+		</div>
+		<div class="modal-footer">
+			<a href="javascript:;" class="btn btn-info" id="conflictopegado_cerrar"> Cerrar</a>
+		</div>
+	</div>
+	<div class="modal fade static" id="notificacion" >
+		<div class="modal-header">
+			<h4>Notificación</h4>
+		</div>
+		<div class="modal-body" style="overflow: auto;">
+			<div id='mensaje_notificacion'></div>
+		</div>
+		<div class="modal-footer">
+			<a href="javascript:;" class="btn btn-info" id="notificacion_cerrar"> Cerrar</a>
+		</div>
+	</div>
+	<div class="modal fade static" id="ayudanteclase" >
+		<div class="modal-header">
+			<h4>Ayudante de la clase</h4>
+		</div>
+		<div class="modal-body">
+			<b>Profesor: </b>
+			<div style="text-align: center">
+				<select id="id_ayudante" style="width: 100%"></select>
+			</div>
+		</div>
+		<div class="modal-footer">
+			<a href="javascript:;" class="btn btn-success ayudante_guardar"> Guardar</a>
+			<a href="javascript:;" class="btn btn-info ayudante_cerrar"> Cerrar</a>
+		</div>
+	</div>
+{% endblock %}

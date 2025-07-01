@@ -1,0 +1,250 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        $(function(){
+{#            $("#id_tramite").addClass("validate[required]");#}
+
+            $("#id_totalpagar").blur(function(){
+                numerico($(this), 0, 0, 2);
+            });
+
+            {#            $("#id_totalpagar").attr({'disabled':disabled});#}
+
+            calcular_total = function () {
+                var doc = parseFloat($("#id_valordocumentos").val());
+                var ret = parseFloat($("#id_totalretenidoiva").val());
+                var retf = parseFloat($("#id_totalretenidofuente").val());
+                var otros = parseFloat($("#id_totalotros").val());
+                var ant = parseFloat($("#id_totalanticipos").val());
+                var mul = parseFloat($("#id_totalmultas").val());
+                var total = doc - ret - ant - mul - retf - otros;
+                $("#id_totalpagar").val(total.toFixed(2));
+            };
+
+            $("#id_valordocumentos, #id_totalretenidoiva, #id_totalretenidofuente, #id_totalotros, #id_totalanticipos, #id_totalmultas").blur(function(){
+                numerico($(this), 0, 0, 2);
+                calcular_total();
+            });
+
+
+            $("#id_valordocumentos, #id_totalretenidoiva, #id_totalretenidofuente, #id_totalotros, #id_totalanticipos, #id_totalmultas, #id_totalpagar").val('0.00');
+
+{#            ItemsDisplay = function (item) {#}
+{#                if (item.name){#}
+{#                    return $('<span>' + item.name+ '</span>');#}
+{#                }else{#}
+{#                    return '---------';#}
+{#                }#}
+{#            };#}
+
+
+{#            $("#id_tramite_select2").select2({#}
+{#                placeholder: "---------",#}
+{#                allowClear: true,#}
+{#                ajax: {#}
+{#                    url: function (params) {#}
+{#                        return "/reportes?action=data&model=TramitePago&p=1&s=10&q=" + params.term;#}
+{#                    },#}
+{#                    dataType: 'json',#}
+{#                    delay: 400,#}
+{#                    data: function (params) {#}
+{#                        return {#}
+{#                            q: params.term,#}
+{#                            page: params.page#}
+{#                        };#}
+{#                    },#}
+{#                    processResults: function (data, params) {#}
+{#                        // parse the results into the format expected by Select2#}
+{#                        // since we are using custom formatting functions we do not need to#}
+{#                        // alter the remote JSON data, except to indicate that infinite#}
+{#                        // scrolling can be used#}
+{#                        params.page = params.page || 1;#}
+{##}
+{#                        return {#}
+{#                            results: data.results,#}
+{#                            pagination: {#}
+{#                                more: (params.page * 30) < data.total_count#}
+{#                            }#}
+{#                        };#}
+{#                    },#}
+{#                    cache: true#}
+{#                },#}
+{#                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work#}
+{#                minimumInputLength: 1,#}
+{#                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page#}
+{#                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page#}
+{#            }).on("select2:select", function (evt) {#}
+{#                $("#id_tramite").attr({"value":(evt.params.data.id)});#}
+{#            });#}
+
+{#            $("#id_identificacion").val('');#}
+
+{#            $("#id_beneficiario").html('').append('<option selected="selected" value="">---------</option>');#}
+
+            $("#id_tramite").change(function () {
+                var id = $(this).val();
+                $("#id_beneficiario").html('').append('<option selected="selected" value="">---------</option>');
+                $("#id_identificacion").val('');
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/fin_comprobantes",
+                        data: {"action": "tramite_benef", "id": id},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                $("#detalle_documentos").html(data.datos);
+                                $("#id_concepto").val(data.concepto);
+                                for (x=0; x < data.lista.length; x++){
+                                    elemento = data.lista[x];
+                                    $("#id_beneficiario").append('<option value="'+elemento[0]+'">'+elemento[1]+'</option>');
+                                }
+                                if (data.lista.length == 1){
+                                    $("#id_beneficiario").prop("selectedIndex", 1).trigger("change");
+                                }
+                            } else {
+                                $("#id_tramite_select2").val(0);
+                                $("#id_concepto").val('');
+                                $("#detalle_pagos").empty();
+                            }
+                            conectar_control();
+{#                            calcular_total();#}
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_tramite").val(0).trigger("change");
+                            $("#detalle_pagos").empty();
+                            $("#id_concepto").val('');
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+{#            $("#id_concepto").val('');#}
+            $("#id_beneficiario").change(function () {
+                var id = $(this).val();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/fin_comprobantes",
+                        data: {"action": "id_benef", "id": id},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                $("#id_identificacion").val(data.ide);
+                            } else {
+                                $("#id_identificacion").val('');
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_beneficiario").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            actualizar_lista_facturas = function () {
+                lista_items1 = [];
+                var valordoc = 0;
+                var ret = 0;
+                var retf = 0;
+                var seleccionados = $(".seleccionados:checked");
+                seleccionados.each(function(){
+                    var id = $(this).attr('ida');
+                    var valor = parseFloat($(this).attr('valor'));
+                    var reten = parseFloat($(this).attr('ret'));
+                    var retenf = parseFloat($(this).attr('retf'));
+                    var item = {
+                        id: id
+                    };
+                    lista_items1.push(item);
+                    valordoc += valor;
+                    ret += reten;
+                    retf += retenf;
+                });
+                $("#id_valordocumentos, #valdoc").val(valordoc.toFixed(2));
+                $("#id_totalretenidoiva, #retiva").val(ret.toFixed(2));
+                $("#id_totalretenidofuente, #retfuente").val(retf.toFixed(2));
+                calcular_total();
+            };
+
+            $('#todos').click(function () {
+                $("#todos").unbind();
+                conectar_control();
+            });
+
+            conectar_control = function () {
+                $("#todos").unbind();
+                $("#todos").click(function () {
+                    if ($(this).is(":checked")){
+                        $(".seleccionados").prop('checked', true);
+                        actualizar_lista_facturas();
+                    }else{
+                        $(".seleccionados").prop('checked', false);
+                        actualizar_lista_facturas();
+                    }
+                });
+{#                actualizar_lista_facturas();#}
+                $(".seleccionados").unbind();
+                $(".seleccionados").click(function () {
+                    if ($(this).is(":checked")){
+                     }else{$("#todos").prop('checked', false);}
+                    actualizar_lista_facturas();
+                });
+            };
+            if ({{ tramite_id }}){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/fin_comprobantes",
+                        data: {"action": "tramite_benef_edit", "id": {{ tramite_id }}},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok'){
+                                $("#detalle_documentos").html(data.datos);
+{#                                alert("entro"+data.datos);#}
+                                for (item in data.lista){
+                                    $("#check_"+data.lista[item][0]).prop('checked', true);
+                                }
+                            } else { smoke.alert("Error al obtener los datos.");
+                            }
+{#                            $("#todos").prop('checked', true);#}
+{#                            $(".seleccionados").prop('checked', true);#}
+                            conectar_control();
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/fin_comprobantes{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/fin_comprobantes{% endblock %}
+{% block formdestination %}/fin_comprobantes?id={% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edit'/>
+    <input type='hidden' name='id'  value='{{ comprobante.id }}'/>
+    <input type='hidden' name='valdoc' id="valdoc" value=''/>
+    <input type='hidden' name='retiva' id="retiva" value=''/>
+    <input type='hidden' name='retfuente' id="retfuente" value=''/>
+{% endblock %}
+{% block formback %}/fin_comprobantes{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid" id="detalle_documentos">
+
+    </div>
+{% endblock %}

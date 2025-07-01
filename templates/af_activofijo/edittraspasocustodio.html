@@ -1,0 +1,213 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block atras %}/af_activofijo?action=movimientos&id={% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/af_activofijo{% endblock %}
+{% block formdestination %}/af_activofijo?action=movimientos&id={% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block extraheading %}
+    <script>
+        var pagina_bienes_usuario = 1;
+        $(function(){
+            $("#id_fecha, #id_fechaoficio").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_custodiobienrecibe").addClass("validate[required]");
+
+            contador_pertenece = function (contador) {
+                $("#totalactivos").html(contador.tot_activos);
+                $('#totalactivosseleccionados').html(contador.tot_selec);
+            };
+
+            verificar_tipo_solicitud = function(){
+                if ($("#id_tiposolicitud").val() == 1){
+                    $("#id_oficio").removeAttr("disabled").addClass("validate[required]");
+                }else{
+                    $("#id_oficio").attr({"disabled":"disabled"}).removeClass("validate[required]");
+                }
+            };
+
+            $("#id_tiposolicitud").change(function(){
+                verificar_tipo_solicitud();
+            });
+
+            verificar_tipo_solicitud();
+
+            cargar_pagina_activos_usuario = function (pag, id) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: { 'action': 'activostraspaso', 'page': pag , 'id': '{{ traspaso.id }}'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            contador_pertenece(data.contador);
+                            $("#detalleactivos").html(data.data);
+                            conectar_control();
+                            tooltips();
+                            pagina_bienes_usuario = pag;
+                            if (id > 0){
+                                if ($("#seleccionado_"+id).is(':checked')){
+                                    smoke.alert("Activo ya fue seleccionado.");
+                                }else{
+                                    $("#seleccionado_"+id).prop('checked', true);
+                                    seleccionar_elemento(id, 'true');
+                                }
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+
+
+            $("#FilterTextBox").keypress(function(event){
+                var keycode = (event.keyCode ? event.keyCode : event.which);
+                var codigo = $(this).val().trim();
+                if(keycode == '13' && codigo.length > 0) {
+                    $.unblockUI();
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "buscarcodigotraspaso", "id": '{{ traspaso.id }}', "codigo": codigo},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                if (data.encontrado){
+                                    if (data.pagina != pagina_bienes_usuario){
+                                        cargar_pagina_activos_usuario(data.pagina, data.id);
+                                    }else{
+                                        if (data.id > 0){
+                                            if ($("#seleccionado_"+data.id).is(':checked')){
+                                                smoke.alert("Activo ya fue seleccionado.");
+                                            }else{
+                                                seleccionar_elemento(data.id, 'true');
+                                            }
+                                        }
+                                    }
+                                    $("#FilterTextBox").val('');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            seleccionar_elemento = function (id, estado) {
+                if (estado == 'true'){
+                    $("#seleccionado_"+id).prop('checked', true);
+                } else {
+                    $("#seleccionado_"+id).prop('checked', false);
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: { 'action': 'marcarseleccionadotraspaso', 'id': id, 'valor': estado},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            if(data.reload=='true'){
+                                cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+                            }
+                            contador_pertenece(data.contador);
+                        }else{
+                            if(elemento.is(":checked")){
+                                elemento.prop('checked', false);
+                            }else{
+                                elemento.prop('checked', true);
+                            }
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        if(elemento.is(":checked")){
+                            elemento.prop('checked', false);
+                        }else{
+                            elemento.prop('checked', true);
+                        }
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            conectar_control = function () {
+                $("#todos").unbind();
+                $("#todos").click(function () {
+                    var estado = "false";
+                    if($("#todos").is(":checked")){
+                        estado = "true"
+                    }
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: { 'action': 'marcartodostraspaso', 'id': '{{ traspaso.id }}', 'valor': estado},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                contador_pertenece(data.contador);
+                                cargar_pagina_activos_usuario(pagina_bienes_usuario, 0);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+                $(".seleccionado").unbind();
+                $(".seleccionado").click(function () {
+                    var estado = "false";
+                    var elemento = $(this);
+                    var id = elemento.attr('ida');
+                    if(elemento.is(":checked")){
+                        estado = "true"
+                    }
+                    seleccionar_elemento(id, estado);
+                });
+
+            };
+        });
+    </script>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edittraspasocustodio'/>
+    <input type='hidden' name='id' value='{{ traspaso.id }}'/>
+{% endblock %}
+{% block formback %}/af_activofijo?action=movimientos{% endblock %}
+{% block formsuffix %}
+    <table class="table table-condensed">
+        <tr>
+            <td style="width: 50%">
+                <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">
+            </td>
+            <td style="width: 50%; vertical-align: middle">
+                <div style="float: left">Total activos:<b> <span id="totalactivos">0</span></b></div>
+                <div style="float: left; margin-left: 30px">Seleccionados:<b> <span id="totalactivosseleccionados">0</span></b></div>
+            </td>
+        </tr>
+    </table>
+    <div id="detalleactivos" style="width: 100%;">
+
+    </div>
+{% endblock %}

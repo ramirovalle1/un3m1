@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $(".agregarpostulacion").click(function() {
+                let idc = $(this).attr('idc');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_becadocente",
+                    data: {'action': 'verificardocumentopersonal', 'idc': idc},
+                    success: function(data) {
+                        if (data.result == 'ok') {
+                            location.href = "/pro_becadocente?action=addpostulacion&idc="+idc;
+                        } else {
+                            $.unblockUI();
+                            $(".panelbodysubirdocumento").html(data.data);
+                            $(".paneltitlesubirdocumento").html(data.title);
+                            $("#itemspanelsubirdocumento").modal({backdrop:'static'}).modal('show');
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+            
+            $("#itemspanelsubirdocumento .guardar").click(function () {
+                envioformularioreg("/pro_becadocente","subirdocumentopersonal", false);
+                return false;
+            });
+            
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+                if(action == 'subirdocumentopersonal'){
+                    $("#frmSubirDocumentoPersonal").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmSubirDocumentoPersonal").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'subirdocumentopersonal')
+                        formdata = new FormData($("#frmSubirDocumentoPersonal")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                urlDestino = "/pro_becadocente?action=addpostulacion&idc="+data.idc;
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ enlaceatras }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Becas Docentes</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    {# FILA DE FILTRO #}
+    <div class='row'>
+        <div class="col-sm-12 pb-2">
+            {% if profesor.nivelcategoria.id != 1 and profesor.nivelcategoria.id != 2 %}
+                <div class="alert alert-warning" role="alert" style="text-align: justify">
+                    <b>Estimado docente para poder postular a una beca usted debe ser profesor titular o no titular ocasional.</b>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {# FILA DE FILTRO #}
+
+    {# TABLA DE DATOS #}
+    <div class="card mb-4">
+        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+            <table class='tabla_responsive table table-bordered table-striped'>
+                <thead class="table-light cabecera-fija">
+                    <tr>
+                        <th style="width: 53%; font-weight: bold; text-align: center">Convocatoria</th>
+                        <th style="width: 10%; font-weight: bold; text-align: center">Inicio Postulación</th>
+                        <th style="width: 10%; font-weight: bold; text-align: center">Fin Postulación</th>
+                        <th style="width: 10%; font-weight: bold; text-align: center">Estado</th>
+                        <th style="width: 7%; font-weight: bold; text-align: center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for convocatoria in convocatorias %}
+                        <tr>
+                            <td style="text-align: justify">{{ convocatoria.descripcion }}</td>
+                            <td style="text-align: center">{{ convocatoria.iniciopos|date:'d-m-Y' }}</td>
+                            <td style="text-align: center">{{ convocatoria.finpos|date:'d-m-Y' }}</td>
+                            <td style="text-align: center">
+                                <span class="{{ convocatoria.estado.clase }} tu" title="{{ convocatoria.estado.observacion }}">{{ convocatoria.estado.descripcion }}</span>
+                            </td>
+                            <td style="text-align: center">
+                                {% with puede_postular=convocatoria|args:profesor|call:"puede_postular" tiene_postulacion=convocatoria|args:profesor|call:"profesor_tiene_postulacion" %}
+                                    {% if puede_postular %}
+                                        <a href="javascript:;" idc="{{ convocatoria.id|encrypt }}" class='btn btn-info agregarpostulacion' data-bs-toggle="tooltip" data-bs-placement="top" title="Postular a Beca"><span class="fa fa-plus" ></span> Postular</a>
+                                    {% endif %}
+                                    {% if tiene_postulacion %}
+                                        <a href="/pro_becadocente?action=postulaciones&idc={{ convocatoria.id|encrypt }}" class='btn btn-warning tu' title="Consultar Postulación"><span class="fa fa-list" ></span> Consultar</a>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td style="text-align: center" colspan="5">NO EXISTEN REGISTROS DE CONVOCATORIAS DE BECAS</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+    {# TABLA DE DATOS #}
+
+    <div class="modal fade static"  id="itemspanelsubirdocumento" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-cloud-upload"></i>&nbsp;<span class="paneltitlesubirdocumento">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodysubirdocumento">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

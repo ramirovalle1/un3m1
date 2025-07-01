@@ -1,0 +1,506 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function () {
+            $("#period_list").change(function () {
+                var id;
+                id = $(this).val();
+                bloqueointerface();
+                if (id > 0) {
+                    location.href = "/adm_alternativatitulacion?alter=" + id;
+                }
+            });
+            {#$(".actualizaraprobados").click(function () {#}
+            {#    var idp = $("#period_list").val();#}
+            {#    bloqueointerface();#}
+            {#    $.ajax({#}
+            {#        type: "POST",#}
+            {#        url: "/adm_alternativatitulacion",#}
+            {#        data: {"action": "actualizaraprobados"},#}
+            {#        success: function(data) {#}
+            {#            $.unblockUI();#}
+            {#            if (data.result=='ok'){#}
+            {#                smoke.alert(data.mensaje);#}
+            {#                location.reload();#}
+            {#            } else {#}
+            {#                setTimeout("alert(data.mensaje);",600000);#}
+            {#                location.reload();#}
+            {#            }#}
+            {#        },#}
+            {#        error: function() {#}
+            {#            $.unblockUI();#}
+            {#            smoke.alert("Error de conexión.");#}
+            {#        },#}
+            {#        dataType: "json"#}
+            {#    });#}
+            {#{);#}
+            $("#itemspanelreportematriculados_excel_especifico .cerrar_matriz_excel_especifio").click(function () {
+                $("#itemspanelreportematriculados_excel_especifico").modal("hide");
+            });
+
+
+            $("#itemspanelreportematriculados_excel .cerrar_matriz_excel").click(function () {
+                $("#itemspanelreportematriculados_excel").modal("hide");
+            });
+
+
+            $(".matriz_matriculados").click(function () {
+                var idp = $(this).attr('idp');
+                $.get("/adm_alternativatitulacion", {'action': 'selectgruposxperiodo', 'id': idp}, function (data) {
+                    if (data.result == 'ok') {
+                        $('#id_grupo').empty().append('<option value="0">TODOS</option>').val(0).trigger("change");
+                        for (elemento in data.lista) {
+                            $('#id_grupo').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                        $("#itemspanelreportematriculados_excel").modal({
+                            backdrop: 'static',
+                            width: '500px'
+                        }).modal('show');
+                    }
+                }, 'json');
+            });
+
+
+            $("#reporte_general").click(function () {
+                var idp = $(this).attr('idp');
+                $.get("/adm_alternativatitulacion", {'action': 'reporte_matrigulados_todos_periodo'}, function (data) {
+                    if (data.result) {
+                        $('#btnNotificacionTareas').html(data.btn_notificaciones);
+                        mensajeSuccess(data.mensaje)
+                    } else {
+                        mensajeWarning(data.mensaje)
+                    }
+                }, 'json');
+            });
+
+
+            $(".matriz_matriculados_especifico").click(function () {
+                var idp = $(this).attr('idp');
+                $.get("/adm_alternativatitulacion", {'action': 'selectgruposxperiodo', 'id': idp}, function (data) {
+                    if (data.result == 'ok') {
+                        $('#id_grupo2').empty().append('<option value="0">TODOS</option>').val(0).trigger("change");
+                        for (elemento in data.lista) {
+                            $('#id_grupo2').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                        $("#itemspanelreportematriculados_excel_especifico").modal({
+                            backdrop: 'static',
+                            width: '500px'
+                        }).modal('show');
+                    }
+                }, 'json');
+            });
+            $(".generar_matriz_excel").click(function () {
+                var idg = $('#id_grupo').val();
+                var idp = {{ periodogrupo.id }};
+                $("#itemspanelreportematriculados_excel").modal("hide");
+                if (idg > 0) {
+                    openwindow('POST', '/adm_alternativatitulacion', {
+                        action: 'matrizmatriculadosxgrupo_excel',
+                        idg: idg,
+                        idp: idp,
+                        csrfmiddlewaretoken: '{{ csrf_token }}'
+                    }, '_blank');
+                } else {
+                    openwindow('POST', '/adm_alternativatitulacion', {
+                        action: 'matrizmatriculadosxperiodo_excel',
+                        idp: idp,
+                        csrfmiddlewaretoken: '{{ csrf_token }}'
+                    }, '_blank');
+                }
+            })
+
+            function fallorecalculo() {
+                $.unblockUI();
+                $("#recalcularmodal").modal("hide");
+                smoke.alert("Fallo al recalcular los resultados");
+            }
+
+            function terminarecalculo() {
+                $("#recalcularmodal").modal("hide");
+            }
+
+            function recalculo(lista, elemento, cantidad) {
+                var titulado = lista[elemento];
+                var cp = (100 / (cantidad + 1)) * elemento + '%';
+                if (elemento > cantidad) {
+                    terminarecalculo();
+                } else {
+                    $("#recalcularmodalprogresshint").html(titulado.inscripcion__persona__apellido1 + ' ' + titulado.inscripcion__persona__apellido2 + ' ' + titulado.inscripcion__persona__nombres);
+                    $("#progressbar").css({'width': cp});
+                    $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_alternativatitulacion",
+                        data: {"action": "recalculartituladosvalidar", "idmatriculatitulado": titulado.id},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                intentos = 0;
+                                recalculo(lista, elemento + 1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallorecalculo();
+                                } else {
+                                    recalculo(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function () {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallorecalculo();
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+
+            $(".generar_matriz_excel_especifico").click(function () {
+                var idg = $('#id_grupo2').val();
+                var idp = {{ periodogrupo.id }};
+                $("#itemspanelreportematriculados_excel").modal("hide");
+                if (idg > 0) {
+                    openwindow('POST', '/adm_alternativatitulacion', {
+                        action: 'matrizmatriculadosxgrupo_espefica',
+                        idg: idg,
+                        idp: idp,
+                        csrfmiddlewaretoken: '{{ csrf_token }}'
+                    }, '_blank');
+                } else {
+                    openwindow('POST', '/adm_alternativatitulacion', {
+                        action: 'matrizmatriculadosxperiodo_especifica',
+                        idp: idp,
+                        csrfmiddlewaretoken: '{{ csrf_token }}'
+                    }, '_blank');
+                }
+            })
+
+            function fallorecalculo() {
+                $.unblockUI();
+                $("#recalcularmodal").modal("hide");
+                smoke.alert("Fallo al recalcular los resultados");
+            }
+
+            function terminarecalculo() {
+                $("#recalcularmodal").modal("hide");
+            }
+
+            function recalculo(lista, elemento, cantidad) {
+                var titulado = lista[elemento];
+                var cp = (100 / (cantidad + 1)) * elemento + '%';
+                if (elemento > cantidad) {
+                    terminarecalculo();
+                } else {
+                    $("#recalcularmodalprogresshint").html(titulado.inscripcion__persona__apellido1 + ' ' + titulado.inscripcion__persona__apellido2 + ' ' + titulado.inscripcion__persona__nombres);
+                    $("#progressbar").css({'width': cp});
+                    $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_alternativatitulacion",
+                        data: {"action": "recalculartituladosvalidar", "idmatriculatitulado": titulado.id},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                intentos = 0;
+                                recalculo(lista, elemento + 1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallorecalculo();
+                                } else {
+                                    recalculo(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function () {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallorecalculo();
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+
+            $("#recalcular").click(function () {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_alternativatitulacion",
+                    data: {'action': 'tituladosevaluar', "periodogrupoid": {{ periodogrupo.id }}},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            var indice = 0;
+                            var cantidad = parseInt(data.cantidad);
+                            var tutilados = data.tutilados;
+                            recalculo(tutilados, indice, (cantidad - 1));
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    {#    <div class='row-fluid'>#}
+    {#        <div class='span12'>#}
+    <h4>{{ title }}</h4><br>
+    {#        </div>#}
+    {#    </div>#}
+    <div class='row-fluid'>
+        <div class='span8'>
+            {% if perms.sga.puede_editar_proceso_titulacion %}
+                <div class="btn-group">
+                    <a class="btn dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones <span
+                            class="caret"></span></a>
+                    <ul class="dropdown-menu pull-left" style="width: 200px;">
+                        <li>
+                            <a href="/adm_alternativatitulacion?action=listadomatriculados&idperiodogrupo={{ periodogrupo.id|encrypt }}"
+                               class="bloqueo_pantalla"><i class="fa fa-group"></i> Listado de matriculados</a></li>
+                        <li>
+                            <a href="/adm_alternativatitulacion?action=listadorubricas&idperiodogrupo={{ periodogrupo.id|encrypt }}"
+                               class="bloqueo_pantalla"><i class="fa fa-list"></i> Rúbricas titulación</a></li>
+                        <li><a href="javascript:;" id="recalcular"><i class="fa fa-retweet"></i> Validar requisitos para
+                            sustentar</a></li>
+                        {#                        <li><a href="/adm_alternativatitulacion?action=listadotitulados&idperiodogrupo={{ periodogrupo.id }}"><i class="fa fa-file-excel-o"></i> Listado titulados</a></li>#}
+                    </ul>
+                </div>
+                {#                <a href="javascript:;" class="btn btn-warning btn-form actualizaraprobados"><span class="fa fa-refresh"></span> Cerrar Periodo</a>#}
+                {% if periodogrupo.abierto %}
+                    <a href="javascript:;" class="btn btn-warning confirmacionmodal btn-form"
+                       nhref="/adm_alternativatitulacion?action=confirmarcerrarperiodo&id={{ periodogrupo.id }}"><span
+                            class="fa fa-refresh"></span> Cerrar Periodo</a>
+                {% else %}
+                    <a href="javascript:;" class="btn btn-danger confirmacionmodal btn-form"
+                       nhref="/adm_alternativatitulacion?action=confirmarabrirperiodo&id={{ periodogrupo.id }}"><span
+                            class="fa fa-refresh"></span> Abir Periodo</a>
+                {% endif %}
+                <a href="/adm_alternativatitulacion?action=periodotitulacion" class="btn btn-default btn-form"><span
+                        class="fa fa-list-ul"></span> Periodo de titulación</a>
+                <a href="/adm_alternativatitulacion?action=modelotitulacion" class="btn btn-default btn-form"><span
+                        class="fa fa-list-ul"></span> Modelo de titulación</a>
+                <a href="/adm_alternativatitulacion?action=tipotitulacion" class="btn btn-default btn-form"><span
+                        class="fa fa-list-ul"></span> Tipo de titulación</a>
+            {% endif %}
+            <!--
+                    {% if perms.sga.puede_ver_matriculados_complexivo or perms.sga.puede_editar_proceso_titulacion %}-->
+                <!--                {% if periodogrupo.periodo_tiene_matriculados %}-->
+                    <!--                    <a href="javascript:;"  idp="{{ periodogrupo.id }}" class='btn btn-warning matriz_matriculados'><span class="fa fa-file-excel-o "></span> Matriz de matriculados</a>-->
+                    <!--                {% endif %}-->
+                <!--            {% endif %}-->
+
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle btn btn-warning" data-toggle="dropdown" href="#"><i
+                        class="fa fa-print "></i> Reportes <span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    {% if perms.sga.puede_ver_matriculados_complexivo or perms.sga.puede_editar_proceso_titulacion %}
+                        {% if periodogrupo.periodo_tiene_matriculados %}
+                            <li><a href="javascript:;" idp="{{ periodogrupo.id }}" class='matriz_matriculados'><span
+                                    class="fa fa-file-excel-o "></span> Matriz de matriculados</a></li>
+                            <li><a href="javascript:;" idp="{{ periodogrupo.id }}"
+                                   class='matriz_matriculados_especifico'><span class="fa fa-file-excel-o "></span>
+                                Matriz de matriculados específica</a></li>
+                            {#                                <li><a href="adm_alternativatitulacion?action=reporte_matrigulados_todos_periodo" class="btn btn-default btn-form"><span class="fa fa-file-excel-o "></span> Matriz de matriculados Todos Periodos</a></li>#}
+                            {#                            <li><a href="adm_alternativatitulacion?action=reporte_matrigulados_todos_periodo"><span#}
+                            <li><a href="javascript:;" id="reporte_general"><span
+                                    class="fa fa-file-excel-o"></span> Matriz de matriculados Períodos
+                            </a></li>
+
+
+                            {#                            {% endif %}#}
+
+                        {% endif %}
+
+                    {% endif %}
+
+                </ul>
+
+            </div>
+            <a href='/adm_alternativatitulacion?action=listadotitulacion' class="btn btn-success bloqueo_pantalla">
+                <i class="fa fa-book"> </i> Integración curricular
+            </a>
+        </div>
+        <div class='span4'>
+            <form class="form-search">
+                <label>Periodo titulación</label>
+                <select id="period_list" style="width: 80%">
+                    {% for org in periodotitulacion %}
+                        <option {% if periodogrupo.id == org.id %} selected {% endif %}
+                                                                   value="{{ org.id }}">{{ org.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </div>
+
+    {#    <div class="row-fluid">#}
+    {#        <div class="span12">#}
+    {#            <a href="/adm_complexivoexamen?action=eliminaciontotal" class="btn btn-mini  btn-warning" >Eliminacion Total</a>#}
+    {#        </div>#}
+    {#    </div>#}
+
+    {% if not periodogrupo.abierto %}
+        <span class="label label-important">Periodo cerrado</span>
+    {% else %}
+        {% if not periodogrupo.perido_abierto %}
+            <span class="label label-warning">Periodo culminado</span>
+        {% endif %}
+    {% endif %}
+    <div class='row-fluid'>
+        <div class="span12">
+            <table class="table table-bordered table-striped">
+                <tbody>
+                {% for coordinacion in coordinaciones %}
+                    <tr class="info">
+                        <td>{{ coordinacion.nombre }}
+                            {#   <a href="/niveles?action=reporte&periodo={{ periodo.id }}&coordinacion={{ coordinacion.id }}" class="btn btn-mini btn-warning tu"><i class="fa fa-table"></i> Reporte situación Académica</a>#}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <table class='table table-bordered cell'>
+                                <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th style='text-align: center; width: 200px'>matriculados por alternativas</th>
+                                    <th style='text-align: center; width: 30px'>Matriculados</th>
+                                    <th style='width:80px;text-align: center;'>Inicio</th>
+                                    <th style='width:80px;text-align: center;'>Fin</th>
+                                    <th style="width:300px"></th>
+                                </tr>
+                                </thead>
+                                {% with coordperiodo=coordinacion|args:periodogrupo|call:"grupos_titulacion" %}
+                                    {% for periodo in coordperiodo %}
+                                        <tr>
+                                            <td>
+                                                {{ periodo.nombre }}<br>
+                                            </td>
+                                            {#                                        <td style="text-align: center"><a class="btn btn-warning"><i class="fa fa-list"></i> Detalle</a></td>#}
+                                            <td style="text-align: left">
+                                                {% for lis in periodo.detalle_tipotitulacion %}
+                                                    <span style="font-size: 10px">{{ lis.0 }}: {{ lis.1 }}</span><br>
+                                                {% endfor %}
+                                            </td>
+                                            <td style="text-align: center">{{ periodo.total_matriculados_titulacion_grupo }}</td>
+                                            <td style='text-align: center;'>{{ periodo.fechainicio|date:"d/m/Y" }}</td>
+                                            <td style='text-align: center;'>{{ periodo.fechafin|date:"d/m/Y" }}</td>
+                                            <td style='text-align: left;'>
+                                                {% if perms.sga.puede_editar_proceso_titulacion %}
+                                                    {#                                                {% if not .cerrado and perms.sga.puede_modificar_niveles %}#}
+                                                    <a href='/adm_alternativatitulacion?action=editgrupotitulacion&id={{ periodo.id }}'
+                                                       class='btn btn-mini btn-info'><i class='fa fa-edit  tu'
+                                                                                        title='Editar'></i></a>
+                                                    {#                                                    {% if nivel.puede_eliminarse %}#}
+                                                    <a href="javascript:;"
+                                                       nhref='/adm_alternativatitulacion?action=eliminargrupotitulacion&id={{ periodo.id }}'
+                                                       class='btn eliminacionmodal btn-mini btn-danger'><i
+                                                            class='fa fa-remove  tu' title='Eliminar'></i></a>
+                                                    {#                                                    {% endif %}#}
+                                                    {#                                                {% endif %}#}
+                                                {% endif %}
+                                                {% if perms.sga.puede_ver_matriculados_complexivo or perms.sga.puede_editar_proceso_titulacion %}
+                                                    <a href='/adm_alternativatitulacion?action=alternativa&id={{ periodo.id }}'
+                                                       class='btn btn-mini btn-success btn-form'><i
+                                                            class='fa fa-list '></i> Alternativa Titulación</a>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% endwith %}
+                            </table>
+                            {% if perms.sga.puede_editar_proceso_titulacion %}
+                                <a href="/adm_alternativatitulacion?action=addgrupotitulacion&periodo={{ periodogrupo.id }}&coordinacion={{ coordinacion.id }}"
+                                   class="btn btn-success btn-mini"><i class="fa fa-plus"></i> Adicionar</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    </tbody>
+                {% endfor %}
+                <tfoot>
+                <br>
+                <tr>
+                    <td>Total de matriculados: <b>{{ periodogrupo.total_matriculados_titulacion_periodo }}</b> /
+                        Total de aprobados: <b>{{ periodogrupo.total_matriculados_aprobados_titulacion_periodo }}</b> /
+                        Total de reprobados: <b>{{ periodogrupo.total_matriculados_reprobados_titulacion_periodo }}</b>
+                        /
+                        Total de eliminados: <b>{{ periodogrupo.total_eliminados_titulacion_periodo }}</b>
+                    </td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelreportematriculados_excel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle"><span class="fa fa-file-excel-o"></span> Matriz de matriculados en Excel </h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class='row-fluid'>
+                <span><b>Facultad: </b></span>
+                <select id="id_grupo" class="selector" name="grupo" style="width: 80%"></select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-generar btn-success generar_matriz_excel"
+                           id="generar_matriz_excel"><i class="fa fa-file-excel-o"></i> Generar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info cerrar_matriz_excel"
+                           id="cerrar_matriz_excel"><i class="fa fa-close"></i> Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanelreportematriculados_excel_especifico" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle"><span class="fa fa-file-excel-o"></span> Matriz de matriculados en Excel </h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class='row-fluid'>
+                <span><b>Facultad: </b></span>
+                <select id="id_grupo2" class="selector" name="grupo" style="width: 80%"></select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-generar btn-success generar_matriz_excel_especifico"
+                           id="generar_matriz_excel_especifico"><i class="fa fa-file-excel-o"></i> Generar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info cerrar_matriz_excel_especifio"
+                           id="cerrar_matriz_excel_especifio"><i class="fa fa-close"></i> Cerrar</a></td>
+
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="modal static" id="recalcularmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Validando requisitos titulaciones</h3>
+        </div>
+        <div class="modal-body">
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                 class="progress progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularmodalprogresshint">
+            </div>
+        </div>
+    </div>
+{% endblock %}

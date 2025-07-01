@@ -1,0 +1,172 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript">
+        $(function() {
+            $("#marcatodos").click(function(){
+                if ($(this).is(":checked")){
+                    $('.actividad').each(function(){
+                        $(this).prop('checked', true);
+                    });
+                }else{
+                    $('.actividad').each(function(){
+                        $(this).prop('checked', false);
+                    });
+                }
+            });
+            $("#add_cancelpre").click(function(){
+                $('#modalpreguntas').modal('hide');
+            });
+            $(".addpreguntarespuesta").click(function() {
+                var idpen = $(this).attr('idpen');
+                $("#itemsidrespuesta").val(idpen);
+                $("#addobservacion").val('');
+                $("#addvalor").val(0);
+                $("#addorden").val(0);
+                $("#modalpreguntas").modal({backdrop:'static', width: '900px'}).modal('show');
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_admision",
+                    data: {'action': 'listadepreguntas', 'idcohorte':{{ cohorte.id }} },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $( "#tablerespuestas tbody" ).empty();
+                            $.each(data.lista, function(i,dato){
+                                var secuencial=i+1;
+                                var newRow ='<tr class="odd" id="evaluadorpersona_'+dato.id+'">'
+                                    +"<td style='text-align: center'><input  idpre="+dato.id+" class='actividad' type='checkbox' checked></td>"
+                                    +"<td style='text-align: left'>"+dato.descripcion+"</td>"
+                                    +"</tr>";
+                                $(newRow).appendTo("#tablerespuestas tbody");
+                            })
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+            });
+            $("#guardarlistado").click(function(){
+                var listapreguntas = '';
+                $('.actividad').each(function(){
+                    if ($(this).is(":checked")){
+                        var idpre = $(this).attr('idpre');
+                        listapreguntas += idpre+ ":";
+                    }
+                });
+                if (listapreguntas==''){
+                    smoke.alert('Favor seleccionar pregunta');
+                    return false;
+                }
+                listapreguntas = listapreguntas.substring(0,listapreguntas.length - 1);
+                {#alert(listapreguntas)#}
+                {#return false;#}
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_admision",
+                    data: {'action':'addpreguntacohorte', 'listapreguntas': listapreguntas,'idcohorte':{{ cohorte.id }} },
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.reload();
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_admision?action=planificarentrevista&id={{ cohorte.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h4>{{ cohorte }}</h4>
+        </div>
+    </div>
+    {% if perms.sga.puede_modificar_mallas %}
+        <div class='row-fluid'>
+            <div class='span12'>
+                <a href="#" class='btn btn-success addpreguntarespuesta'><span class="fa fa-plus "></span> Adicionar Preguntas</a>
+            </div>
+        </div>
+    {% endif %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered table-striped' >
+                <thead>
+                <tr>
+                    <th style="text-align: center;width: 10%">N.</th>
+                    <th>Tipo</th>
+                    <th>Pregunta</th>
+                    <th style="width: 90px;"> </th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for listado in listadopreguntas %}
+                    <tr>
+                        <td style="text-align: center">{{ forloop.counter }} </td>
+                        <td>{{ listado.pregunta.tipopregunta|default_if_none:"" }}</td>
+                        <td>{{ listado.pregunta|default_if_none:"" }}</td>
+                        <td style="text-align: center">
+                            <a href="javascript:;" nhref='/adm_admision?action=delpreguntacohorte&id={{ listado.id|encrypt }}' class="eliminacionmodal btn btn-mini btn-danger" data-toggle="dropdown"><span class="fa fa-close "></span></a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="12">NO EXISTEN DATOS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalpreguntas" style="display: none;">
+        <div class="modal-header">
+            <div style="text-align: right"></div>
+            <h4 id="paneltitle"></h4>
+            <table style="background-color: transparent" width="100%" border="0">
+                <tbody><tr class="">
+                    <td style="width: 80%"><h3 class="paneltitle">Adicionar Preguntas</h3></td>
+                    <td><a href="javascript:;" id="add_cancelpre" class="btn btn-danger btn-mini pull-right"><i class="fa fa-remove"></i></a></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info incompletoaddrespuestas" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div style="overflow:scroll; height:350px;">
+                <table class='table table-bordered' cellpadding="0" cellspacing="0" id="tablerespuestas">
+                    <thead>
+                    <tr>
+                        <th width="80px" style="text-align: center; font-weight: bold;">Marcar todos <br><input id="marcatodos" type="checkbox" checked></th>
+                        <th width="550px" style="text-align: center; font-weight: bold;">Preguntas</th>
+                    </tr>
+                    </thead>
+                    <tbody id="bodyrespuestas">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="guardarlistado" class="btn btn-success"> Guardar</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}

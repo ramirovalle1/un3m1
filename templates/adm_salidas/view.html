@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script src="https://kit.fontawesome.com/a96c5b6f8d.js" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css"/>
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <style>
+        table.table thead th, table.table thead td {
+            padding: 2px 4px 2px 4px;
+            background-color: #f0f0f0;
+            vertical-align: middle;
+            font-size: 11px;
+            position: sticky;
+            top: 0;
+            text-transform: uppercase;
+        }
+    </style>
+    <script>
+
+        $(function () {
+
+
+            bloqueointerface = function () {
+                if (!$(".blockUI").length) {
+                    $.blockUI({
+                        message: '<span class="spinner-grow spinner-border-lg" role="status" aria-hidden="true" style="width: 10rem; height: 10rem; background-color: #F8C471 ; color: #F8C471 ; !important"</span>',
+                        css: {
+                            backgroundColor: 'transparent',
+                            border: '0',
+                            zIndex: 9999999
+                        },
+                        overlayCSS: {
+                            backgroundColor: '#fff',
+                            opacity: 0.8,
+                            zIndex: 9999990
+                        }
+                    });
+                }
+            };
+
+            $("#search").click(function () {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/adm_salidas?s=" + term;
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $("#detallesalidamodal_cerrar").click(function () {
+                $("#detallesalidamodal").modal("hide");
+                return false;
+            });
+
+
+            $(".detallecomp").click(function () {
+                var id = $(this).attr("cid");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_salidas",
+                    data: {'action': 'detalle_salida', 'id': id},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#num_doc").html(data.numero);
+                            $("#detallesalidamodal_contenido").html(data.data);
+                            $("#detallesalidamodal").modal({"backdrop": "static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            {#FUNCIONALIDADES PARA GENERAR MODAL DE REPORTES Y FILTROS | AUTH: ROALEX#}
+            $("select").select2({minimumResultsForSearch: 20});
+
+            $(".bloqueo_pantalla").click(function () {
+                bloqueointerface();
+            });
+
+            $('#reportes').on('click', function () {
+                $('#modal_reportes').modal({backdrop: 'static', width: '450px'}).modal('show');
+                $('#departamentos_group').fadeIn();
+
+                $('input[name="fechas"]').daterangepicker({
+                    showDropdowns: true,
+                    autoUpdateInput: false,
+                    opens: "center",
+                    drops: "up",
+                    minDate: moment().subtract(5, 'years').startOf('year'),
+                    maxDate: moment().endOf('year'),
+                    startDate: moment(),
+                    endDate: moment(),
+                    locale: {
+                        format: 'YYYY-MM-DD',
+                        applyLabel: '<i class="fas fa-check"></i> Selecionar',
+                        cancelLabel: '<i class="fa fa-eraser"></i> Limpiar',
+                        showButtonPanel: false,
+                        customRangeLabel: "Custom",
+                        daysOfWeek: [
+                            "Dom",
+                            "Lun",
+                            "Mar",
+                            "Mie",
+                            "Jue",
+                            "Vie",
+                            "Sáb"
+                        ],
+                        monthNames: [
+                            "Enero",
+                            "Febrero",
+                            "Marzo",
+                            "Abril",
+                            "Mayo",
+                            "Junio",
+                            "Julio",
+                            "Agosto",
+                            "Septiembre",
+                            "Octubre",
+                            "Noviembre",
+                            "Diciembre"
+                        ],
+                        firstDay: 1
+                    }
+                }).on('apply.daterangepicker', function (ev, picker) {
+                    desde = picker.startDate.format('YYYY-MM-DD');
+                    hasta = picker.endDate.format('YYYY-MM-DD');
+                    $(this).val(desde + ' - ' + hasta);
+                }).on('cancel.daterangepicker', function (ev, picker) {
+                    desde = '';
+                    hasta = '';
+                    $(this).val('');
+                });
+            });
+
+            $('#id_departamento').empty().append('<option value="">----------</option>').val(0).trigger("change");
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {'action': 'cargar_departamento'},
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_departamento').append('<option value="' + data.lista[elemento].id + '">' + data.lista[elemento].nombre + '</option>');
+                        }
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    smoke.alert("Error de conexion.");
+                },
+                dataType: "json"
+            });
+
+            $('#download_report').click(function () {
+                var departamento = $('#id_departamento').val();
+                //bloqueointerface();
+                var departamento_nombre = $('#id_departamento').find('option:selected').text();
+                var desde_var = $('#iddesde').val(), hasta_var = $('#idhasta').val();
+                var url = '{{ request.path }}?action=generarreporte';
+                url += '&departamento=' + departamento + '&departamento_nombre=' + departamento_nombre;
+                url += '&desde=' + desde_var + '&hasta=' + hasta_var;
+                window.location.href = url
+                $('#modal_reportes').modal('hide');
+            });
+
+            $('#modal_reportes').on('hidden', function () {
+                desde = '';
+                hasta = '';
+                $('#fechas_group').show();
+                $('#departamentos_group').val('');
+            });
+        });
+
+
+        function formModal(id, text, action) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: '{{ request.path }}',
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        debugger;
+                        $('#itempanel .panelbody').empty().html(data.data);
+                        $('#itempanel .paneltitle').html(text);
+                        $("#itempanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/i18n/es.js"></script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-3 col-md-4 col-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+
+        <div class='row'>
+            <div class="col-12 pb-2">
+                <div class="align-items-center mb-2">
+                    <form method="GET" onsubmit="return busqueda()">
+                        <div class="row">
+                            <div class="col-sm-6 col-xs-12 col-lg-6">
+                                {% if perms.sagest.puede_dar_salida_inventario %}
+                                    <a href="?action=add" class='btn btn-success'><span class="fa fa-plus "></span>Adicionar</a>
+                                {% endif %}
+                                <a class="btn btn-default" id="reportes"><i class="fa fa-cogs"></i> Generar
+                                    Reporte</a>
+
+                            </div>
+                            <div class="col-sm-6 col-xs-12 col-lg-6">
+                                <div class="input-group mb-2" style="margin-left: 5px">
+                                    <input type="hidden" value="{{ action }}" name="action">
+                                    <input type="text" id="searchinput" class="form-control"
+                                           placeholder="Buscar por departamento..." aria-label="Buscar"
+                                           aria-describedby="button-addon2" name="s" value="{{ search }}">
+                                    <div class="input-group-append">
+                                        <button class="btn btn-primary" type="button" id="search"><i
+                                                class="fa fa-search"></i></button>
+                                        {% if search %}
+                                            <a title="Ver todo" href="/adm_salidas"
+                                               class="btn btn-default tr cleartext"><i
+                                                    class="fas fa-sync-alt"></i></a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+
+         <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <table class='tabla_responsive table table-bordered table-striped'>
+                    <thead class="table-light">
+                            <tr>
+                                <th style="text-align: center;">Fecha</th>
+                                <th style="text-align: center;">N&uacute;mero</th>
+                                <th style="text-align: center;">DEPARTAMENTO/RESPONSABLE</th>
+                                <th style="text-align: center;";>Descripci&oacute;n</th>
+                                 <th style="text-align: center;">Observaciones</th>
+                                <th style="text-align: center;">Valor</th>
+                                <th style="text-align: center;">Items</th>
+                                <th colspan="3" style="text-align: center;">Detalle</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for c in salidas %}
+                                <tr>
+                                    <td style="text-align: center; width: 10%">
+                                        {{ c.fechaoperacion|date:'d-m-Y' }}{% if c.anulado %}<br>
+                                            <label class="label label-important">ANULADO</label>{% endif %}</td>
+                                    <td style="text-align: center">{{ c.numerodocumento }}</td>
+
+                                    <td>{{ c.departamento.nombre }}<br><b><span
+                                            class="smaller">{{ c.responsable }}</span></b></td>
+                                    <td>{{ c.descripcion }}</td>
+                                    <td>{{ c.observaciones}}</td>
+
+                                    <td style="text-align: right">$ {{ c.valor|floatformat:2|intcomma }}</td>
+
+                                    <td style="text-align: center">{{ c.cantidad_productos|floatformat:0 }}</td>
+                                    <td style="text-align: center">
+                                        <a class="btn btn-info btn-mini detallecomp tu" title="Detalles"
+                                           href='javascript:;' cid="{{ c.id }}"> <i class='fa fa-list'></i> </a>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <a href="javascript:;" tipos="{{ reporte_0.tiporeporte }}"
+                                           nhref="/reportes?action=run&n={{ reporte_0.nombre }}&id={{ c.id }}"
+                                           title="Reporte" class="reportedirecto btn btn-success btn-mini reporte tu">
+                                            <i class='fa fa-print'></i></a>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <a class="btn btn-warning btn-mini detallecomp tu" title="Editar"
+                                           href='javascript:void(0);'
+                                           onclick="formModal('{{ c.pk|encrypt }}','Editar Campos','editsalidaproductomodal')">
+                                            <i class='fa fa-edit'></i> </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="10">
+                                        NO EXISTEN SALIDAS EN EL SISTEMA
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer border-top-0">
+                        {% include 'paginacionb4.html' %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="detallesalidamodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Detalles de salida: <span id="num_doc"></span></h3>
+                </div>
+                <div class="modal-body">
+                    <div id="detallesalidamodal_contenido" style="max-height: 400px; overflow: auto">
+
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div style="float: right">
+                        <a href="javascript:;" id="detallesalidamodal_cerrar" class="btn btn-info btn-aceptar">
+                            Aceptar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ===============  MODAL PARA GENERAR REPORTE | AUTH: ROALEX =============== #}
+    <div class="modal fade static" id="modal_reportes" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">Filtrar por departamento y rango de fechas</h3>
+                </div>
+                <div class="modal-body panelbody">
+                    <div class="container-fluid">
+                        <div class="row">
+                        <div class="col-12">
+                            <div class="form-group" id="departamentos_group" style="display: none">
+                                    <div class="form-group">
+                                        <select id="id_departamento" name="Departamento" style="width: 100%">
+                                            <option value="0">--------</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Desde:</label>
+                                        <input type="date" class="form-control" value="" id="iddesde" name="desde">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Hasta:</label>
+                                        <input type="date" class="form-control" value="" id="idhasta" name="hasta">
+                                    </div>
+                                <br>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td><a class="btn btn-success " id="download_report"><i class="fa fa-download"></i>
+                                Descargar Reporte</a>
+                            </td>
+                            <td><a class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-close"></i> Cerrar</a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade static" id="itempanel" data-bs-backdrop="static" style="display: block; padding-right: 0px; display: none" aria-modal="true" role="dialog">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="padding: 12px 13px">
+                    <h4><i class="fa fa-clipboard-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="panelbody">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+
+    <div id="throbber" style="display:none; margin: 0 auto; width: 100px; height: 100px; background-color: #ffffff">
+        <img src="/static/images/tigrillo_loader.gif"/>
+    </div>
+
+
+{% endblock %}

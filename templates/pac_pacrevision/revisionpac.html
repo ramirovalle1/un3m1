@@ -1,0 +1,506 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script>
+        $(function() {
+
+            $("#id_fechaejecucion").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+            $("#id_caracteristicas_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CatalogoBien&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_caracteristicas").attr({"value":(evt.params.data.id)});
+            });
+
+            $("#adicionar").click(function(){
+                vaciarformulario();
+                $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                $("#id_caracteristicas_select2").removeAttr('disabled');
+                $("#id_total,#id_iva").attr('disabled', true).val("0.00");
+                $("#itemspanel_adicionar").show();
+                $("#itemspanel_adicionar_update").hide();
+                $("#itemspanel_adicionarcerrar").show();
+
+            });
+
+            conectar_acciones=function () {
+                $(".modificar").unbind();
+                $(".eliminacionmodal").unbind();
+                $('.eliminacionmodal').bind('click.conectar_eliminacion', conectar_eliminacion);
+                $(".modificar").click(function(){
+                    var elemento = $(this);
+                    var id = elemento.attr('idpac');
+                    var caracteristicas = elemento.attr('caracteristicas');
+                    var cantidad =  elemento.attr('cantidad');
+                    var costounitario =  parseFloat(elemento.attr('costounitario'));
+                    var unidadmedida =  parseInt(elemento.attr('unidadmedida'));
+                    var fechaejecucion =  elemento.attr('fechaejecucion');
+                    $("#id_total,#id_iva").attr('disabled', true).val("0.00");
+                    var total =  parseFloat(elemento.attr('total'));
+                    var iva =  parseFloat(elemento.attr('iva'));
+                    $("#select2-id_caracteristicas_select2-container").html('<span class="select2-selection__clear">×</span><span>'+caracteristicas+'</span>');
+                    $("#id_caracteristicas_select2").attr({'disabled':'disabled'});
+                    $("#id_cantidad").val(cantidad);
+                    $("#id_unidadmedida").val(unidadmedida);
+                    $("#id_costounitario").val(costounitario);
+                    $("#id_iva").val(iva);
+                    $("#id_total").val(total);
+                    $("#id_fechaejecucion").val(fechaejecucion);
+                    $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                    $("#itemspanel_adicionar").hide();
+                    $("#itemspanel_adicionar_update").show().attr({'idpac':id});
+                    $("#itemspanel_adicionarcerrar").hide();
+                });
+            };
+
+
+            $("#id_cantidad, #id_costounitario").change(function(){
+                var cantidad = $("#id_cantidad").val();
+                var costounitario = $("#id_costounitario").val();
+                var subtotal = cantidad * costounitario;
+                var iva = (subtotal * {{ IVA }})
+                var total = subtotal + iva;
+                $("#id_iva").val(parseFloat(iva).toFixed(2));
+                $("#id_total").val(parseFloat(total).toFixed(2));
+            });
+
+            $("#itemspanel_adicionar, #itemspanel_adicionarcerrar ").click(function() {
+                var periodo = $("#adicionar").attr('idperiodo');
+                {#var acciondocumento = $('#acciondocumento').val();#}
+                var acciondocumento = 0;
+                var caracteristicas = $("#id_caracteristicas").val();
+                var departamento = $("#departamento").val();
+                var cantidad = parseFloat($("#id_cantidad").val());
+                var unidadmedida = $("#id_unidadmedida").val().toUpperCase();
+                var costounitario = parseFloat($("#id_costounitario").val());
+                var iva = parseFloat($("#id_iva").val());
+                var total = parseFloat($("#id_total").val());
+                var fechaejecucion = $("#id_fechaejecucion").val();
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                if (caracteristicas > 0 && cantidad > 0 && unidadmedida > 0 && costounitario > 0) {
+                    if ($('.eliminaritem').length == 0){
+                        $("#itemsbody").empty();
+                    }
+                    $.ajax({
+                        type: "POST",
+                        url: "/pac_pacrevision",
+                        {#, "acciondocumento": acciondocumento#}
+                        data: {"action": "addpacdepartamento", "caracteristicas": caracteristicas, "cantidad": cantidad, "unidadmedida": unidadmedida, "costounitario": costounitario, "iva": iva, "total": total, "idperiodo": periodo , "departamento": departamento, "fechaejecucion": fechaejecucion},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                vaciarformulario();
+                            } else {
+                                smoke.alert(data.mensaje);
+                                $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexion.");
+                            $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                        },
+                        dataType: "json"
+                    });
+                    if ($(this).attr('id') == 'itemspanel_adicionarcerrar'){
+                        $("#itemspanel").modal("hide");
+                        {#$('#acciondocumento').trigger('change')#}
+                        $('#departamento').trigger('change')
+                        vaciarformulario();
+                    }
+                    vaciarformulario();
+                } else {
+                    $("#incompleto").show();
+                }
+            });
+            $("#itemspanel_adicionar_update").click(function() {
+                var idpac = $("#itemspanel_adicionar_update").attr('idpac');
+                var cantidad = parseFloat($("#id_cantidad").val());
+                var unidadmedida = $("#id_unidadmedida").val().toUpperCase();
+                var costounitario = parseFloat($("#id_costounitario").val());
+                var iva = parseFloat($("#id_iva").val());
+                var total = parseFloat($("#id_total").val());
+                var fechaejecucion = $("#id_fechaejecucion").val();
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                if (cantidad > 0 && unidadmedida > 0 && costounitario > 0) {
+                    if ($('.eliminaritem').length == 0){
+                        $("#itemsbody").empty();
+                    }
+                    $.ajax({
+                        type: "POST",
+                        url: "/pac_pacrevision",
+                        data: {"action": "editpacdepartamento", "cantidad": cantidad, "unidadmedida": unidadmedida, "costounitario": costounitario, "iva": iva, "total": total, "idpac": idpac, "fechaejecucion": fechaejecucion},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#itemspanel").modal("hide");
+                                {#$('#acciondocumento').trigger('change');#}
+                                $('#departamento').trigger('change');
+
+                            } else {
+                                smoke.alert(data.mensaje);
+                                $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexion.");
+                            $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                        },
+                        dataType: "json"
+                    });
+                    if ($(this).attr('id') == 'itemspanel_adicionarcerrar'){
+                        $("#itemspanel").modal("hide");
+                        $('#acciondocumento').trigger('change')
+                        vaciarformulario();
+                    }
+                    vaciarformulario();
+                } else {
+                    $("#incompleto").show();
+                }
+            });
+            vaciarformulario = function () {
+                {#                $("#id_codigoprod").val("").attr("myval","");#}
+                $("#id_unidadmedida").val(0);
+                $("#id_caracteristicas_select2").val(0).trigger('change');
+                $("#id_cantidad").val("0");
+                $("#id_total,#id_iva, #id_costounitario").val('0.00');
+
+            };
+            $("#itemspanel_cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                {#$('#acciondocumento').trigger('change');#}
+                $('#departamento').trigger('change');
+                vaciarformulario();
+            });
+
+            $("#itemspanel_cerrar_update").click(function() {
+                $("#itemspanelupdate").modal("hide");
+                vaciarformulario();
+            });
+
+            $('#departamento1').change(function(){
+                $('#objetivooperativo,#indicadorpoa, #acciondocumento').empty()
+                var control = $(this);
+                var id = parseInt(control.val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'objetivooperativo', 'id': id, 'anio': {{ periodopac.anio }} },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#objetivooperativo').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                                $("#indicadorpoa").prop("selectedIndex", 0).trigger("change");
+                                $('#objetivooperativo').val({{ idobjetivooperativo }}).trigger("change");
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+            $('#departamento').change(function(){
+                var departamento = $("#departamento").val();
+                if (departamento > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pac_pacrevision",
+                        data: {
+                            "action": "segmento2",
+                            "acciondocumento": 0,
+                            "departamento": departamento,
+                            "periodo": {{ periodopac.id }}
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#segmento").html(data.data);
+                                $("#adicionar").show();
+                                conectar_acciones();
+                            } else {
+                                control.val(0).trigger("change");
+                                $("#segmento").empty();
+                                $("#adicionar").hide();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            $("#adicionar").hide();
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#objetivooperativo').change(function(){
+                $('#indicadorpoa, #acciondocumento').empty()
+                var control = $(this);
+                var id = parseInt(control.val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'indicadorpoa', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#indicadorpoa').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                                {#                                $("#indicadorpoa").prop("selectedIndex", 0).trigger("change");#}
+                                $('#indicadorpoa').val({{ idindicadorpoa }}).trigger("change");
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#indicadorpoa').change(function(){
+                $('#acciondocumento').empty()
+                var control = $(this);
+                var id = parseInt(control.val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'acciondocumento', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#acciondocumento').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] +'</option>');
+                                }
+                                {#                                $("#acciondocumento").prop("selectedIndex", 0).trigger("change");#}
+                                $('#acciondocumento').val({{ idacciondocumento }}).trigger("change");
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#acciondocumento').change(function(){
+                var control = $(this);
+                var id = parseInt(control.val());
+                var departamento = $("#departamento").val();
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/pac_pacrevision",
+                        data: {"action": "segmento", "acciondocumento": id, "departamento": departamento, "periodo": {{ periodopac.id }}},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#segmento").html(data.data);
+                                $("#adicionar").show();
+                                conectar_acciones();
+                            } else {
+                                control.val(0).trigger("change");
+                                $("#segmento").empty();
+                                $("#adicionar").hide();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            $("#adicionar").hide();
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#departamento').val({{ iddepartamento }}).trigger("change");
+            {#$('#objetivooperativo').val({{ idobjetivooperativo }}).trigger("change");#}
+            {#$('#indicadorpoa').val({{ idindicadorpoa }}).trigger("change");#}
+            {#$('#acciondocumento').val({{ idacciondocumento }}).trigger("change");#}
+            $("#adicionar").hide();
+            tipo_formulario($("#form2"));
+            $(".select2hidden").hide();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pac_pacrevision{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            <select id='departamento' style="width: 600px">
+                {% for departamento in departamentos %}
+                    <option {% if departamento.id == iddepartamento  %} selected {% endif %} value='{{ departamento.id }}'>{{ departamento }}</option>
+                {% endfor %}
+            </select>
+
+            {#            <select id='objetivooperativo' style="width: 600px">#}
+            {#            </select>#}
+            {##}
+            {#            <select id='indicadorpoa' style="width: 600px">#}
+            {#            </select>#}
+            {##}
+            {#            <select id='acciondocumento' style="width: 600px">#}
+            {#            </select>#}
+
+        </div>
+        <div class='span6'>
+            {% if not periodopac.aprobado %}
+                <a href="javascript:;" id="adicionar" class="btn btn-adicionar btn-success" idperiodo={{ periodopac.id }} ><i class="fa fa-plus"></i> Adicionar</a>
+            {% else %}
+                <a href="/pac_pacrevision?action=addreforma&idperiodo={{ periodopac.id }}" class="btn btn-success"><i class="fa fa-plus"></i> Adicionar Reforma</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12' id="segmento">
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page=1">1</a></li>
+                        <li><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {% if pagenumber == page.number %}class='active'{% endif %}><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {% if pagenumber == page.number %}class='active'{% endif %}><a href="/pac_pacrevision?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
+{% block formback %}/pac_pacrevision{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Caracteristica</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="row-fluid">
+                <form id="form2" class="form-horizontal form-modal" style="width: 870px; margin-bottom: 0">
+                    {% for field in form2 %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins" style="min-height:35px; float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}" >
+                            <div class="control-label label-text" {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %} style="display: table;height: 30px;">
+                                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                    <label for="id_{{ field.name }}" style="padding-right: 20px">{{ field.label }}</label>
+                                </div>
+                            </div>
+                            <div class="control" style="float: left; width: {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}0{% endif %}">
+                                {% if field.field.widget.attrs.select2search %}
+                                    <select id="id_{{ field.name }}_select2" {% if field.field.widget.attrs.disabled %}disabled=""{% endif %} >
+                                        <option value="0" selected="selected">---------</option>
+                                    </select>
+                                    <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}" hidden="hidden" {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %} class="select2hidden">
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+                                <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionar"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionar_update"><i class="fa fa-plus"></i> Modificar</a>
+            {#            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionarcerrar"><i class="fa fa-plus"></i> Adicionar y Cerrar</a>#}
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,421 @@
+{% extends "ajaxformbs.html" %}
+{% load humanize %}
+{% block atras %}/ob_planillapresupuesto{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/ob_planillapresupuesto{% endblock %}
+{% block formdestination %}/ob_planillapresupuesto{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block extraheading %}
+    <script>
+        var pagina = 1;
+        $(function(){
+            $("#id_periodoinicio, #id_periodofin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            $("#id_valoranticipo").blur(function(){
+                numerico($(this), 0, 0, 2);
+            });
+
+            $("#modalitems .btn-cerrar").click(function() {
+                $("#modalitems").modal("hide");
+                return false;
+            });
+
+            $("#id_extra, #id_cantidadavance, #id_preciounitarioextra").addClass("validate[required]");
+
+            $("#id_preciounitarioextra").blur(function () {
+                numerico($(this), 0, 0, 4);
+                $('#id_costoavance').val((parseFloat($('#id_preciounitarioextra').val()) * parseFloat($('#id_cantidadavance').val())).toFixed(4));
+            });
+
+            $("#id_cantidadavance").blur(function () {
+                numerico($(this), 0, 0, 2);
+                $('#id_costoavance').val((parseFloat($('#id_preciounitarioextra').val()) * parseFloat($('#id_cantidadavance').val())).toFixed(4));
+            });
+
+            limpiar=function() {
+                $('#id_extra').val('');
+                $("#id_cantidadavance").val('0.00');
+                $("#id_preciounitarioextra").val('0.0000');
+                $('#id_costoavance').val('0.00');
+                cargar_pagina_recursos();
+            };
+
+
+            conectar_controles_recurso=function() {
+                $('#addrecurso').unbind();
+                $('#addrecurso').click(function () {
+                    var id = $(this).attr('idp');
+                    $('#adicionar_recurso').attr({'idp': id});
+                    $('#guardar_detrecurso_ing').hide();
+                    $('#adicionar_recurso').show();
+                    limpiar();
+                    $('#modalitems').modal({backdrop:'static', width: '800'}).modal('show');
+                });
+
+                $("#adicionar_recurso").click(function () {
+                    var idp = $(this).attr('idp');
+                    var descrip = $('#id_extra').val();
+                    var cantidad = parseInt($('#id_cantidadavance').val());
+                    var precio = parseInt($('#id_preciounitarioextra').val());
+                    bloqueointerface();
+                    $('#modalitems').modal('hide');
+                    $.ajax({
+                        type: "POST",
+                        url: "/ob_planillapresupuesto",
+                        data: {'action': 'addrecursoextra', 'idp': idp, 'descripcion': descrip, 'cantidad':  cantidad, 'precio': precio},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok'){
+                                $('#detallerecursos').html(data.plantilla);
+                                $("#id_monto").val(data.monto);
+                                limpiar();
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+            };
+
+            contador_pertenece = function (contador) {
+                $("#totalactivos").html(contador.tot_recursos);
+                $("#totalrecursopagado").html(contador.tot_recursos_pagado);
+                $('#totalactivosseleccionados').html(contador.tot_selec);
+            };
+
+            editardetrecurso=function(){
+                $('.editdetrecurso').unbind();
+                $('.editdetrecurso').click(function(){
+                    var iddr = $(this).attr('iddr');
+                    var desc = $('#detrecursodescripcion_'+iddr).html();
+                    var cantidad = $('#detrecursocantidadavance_'+iddr).html();
+                    var precio = $('#detrecursopreciounitarioextra_'+iddr).html();
+                    var valor = $('#detrecursocostoavance_'+iddr).html();
+                    $('#id_extra').val(desc);
+                    $('#id_cantidadavance').val(cantidad);
+                    $('#id_preciounitarioextra').val(precio);
+                    $('#id_costoavance').val(valor);
+                    $('#adicionar_recurso').hide();
+                    $('#guardar_detrecurso_ing').show();
+                    $('#modalitems').modal({backdrop:'static', width: '800'}).modal('show');
+                    $('#guardar_detrecurso_ing').attr({'iddr': iddr});
+                });
+
+
+                $('#guardar_detrecurso_ing').unbind();
+                $("#guardar_detrecurso_ing").click(function () {
+                    var iddr = $(this).attr('iddr');
+                    var descrip = $('#id_extra').val();
+                    var cantidad = parseInt($('#id_cantidadavance').val());
+                    var precio = parseInt($('#id_preciounitarioextra').val());
+                    bloqueointerface();
+                    $('#modalitems').modal('hide');
+                    $.ajax({
+                        type: "POST",
+                        url: "/ob_planillapresupuesto",
+                        data: {'action': 'editrecursoextra', 'iddr': iddr, 'descripcion': descrip, 'cantidad':  cantidad, 'precio': precio},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok'){
+                                $("#id_monto").val(data.monto);
+                                $('#detrecursodescripcion_'+iddr).html(descrip);
+                                $('#detrecursocantidadavance_'+iddr).html(cantidad);
+                                $('#detrecursopreciounitarioextra_'+iddr).html(precio);
+                                $('#detrecursocostoavance_'+iddr).html(data.costoavance);
+                                limpiar();
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+
+                $('.delitemdetrecurso').unbind();
+                $('.delitemdetrecurso').click(function(){
+                    var id = $(this).attr('iddr');
+                    smoke.confirm("Desea eliminar?", function(e){
+                        if (e){
+                            $.ajax({
+                                type: "POST",
+                                url: "/ob_planillapresupuesto",
+                                data: {'action': 'delitemdetrecurso', 'id': id },
+                                success: function(data) {
+                                    if (data.result == 'ok') {
+                                        $("#id_monto").val(data.monto);
+                                        $('#filaitemdetrecurso_'+id).remove();
+                                    } else {
+                                        $.unblockUI();
+                                        smoke.alert(data.mensaje);
+                                    }
+                                },
+                                error: function() {
+                                    $.unblockUI();
+                                    smoke.alert("Error de conexión");
+                                },
+                                dataType: "json"
+                            });
+                        }else{
+
+                        }
+                    }, {
+                        ok: "Si",
+                        cancel: "No",
+                        classname: "custom-class",
+                        reverseButtons: true
+                    });
+
+                });
+
+
+            };
+
+            cargar_pagina_recursos = function (pag, id) {
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ob_planillapresupuesto",
+                    data: { 'action': 'recursos', 'page': pag , 'id': '{{ planilla.id }}'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            if (data.tipoplantilla!=3){
+                                contador_pertenece(data.contador);
+                                $("#detallerecursos").html(data.data);
+                                $("#id_monto").val(data.monto);
+                                if(data.tipoplantilla==2){
+                                    $("#id_valoranticipo").attr({'disabled': ''});
+                                }
+                                conectar_control();
+                                conectar_control_cantidad();
+                                tooltips();
+                                pagina = pag;
+                                if (id > 0){
+                                    if ($("#seleccionado_"+id).is(':checked')){
+                                        smoke.alert("Activo ya fue seleccionado.");
+                                    }else{
+                                        $("#seleccionado_"+id).prop('checked', true);
+                                        seleccionar_elemento(id, 'true');
+                                    }
+                                }
+                            } else {
+                                $("#detallerecursos").html(data.plantilla);
+                                $("#tablebuscar").hide()
+                                $("#id_valoranticipo").attr({'disabled': ''});
+                                conectar_controles_recurso();
+                                editardetrecurso();
+                            }
+
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            cargar_pagina_recursos(pagina, 0);
+
+            seleccionar_elemento = function (id, estado) {
+                if (estado == 'true'){
+                    $("#seleccionado_"+id).prop('checked', true);
+                } else {
+                    $("#seleccionado_"+id).prop('checked', false);
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/ob_planillapresupuesto",
+                    data: { 'action': 'marcarseleccionado', 'id': id, 'valor': estado},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            if(data.reload=='true'){
+                                cargar_pagina_recursos(pagina, 0);
+                                conectar_control_cantidad();
+                            }
+                            contador_pertenece(data.contador);
+                            if($('#seleccionado_'+id).is(":checked")){
+                                $('#recursocantidad_'+id).removeAttr('disabled');
+                            }else{
+                                $('#recursocantidad_'+id).attr({'disabled':'disabled'}).val('0.00');
+                                $('#recursoporcentajeavance_'+id).html('0.00');
+                                $('#recursocostoavance_'+id).html('0.00');
+                                $('#recursocantidadsaldo_'+id).html(data.recursocantidadsaldo);
+                                $('#id_monto').val(data.monto);
+
+                            }
+                        }else{
+                            if(elemento.is(":checked")){
+                                elemento.prop('checked', false);
+
+                            }else{
+                                elemento.prop('checked', true);
+                            }
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        if(elemento.is(":checked")){
+                            elemento.prop('checked', false);
+                        }else{
+                            elemento.prop('checked', true);
+                        }
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            conectar_control = function () {
+                $("#todos").unbind();
+                $("#todos").click(function () {
+                    var estado = "false";
+                    if($("#todos").is(":checked")){
+                        estado = "true"
+                    }
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/ob_planillapresupuesto",
+                        data: { 'action': 'marcartodos', 'id': '{{ planilla.id }}', 'valor': estado},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                contador_pertenece(data.contador);
+                                cargar_pagina_recursos(pagina, 0);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                });
+
+                $(".seleccionado").unbind();
+                $(".seleccionado").click(function () {
+                    var estado = "false";
+                    var elemento = $(this);
+                    var id = elemento.attr('ida');
+                    if(elemento.is(":checked")){
+                        estado = "true"
+                    }
+                    seleccionar_elemento(id, estado);
+                });
+
+            };
+
+            conectar_control_cantidad = function () {
+                $('.cantidadrecurso').unbind();
+                $('.cantidadrecurso').blur(function () {
+                    var id = $(this).attr('idd');
+                    var va = $(this).attr('va');
+                    numerico($(this), 0, 0, 2);
+                    var valor = $(this).val();
+                    var anticipado = $('#id_valoranticipo').val();
+                    var elemento = $(this);
+                    if (parseFloat(valor) != parseFloat(va)) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/ob_planillapresupuesto",
+                            data: {'action': 'editcantidarecurso', 'idd': id, 'cantidad': valor, 'anticipado': anticipado},
+                            success: function (data) {
+                                $.unblockUI();
+                                if (data.result == 'ok') {
+                                    if (data.superacantidad == 1){
+                                        elemento.css({"background-color":"lightsalmon"});
+                                        elemento.val(va);
+                                    }
+                                    else {
+                                        elemento.attr({'va': valor});
+                                        $('#id_monto').val(data.monto);
+                                        $('#recursocantidadsaldo_'+id).html(data.recursocantidadsaldo);
+                                        $('#recursoporcentajeavance_'+id).html(data.porcentaje);
+                                        $('#recursocostoavance_'+id).html(data.costo);
+                                        elemento.css({"background-color": "white"});
+                                    }
+                                } else {
+                                    elemento.val(va);
+                                    elemento.css({"background-color": "lightsalmon"});
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                elemento.val(va);
+                                elemento.css({"background-color": "lightsalmon"});
+                            },
+                            dataType: "json"
+                        });
+
+                    }
+                });
+            };
+        });
+    </script>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edit'/>
+    <input type='hidden' name='id' value='{{ planilla.id }}'/>
+{% endblock %}
+{% block formback %}/ob_planillapresupuesto{% endblock %}
+{% block formsuffix %}
+    <table id="tablebuscar" class="table table-condensed">
+        <tr>
+            <td style="width: 50%">
+                <input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" id="FilterTextBox" name="FilterTextBox">
+            </td>
+            <td style="width: 50%; vertical-align: middle">
+                <div style="float: left">Total recursos:<b> <span id="totalactivos">0</span></b></div>
+                <div style="float: left; margin-left: 30px">Total recursos pagados:<b> <span id="totalrecursopagado">0</span></b></div>
+                <div style="float: left; margin-left: 30px">Seleccionados:<b> <span id="totalactivosseleccionados">0</span></b></div>
+            </td>
+        </tr>
+    </table>
+    <div id="detallerecursos" style="width: 100%;">
+    </div>
+
+    <div class="modal fade static" id="modalitems" style="display: none;">
+        <table class='table table-bordered'>
+            <thead>
+            <tr>
+                <th >Descripcion Recurso Extra</th>
+                <th style="width: 70px; text-align: center"  id="th_preciounitarioextra">Precio Unt</th>
+                <th style="width: 70px; text-align: center"> Cantidad Avance</th>
+                <th style="width: 70px; text-align: center">Costo</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><input type="text" maxlength="250" id="id_extra" style="width: 100%; text-transform: uppercase "></td>
+                <td id="td_preciounitarioextra"><input id="id_preciounitarioextra" style="width: 80px" class="imp-moneda" type="text" name="preciounitarioextra" value="0.0000"></td>
+                <td><input type="text" value="1.00" style="width: 80px" class="imp-moneda" id="id_cantidadavance"></td>
+                <td><input type="text" value="0.00" style="width: 80px" class="imp-moneda" id="id_costoavance" readonly="True" disabled="True"></td>
+
+            </tr>
+            </tbody>
+        </table>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="adicionar_recurso"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="guardar_detrecurso_ing"><i class="fa fa-plus"></i> Guardar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

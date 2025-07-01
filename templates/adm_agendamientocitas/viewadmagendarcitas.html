@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        $(function (){
+            $("#id_area").change(function (){
+                $('#id_servicio').empty().append('<option value=""></option>').val(0).trigger("change");
+                $('.calendario').empty()
+                $('#calendarmsj').show()
+                $('.ocultar').removeAttr('hidden')
+                 $('.box-content-reserva').empty()
+                $("#box-detalle").show()
+            })
+
+            $("#id_area").select2({
+                 width:'100%',
+                 placeholder:"Seleccionar un área servicio"
+             }).on('select2:select', function (e){
+                 bloqueointerface();
+                 $.get(window.location.pathname, {'action': 'listservicios', 'idarea': $(this).val()},
+                 function (data) {
+                     $.unblockUI();
+                     if (data.result === true) {
+                         for (elemento in data.lista) {
+                             $('#id_servicio').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                         }
+                     } else {
+                         control.val(0).trigger("change");
+                         smoke.alert(data.mensaje);
+                     }
+                 }, 'json');
+            })
+
+            $("#id_servicio").select2({
+                width:'100%',
+                placeholder:"Seleccione una actividad",
+                language: {
+                            inputTooShort: function () {
+                                return "Ingresa al menos un caracter...";
+                            },
+                            "noResults": function () {
+                                return "Sin resultados (Recuerda seleccionar un área antes de buscar)";
+                            },
+                            "searching": function () {
+                                return "Buscando...";
+                            }
+                        },
+             }).on('select2:select', function (e){
+                CargarCalendario('admcalendario',$(this).val(),)
+                $('.ocultar').attr('hidden','hidden')
+            })
+
+            $("#id_persona").change(function (){
+                $('.calendario').empty()
+                $('#calendarmsj').show()
+                $('#id_perfil').empty().append('<option value=""></option>').val(0).trigger("change");
+                $('.ocultar').removeAttr('hidden')
+                if ($("#id_servicio").val()){
+                    CargarCalendario('admcalendario',$("#id_servicio").val(),)
+                    $('.ocultar').attr('hidden','hidden')
+                 }
+            })
+
+             $("#id_perfil").select2({width:'100%',placeholder:'Seleccionar un perfil', minimumResultsForSearch:-1}).on('select2:select', function (e){
+                if ($("#id_servicio").val()){
+                    CargarCalendario('admcalendario',$("#id_servicio").val(),)
+                    $('.ocultar').attr('hidden','hidden')
+                }
+            })
+
+            $.fn.select2.defaults.set('language', 'es');
+
+            const cbPersona = $('#id_persona');
+
+            function formatRepo(repo) {
+                if (repo.loading) {
+                    return 'Buscando..'
+                }
+                var option = '';
+                if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                    option = $(`<b>${repo.text}</b>`);
+                } else {
+                    option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-2 text-center"><img src="${repo.foto}" width="50px" height="50px" class="w-25px rounded-circle me-2"></div><div class="col-lg-10 text-left"><b>Documento:</b> ${repo.documento}<br><b>Nombres:</b> ${repo.text}</div></div></div>`);
+                }
+                return option;
+            }
+
+            ItemsDisplayPersonas = function (item) {
+                if (item.text && item.documento) {
+                    return $(`<img src="${item.foto}" width="25px" height="25px" class="w-25px rounded-circle me-2"><span>${item.text}</span>`);
+                } else if (item) {
+                    return item.text;
+                } else {
+                    return 'Consultar Personas';
+                }
+            };
+
+            cbPersona.select2({
+                width: '100%',
+                placeholder: "Buscar por cédula, apellidos o nombres",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ reques.path }}?action=buscarpersonas&q=${params.term}&idsagregados=${$('#idagregados').val()}`;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: formatRepo, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+            }).on('select2:select', function (e){
+                bloqueointerface();
+                $.get(window.location.pathname, {'action':'listperfiles', 'idpersona': $(this).val()},
+                function(data) {
+                    $.unblockUI();
+                    if (data.result === 'ok' ) {
+                       for (elemento in data.lista) {
+                            $('#id_perfil').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                    }
+                    else{
+                        control.val(0).trigger("change");
+                        smoke.alert(data.mensaje);
+                    }
+                }, 'json');
+            });
+
+        });
+        function CargarCalendario(action,id,movimiento,mes,anio,diasreserva){
+            var control = $(this);
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{request.path}}",
+                data: {'action': action,
+                    'idservicio':id,
+                    'mover': movimiento,
+                    'mes': mes,
+                    'anio':anio,
+                    'diasreserva':diasreserva
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('.calendario').html(data.data);
+                        $('#calendarmsj').hide()
+                        $('.box-content-reserva').empty()
+                        $("#box-detalle").show()
+
+                    } else {
+                        control.val(0).trigger("change");
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    control.val(0).trigger("change");
+                    alertaDanger("Error de conexion.");
+                },
+                dataType: "json"
+            });
+}
+        function CargarDatos(lista, fecha, box){
+                    $(".calendar__disponible").removeClass('calendar__disponible-active')
+                    $('.btn_extra').empty()
+                    $("#cal" + box).addClass('calendar__disponible-active')
+                     bloqueointerface()
+                    $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {
+                        'action': 'admaddcita',
+                        'listaid[]': lista,
+                        'fecha': fecha,
+                        'idservicio': $('#id_servicio').val(),
+                        'idpersona':$('#id_persona').val(),
+                        'idperfil':$('#id_perfil').val(),
+                    },
+                    success: function (data) {
+                        $.unblockUI()
+                        if (data.result === true) {
+                            $('.box-content-reserva').html(data.data);
+                            $('.form-box').show()
+                            $('.box-reserva').hide()
+                        } else if(data.agendado=== true) {
+                            RemplazarTexto('','','',box,data.mensaje)
+                        } else {
+                            alertaDanger(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI()
+                        alertaDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                }
+        function RemplazarTexto(fecha_actual,fecha_selec,numdias,box,mensaje=false) {
+            let text = "Fecha no está disponible para reservar. Puede reservar máximo hasta " + numdias + " días posteriores de la fecha actual."
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            $(".box-content-reserva").empty()
+            $('#box-detalle').show().addClass('card').css('border', '0px')
+            if (mensaje==true){
+                text="Turnos agotados en fecha seleccionada"
+            }else if(mensaje != false){
+                text=mensaje
+                $('.btn_extra').html(`<a class="btn btn-orange" href="{{ request.path }}?action=miscitas" target="_blank">Ver citas agendadas</a>`)
+            }else{
+                if (fecha_actual==fecha_selec){
+                    text="Los turnos de esta fecha ya se han inicializado o finalizado."
+                }
+            }
+            $('.mensaje').html(`<div class="swal2-icon swal2-info swal2-animate-info-icon mt-0 mb-1" style="display: flex;"></div><h2 class="text-secondary"><strong>Alerta!</strong></h2><p class="text-secondary lh-1 p-4 py-0">${text}</p>`)
+        }
+    </script>
+    <style>
+        .sinmargen{
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .box{
+        position: relative;
+        height: 100%;
+        width: 100%;
+        background-color: #0b2f44;
+        border-radius: 5px;
+        display: inline-block;
+        text-align: center;
+        }
+        .box img{
+          width: 100%;
+          height: 100%;
+        }
+        @supports(object-fit: cover){
+        .box img{
+          height: 100%;
+          object-fit: cover;
+          object-position: center center;
+        }
+    }
+    </style>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-12'>
+             <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Consulte las fechas disponibles y agende una cita</h6>
+            </div>
+        </div>
+    </div>
+    <div class="row" style="justify-content: space-between;margin-left: calc(var(--bs-gutter-x) * -.5)!important;">
+        <div class="col-lg-4 col-md-5 col-sm-12">
+            <div class="card">
+                <div class="box-content-img">
+
+                </div>
+              <div class="card-body border-top border-5 rounded-3 border-dark-info text-secondary mb-2">
+                    <h5 style="color: #182F44; margin-bottom: 2px"><b>Parametros para agendar cita</b></h5>
+                    <p style="font-size: 14px; color: #8f8f8f; line-height: 16px">Recuerde seleccionar todos los campos solicitados para poder agendar la cita.</p>
+                    <div class="my-2">
+                        <a href="javascript:void(0)" onclick="formModalBase('','Adicionar persona externa','addpersona','','modal-md',true,'fa fa-user-plus')"
+                           class="btn btn-primary-old"><i class="fa fa-user-plus"></i> Registrar persona externa</a>
+                    </div>
+                    <div class="sinmargen">
+                        <label for="id_persona">
+                            <i class="fa fa-users"></i> Persona:
+                        </label>
+                        <select name="persona_ag" id="id_persona">
+                            <option value=""></option>
+                        </select>
+                    </div>
+                     <div class="sinmargen">
+                            <label for="id_perfil" ><i class="fa fa-user"></i> Perfil: </label>
+                            <select name="perfil" id="id_perfil">
+                                <option value=""></option>
+                            </select>
+                        </div>
+                    <div class="sinmargen">
+                        <label for="id_area"><i class="fa fa-building"></i> Área de servicios:</label>
+                        <select name="area" id="id_area">
+                            <option value=""></option>
+                            {% for dp in departamentos %}
+                                <option value="{{ dp.id }}">{{ dp }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="sinmargen ">
+                        <label for="id_servicio"><i class="fa fa-handshake"></i> Servicio: </label>
+                        <select name="servicio" id="id_servicio">
+                            <option value=""></option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-7 col-sm-12">
+            <div class="box-reserva text-center" id="calendarmsj" style="height: 400px;">
+                <div class="p-4 py-0">
+                    <h4 class="text-secondary">El calendario se habilitará una vez seleccionado todos los campos requeridos.</h4>
+                </div>
+            </div>
+            <div class="calendario">
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-12 col-sm-12">
+            <div class="box-cabecera">
+                    <h5 style="color: #182F44; margin-bottom: 2px"><b>Detalles de citas</b></h5>
+                    <p style="font-size: 14px; color: #8f8f8f; line-height: 14px">Seleccione un horario disponible y documentos a solicitar segun requiera en su cita por agendar.</p>
+                </div>
+                <form id="form2" class="form-box" autocomplete="off" method="POST" enctype="multipart/form-data" action="{{ request.path }}">
+                    {% csrf_token %}
+                    <div class="box-content-reserva">
+                    </div>
+                </form>
+            <div class="box-reserva text-center" id="box-detalle" style="height: 335px;">
+                    <div class="mensaje p-4 py-0">
+                        <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una fecha por agendar</h4>
+                    </div>
+                    <div class="btn_extra pt-2"></div>
+                </div>
+        </div>
+    </div>
+{% endblock %}

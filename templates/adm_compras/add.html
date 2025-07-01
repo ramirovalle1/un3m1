@@ -1,0 +1,500 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        var impuesto_iva = parseFloat({{ valor_iva }});
+        $(function() {
+            $("#id_fechadocumento, #id_fechaingreso,#id_fechacaducidad").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_descripcion, #id_fechadocumento, #id_numerodocumento, #id_proveedor, #id_descripcion").addClass("validate[required]");
+            $("#id_numerodocumento").mask('999-999-999999999').val('');
+            $("#id_valorprod").attr("disabled", true);
+            $("#id_proveedor").val('').attr({"codigo":'', "myval": ''});
+            $("#id_descripcion").val('');
+
+            $("#id_cantidadprod").blur(function(){
+                numerico($(this), 0, 1000000, 4);
+                calculo();
+            });
+
+            $("#id_iva").blur(function(){
+                numerico($(this), 0, 1, 4);
+                calculo();
+            });
+
+            $("#id_valor_descuento").blur(function(){
+                numerico($(this), 0, 1000000, 4);
+                calculo();
+            });
+
+            $("#id_costoprod").blur(function(){
+                numerico($(this), 0, 1000000, 6);
+                calculo();
+            });
+
+            $("#itemspanel_cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+            });
+
+            cargarDato = function(d, nd, simplify) {
+                if (simplify) {
+                    d[nd] = $("#id_"+nd).toFixed(2);
+                } else {
+                    elemento = $("#id_"+nd);
+                    if (elemento.is('[myval]')){
+                        d[nd] = elemento.attr('myval');
+                    } else {
+                        d[nd] = elemento.val();
+                    }
+                    if (!d[nd]) {
+                        helptext("#id_"+nd, "Este campo es obligatorio");
+                        datosOK &= false;
+                    } else {
+                        clearHelpText("#id_"+nd);
+                        datosOK &= true;
+                    }
+                }
+            };
+
+            buscar_proveedor = function(query, process) {
+                $.get("/reportes", {'action': 'data', 'model': 'Proveedor', 'p': 1, 'q': query, 's': 10}, function(data) {
+                    if (data.results) {
+                        $("#id_proveedor").get(0).results = data.results;
+                        listing = [];
+                        for (var i in data.results) {
+                            var dato = data.results[i];
+                            listing.push(dato.name);
+                        }
+                        process(listing);
+                    } else{
+                        $("#id_proveedor").val("").attr({"codigo": ""});
+                        process([query]);
+                    }
+                }, 'json');
+            };
+
+            $('#id_proveedor').typeahead({source: buscar_proveedor, updater: function(item) {
+                var results = $("#id_proveedor").get(0).results;
+                for (var i in results) {
+                    var datos = results[i];
+                    if (item==datos.name) {
+                        $("#id_proveedor").attr({"myval":datos.id, "codigo":datos.alias[1]});
+                    }
+                }
+                return item;
+            }}).blur(function(){ $(this).val($(this).attr("codigo")); });
+
+            ingreso = {};
+
+            helptext = function(sid, texto) {
+                $($(sid).get(0).parentNode).find(".help-text").html(texto)
+            };
+
+            clearHelpText = function(sid) {
+                $($(sid).get(0).parentNode).find(".help-text").html("");
+            };
+
+            buscar_producto = function(query, process) {
+                $.get("/reportes", {'action': 'data', 'model': 'Producto', 'p': 1, 'q': query, 's': 10}, function(data) {
+                    if (data.result == "ok"){
+                        if (data.results.length>0) {
+                            $("#id_codigoprod").get(0).results = data.results;
+                            listing = [];
+                            for (var i in data.results) {
+                                var dato = data.results[i];
+                                listing.push(dato.name);
+                            }
+                            process(listing);
+                        } else {
+                            $("#id_descripcionprod, #id_unidadmedidaprod, #id_tipoprod").removeAttr("disabled").val("");
+                            process([query]);
+                        }
+                    }
+                }, "json");
+            };
+
+            updater_producto = function(item) {
+                var results = $("#id_codigoprod").get(0).results;
+                for (var i in results) {
+                    var datos = results[i];
+                    if (item==datos.name) {
+                        $("#id_codigoprod").val(datos.alias[0]).attr({"idp": datos.id, "codigo": datos.alias[0]});
+                        $("#id_cuenta").val(datos.alias[7]);
+                        $("#id_descripcionprod").val(datos.alias[1]);
+                        $("#id_unidadmedidaprod").val(datos.alias[4]);
+                        $("#id_tipoprod").val(datos.alias[6]);
+                        $("#id_cuenta, #id_descripcionprod, #id_unidadmedidaprod, #id_tipoprod").attr("disabled","disabled");
+                        return datos.alias[0];
+                    }
+                }
+                return item;
+            };
+
+            $("#id_codigoprod").typeahead({source: buscar_producto, updater: updater_producto}).blur(function(){
+                $("#alertaingreso").hide();
+                $("#itemspanel .incompleto").hide();
+                $("#itemspanel .incompletovalores").hide();
+            });
+
+            vaciarformulario = function () {
+                $("#id_codigoprod").val("").attr("myval","");
+                $("#id_tipoprod, #id_cuenta").attr('disabled', true).val("");
+                $("#id_descripcionprod").attr('disabled', true).val("");
+                $("#id_unidadmedidaprod").attr('disabled', true).val("");
+                $("#id_valoriva").attr('disabled', true).val("0.000000");
+                $("#id_valor_descuento").val("0.000000");
+                $("#id_coniva").prop('checked', false);
+                $("#id_iva").val(impuesto_iva);
+                $("#id_total").attr('disabled', true).val("0.000000");
+                $("#id_subtotal").attr('disabled', true).val("0.000000");
+                $("#id_cantidadprod").val('0.0000').addClass('atright');
+                $("#id_valorprod").val('0.00');
+                $("#id_costoprod").val('0.000000');
+            };
+
+
+            $("#itemsadicionar").click(function() {
+                vaciarformulario();
+                $("#alertaingreso").hide();
+                $("#incompleto").hide();
+                $("#incompletovalores").hide();
+                $("#itemspanel").modal({backdrop:'static', width: '900'}).modal('show');
+                return false;
+            });
+
+            $("#id_porc_descuento").blur(function(){
+                numerico($(this), 0, 100, 0);
+            });
+
+            actualizar_lista = function(){
+                lista_items1 = [];
+                var valor = 0;
+                $(".eliminaritem").each(function(){
+                    var item = {
+                        id: $(this).attr("idp"),
+                        costo: parseFloat($(this).attr("precio")),
+                        total: parseFloat($(this).attr("total")),
+                        cantidad: parseFloat($(this).attr("cantidad")),
+                        valoriva: parseFloat($(this).attr("iva")),
+                        porcientoiva: parseFloat($(this).attr("porcientoiva")),
+                        valor_descuento: parseFloat($(this).attr("descuento")),
+                        subtotal: parseFloat($(this).attr("subtotal")),
+                        estado: parseFloat($(this).attr("estado")),
+                        fechacaducidad: $(this).attr("fechacaducidad")
+                    };
+                    lista_items1.push(item);
+                });
+                calculo_totales();
+            };
+
+            calculo_totales = function(){
+                var subtotaliva = 0;
+                var subtotal0 = 0;
+                var descuento = 0;
+                var valoriva = 0;
+                var iva = 0;
+                var porcientoiva = 0;
+                var total = 0;
+                for (var i in lista_items1) {
+                    var item = lista_items1[i];
+                    if (item.porcientoiva > 0){
+                        porcientoiva = item.porcientoiva;
+                    }
+                    if (item.valoriva > 0){
+                        subtotaliva += item.subtotal;
+                    }else{
+                        subtotal0 += item.subtotal;
+                    }
+                    descuento += item.valor_descuento;
+                    valoriva += item.valoriva;
+
+                }
+                subtotaliva = redondeo(subtotaliva, 2);
+                subtotal0 = redondeo(subtotal0, 2);
+                descuento = redondeo(descuento,2 );
+                {#                iva = redondeo(((subtotaliva - descuento) * porcientoiva), 2);#}
+                iva = valoriva;
+                total = redondeo((subtotaliva + subtotal0 - descuento + iva), 2);
+
+                $("#subtotal12").html(subtotaliva.toFixed(2));
+                $("#subtotal0").html(subtotal0.toFixed(2));
+                $("#descuento").html(descuento.toFixed(2));
+                $("#iva").html(redondeo(iva, 2));
+                $("#total").html(total.toFixed(2));
+                $("#form_subtotal_base12").val(subtotaliva.toFixed(2));
+                $("#form_subtotal_base0").val(subtotal0.toFixed(2));
+                $("#form_total_descuento").val(descuento.toFixed(2));
+                $("#form_total_iva").val(redondeo(iva, 2));
+                $("#form_total").val(total.toFixed(2));
+
+            };
+
+            eliminarItem = function() {
+                var id = $(this).attr("idp");
+                $("#fila_"+id).remove();
+                if ($('.eliminaritem').length == 0){
+                    $("#itemsbody").html('<tr><td colspan="10">NO EXISTEN PRODUCTOS EN LA SALIDA</td></tr>');
+                }
+                actualizar_lista();
+            };
+
+            $("#itemspanel_adicionar, #itemspanel_adicionarcerrar ").click(function() {
+                var codigo = $("#id_codigoprod").val();
+                var inventarioid = $("#id_codigoprod").attr('idp');
+                var descripcion = $("#id_descripcionprod").val().toUpperCase();
+                var unidad = $("#id_unidadmedidaprod").val().toUpperCase();
+                var cantidad = parseFloat($("#id_cantidadprod").val());
+                var precio = parseFloat($("#id_costoprod").val());
+                var valor = parseFloat($("#id_total").val());
+                var valoriva = parseFloat($("#id_valoriva").val());
+                var porcientoiva = parseFloat($("#id_iva").val());
+                var subtotal = parseFloat($("#id_subtotal").val());
+                var descuento = parseFloat($("#id_valor_descuento").val());
+                var estado = parseFloat($("#id_estado").val());
+                var fechacaducidad = $("#id_fechacaducidad").val();
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                if (codigo > 0 && cantidad > 0 && estado > 0) {
+                    if ($('.eliminaritem').length == 0){
+                        $("#itemsbody").empty();
+                    }
+                    if (!$("#fila_" + inventarioid).length) {
+                        $("#itemsbody").append("<tr id='fila_"+inventarioid+"' >" +
+                                "<td style='text-transform: uppercase'>"+codigo+"</td>" +
+                                "<td>"+descripcion+"</td>" +
+                                "<td style='text-align: center'>"+unidad+"</td>" +
+                                "<td style='text-align: right'>"+cantidad.toFixed(4)+"</td>" +
+                                "<td style='text-align: right'>$ "+precio.toFixed(6)+"</td>" +
+                                "<td style='text-align: right'>"+subtotal.toFixed(2)+"</td>" +
+                                "<td style='text-align: right'>"+descuento.toFixed(4)+"</td>" +
+                                "<td style='text-align: right'>% "+porcientoiva.toFixed(2)+"</td>" +
+                                "<td style='text-align: right'>$ "+valoriva.toFixed(4)+"</td>" +
+                                "<td style='text-align: right'>$ "+valor.toFixed(4)+"</td>" +
+                                "<td style='text-align: right'> "+fechacaducidad+"</td>" +
+                                "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' title='Eliminar'  unidad='"+unidad+"' subtotal='"+subtotal.toFixed(6)+"' iva='"+valoriva.toFixed(6)+"' descuento='"+descuento.toFixed(6)+"' idp='"+inventarioid+"' cantidad='"+cantidad.toFixed(4)+"' precio='"+precio.toFixed(6)+"' total='"+valor.toFixed(6)+"' estado='"+estado+"' porcientoiva='"+porcientoiva+"' fechacaducidad='"+fechacaducidad+"' ><i class='fa fa-remove'></i></a></td>" +
+                                "</tr>");
+                    } else {
+                        vaciarformulario();
+                        $("#alertaingreso").show();
+                        return false;
+                    }
+                    tooltips();
+                    $(".eliminaritem").unbind("click.eliminarItem");
+                    $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+                    $("#id_codigoprod").val("").attr("idp", "");
+                    vaciarformulario();
+                    actualizar_lista();
+                    if ($(this).attr('id') == 'itemspanel_adicionarcerrar'){
+                        $("#itemspanel").modal("hide");
+                    }
+                } else {
+                    $("#incompleto").show();
+                }
+            });
+
+            $("#ingresardatos").click(function() {
+                saveFormData();
+                // Enviar al servidor
+                if (datosOK) {
+                    if (itemsOK){
+                        bloqueointerface();
+                        $.post("/adm_compras", {"action":'ingresoinv', "datos": JSON.stringify(ingreso)}, function(data) {
+                            if (data.result=='ok') {
+                                location.href = '/adm_compras';
+                            } else {
+                                $.unblockUI();
+                                smoke.alert("Fallo al ingresar productos, intentelo mas tarde.");
+                            }
+                        }, "json");
+                    }else {
+                        smoke.alert("Debe ingresar al menos un item a la lista de compras.");
+                    }
+                } else {
+                    smoke.alert("Debe completar todos los campos obligatorios del formulario.");
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                }
+                return false;
+            });
+
+            comprobarNumeroDocumento = function(){
+                var numero = $("#id_numerodocumento").val();
+                var pid = $("#id_proveedor").attr("myval");
+                var tid = $("#id_tipodocumento").val();
+                if (numero != '' && pid != ''){
+                    bloqueointerface();
+                    $.post("/adm_compras", {'action': 'comprobarnumero', 'numero':numero, 'pid': pid, 'tipodoc': tid}, function(data){
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $($("#id_numerodocumento").get(0).parentNode).find(".help-text").html("");
+                        }else{
+                            $("#id_numerodocumento").val("");
+                            $($("#id_numerodocumento").get(0).parentNode).find(".help-text").html("El n&uacute;mero de documento ingresado ya existe para este proveedor");
+                        }
+                    }, 'json');
+                }
+            };
+
+            // Comprobar que el numero de documento no exista
+            $("#id_numerodocumento").change(comprobarNumeroDocumento);
+
+            calculo = function(){
+                var cantidad = parseFloat($("#id_cantidadprod").val());
+                var costo = parseFloat($("#id_costoprod").val());
+                var porc_descuento = parseFloat($("#id_porc_descuento").val());
+                var iva = parseFloat($("#id_iva").val());
+                var subtotal = 0;
+                var total = 0;
+                var valor_descuento = parseFloat($("#id_valor_descuento").val());
+                var valor_iva = 0;
+
+                if (cantidad && costo){
+                    var x = new Big(cantidad);
+                    var y = new Big(costo);
+                    subtotal = x.mul(y).toFixed(6);
+                   $("#id_subtotal").val(subtotal);
+                }
+
+                if ($("#id_coniva").is(":checked")){
+                    var sub = new Big(subtotal);
+                    var des = new Big(valor_descuento);
+                    var iva2 = new Big(iva);
+                    valor_iva = sub.minus(des).mul(iva).toFixed(6);
+                } else {
+                    valor_iva = 0;
+                }
+                $("#id_valoriva").val(valor_iva);
+                var sub2 = new Big(subtotal);
+                var des2 = new Big(valor_descuento);
+                total = sub2.minus(des2).add(valor_iva).toFixed(6);
+                $("#id_total").val(total);
+            };
+
+            $("#id_coniva").click(function(){
+                calculo();
+            });
+
+
+            tipo_formulario($("#form2"));
+
+            $("#id_proveedor").val(0).trigger('change');
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_compras{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_compras{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/adm_compras{% endblock %}
+{% block formback %}/adm_compras{% endblock %}
+{% block formsuffix %}
+    <div class='row-fluid'>
+        <table class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th style="width: 100px">C&oacute;digo</th>
+                <th>Descripci&oacute;n</th>
+                <th style="width: 70px; text-align: center">U.M.</th>
+                <th style="width: 100px; text-align: center">Cantidad</th>
+                <th style="width: 100px; text-align: center">Costo</th>
+                <th style="width: 100px; text-align: center">Subtotal</th>
+                <th style="width: 100px; text-align: center">Desc.</th>
+                <th style="width: 100px; text-align: center">Porc. IVA</th>
+                <th style="width: 100px; text-align: center">IVA</th>
+                <th style="width: 100px; text-align: center">Total</th>
+                <th style="width: 100px; text-align: center">Fecha caducidad</th>
+                <th style="width: 20px; text-align: center"> </th>
+            </tr>
+            </thead>
+            <tbody id="itemsbody" class="datatable">
+            <tr>
+                <td colspan="15">NO EXISTEN PRODUCTOS EN LA COMPRA</td>
+            </tr>
+            </tbody>
+            <tfoot>
+            </tfoot>
+        </table>
+        <span class='help-text' id="itemshelptext"></span><br/>
+        <a href="javascript:;" id="itemsadicionar" class="btn btn-info btn-mini"><i class="fa fa-plus"></i> Adicionar</a>
+        <table class="table table-bordered" style="float: right; width: 250px">
+            <tr>
+                <td style="width: 60%; text-align: right">SUB TOTAL IVA</td>
+                <td id="subtotal12" style="text-align: right">0.00</td>
+            </tr>
+            <tr>
+                <td style="text-align: right">SUB TOTAL 0%</td>
+                <td id="subtotal0" style="text-align: right">0.00</td>
+            </tr>
+            <tr>
+                <td style="text-align: right">DESCUENTO</td>
+                <td id="descuento" style="text-align: right">0.00</td>
+            </tr>
+            <tr>
+                <td style="text-align: right">IVA</td>
+                <td id="iva" style="text-align: right">0.00</td>
+            </tr>
+            <tr>
+                <td style="text-align: right">TOTAL</td>
+                <td id="total" style="text-align: right">0.00</td>
+            </tr>
+        </table>
+    </div>
+
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='ingresoinv'/>
+    <input type='hidden' name='form_subtotal_base12' id="form_subtotal_base12" value='0'/>
+    <input type='hidden' name='form_subtotal_base0' id="form_subtotal_base0" value='0'/>
+    <input type='hidden' name='form_total_descuento' id="form_total_descuento" value='0'/>
+    <input type='hidden' name='form_total_iva' id="form_total_iva" value='0'/>
+    <input type='hidden' name='form_total' id="form_total" value='0'/>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Producto</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Revise los valores en la cantidad o costos no pueden ser ceros
+            </div>
+            <div class="alert alert-danger" id="alertaingreso" style="display: none;">
+                Este producto ya se encuentra en la lista
+            </div>
+            <div class="row-fluid">
+                <form id="form2" class="form-horizontal form-modal" style="width: 870px; margin-bottom: 0">
+                    {% for field in form2 %}
+                        {% if field.field.widget.attrs.separator %}
+                            <div style="width: 100%; height: 1px; float: left;"></div>
+                        {% endif %}
+                        <fieldset id="fieldset_{{ field.name }}" class="control-group nomargins" style="min-height:35px; float: left; width: {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}" >
+                            <div class="control-label label-text" {% if field.field.widget.attrs.labelwidth %}labelwidth="{{ field.field.widget.attrs.labelwidth }}"{% endif %} style="display: table;height: 30px;">
+                                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                                    <label for="id_{{ field.name }}" style="padding-right: 20px">{{ field.label }}</label>
+                                </div>
+                            </div>
+                            <div class="control" style="float: left; width: {% if field.field.widget.attrs.controlwidth %}{{ field.field.widget.attrs.controlwidth }}{% else %}0{% endif %}">
+                                {% if field.field.widget.attrs.select2search %}
+                                    <select id="id_{{ field.name }}_select2" {% if field.field.widget.attrs.disabled %}disabled=""{% endif %} >
+                                        <option value="0" selected="selected">---------</option>
+                                    </select>
+                                    <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}" hidden="hidden" {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %} class="select2hidden">
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+                                <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px">{{ field.help_text }} </p>
+                            </div>
+                        </fieldset>
+                    {% endfor %}
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionar"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionarcerrar"><i class="fa fa-plus"></i> Adicionar y Cerrar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

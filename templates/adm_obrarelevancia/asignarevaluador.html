@@ -1,0 +1,569 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        let switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            let searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(function(){
+            $("body").initSwitchery();
+
+            let secuenciainterno = {{ totalinternos }};
+            let secuenciaexterno = {{ totalexternos }};
+            let contint = {{ totalinternos }};
+            let context = {{ totalexternos }};
+
+            lista_items3 = []; //Internos borrados
+            lista_items4 = []; //Externos borrados
+            lista_items5 = []; //Internos a notificar
+            lista_items6 = []; //Externos a notificar
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#id_internos_aux").addClass("validate[required]");
+            //$("#id_externos_aux").addClass("validate[required]");
+
+            {% if obrarelevancia.tipo == 1 %}
+                $("#fieldset_titulocapitulo").hide();
+            {% endif %}
+
+            $(".agregarevaluador").click(function() {
+                let tipo = $(this).attr('tipo');
+                $("#itemspanelpersona .agregar").attr('tipo', tipo);
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_obrarelevancia",
+                    data: {'action': 'addevaluador', 'tipo': tipo},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodypersona").html(data.data);
+                            $(".paneltitlepersona").html(data.title);
+                            $("#itemspanelpersona").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelpersona .agregar").click(function () {
+                let tipo = $(this).attr('tipo');
+                let nuevafila;
+                let idpersona, identificacion, nombres, usuario, emailinst, email, celular, telefono;
+                let campotelefono, campoidentificacion, campoemail;
+                $("#frmPersona").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmPersona").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarPersona(tipo)){
+                        idpersona = $('#auxpersona_select2').attr("idp");
+                        identificacion = $('#auxpersona_select2').attr("identificacion");
+                        nombres = $('#auxpersona_select2').attr("nombre");
+                        usuario =  $('#auxpersona_select2').attr("usuario");
+                        emailinst =  $('#auxpersona_select2').attr("emailinst");
+                        email =  $('#auxpersona_select2').attr("email");
+                        celular =  $('#auxpersona_select2').attr("celular");
+                        telefono =  $('#auxpersona_select2').attr("telefono");
+
+                        campoidentificacion = '<span class="fa fa-id-badge tu" title="Identificación"></span> '+ identificacion + '<br><span class="fa fa-key tu" title="Usuario"></span> ' + usuario;
+
+                        campotelefono = '';
+                        if(celular !== ''){
+                            campotelefono = '<span class="fa fa-mobile tu" title="Celular"></span> ' + celular + '<br>';
+                        }
+                        if(telefono !== ''){
+                            campotelefono = campotelefono + '<span class="fa fa-phone-square tu" title="Teléfono"></span> ' + telefono;
+                        }
+
+                        campoemail = '';
+                        if(email !== ''){
+                            campoemail = email + '<br>';
+                        }
+                        if(emailinst !== ''){
+                            campoemail = campoemail + emailinst;
+                        }
+
+                        if(tipo == 'I'){
+                            borrarFilaDefaultInterno();
+                            secuenciainterno ++;
+                            contint ++;
+
+                            nueva_fila = '<tr class="detalleinternos" id="filainterno_'+contint.toString()+'" idreg="0" idpe="'+idpersona+'" nombre="'+nombres+'">' +
+                                        '<td style="text-align: right">'+secuenciainterno.toString()+'</td>'+
+                                        '<td style="text-align: center;"><input type="checkbox" class="js-switch notificarinterno" iddet="0" /></td>' +
+                                        '<td style="text-align: left">'+campoidentificacion+'</td>'+
+                                        '<td style="text-align: justify">'+nombres+'<br><span class="label label-warning">EVALUACIÓN PENDIENTE</span></td>'+
+                                        '<td style="text-align: left">'+campotelefono+'</td>'+
+                                        '<td style="text-align: left">'+campoemail+'</td>'+
+                                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminarinterno" idreg="0" idfila="'+contint.toString()+'" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                                        '</tr>';
+
+                            $("#detalle_internos").append(nueva_fila);
+                            $("#detalle_internos").find(".eliminarinterno").tooltip();
+                            $(".eliminarinterno").unbind("click.eliminarinterno");
+                            $(".eliminarinterno").bind("click.eliminarinterno", eliminarInterno);
+                            bindNotificarInterno();
+                            actualizarListaInterno();
+                            actualizarListaInternoNotificado();
+                        }
+                        else{
+                            borrarFilaDefaultExterno();
+                            secuenciaexterno ++;
+                            context ++;
+
+                            nueva_fila = '<tr class="detalleexternos" id="filaexterno_'+context.toString()+'" idreg="0" idpe="'+idpersona+'" nombre="'+nombres+'">' +
+                                        '<td style="text-align: right">'+secuenciaexterno.toString()+'</td>'+
+                                        '<td style="text-align: center;"><input type="checkbox" class="js-switch notificarexterno" iddet="0" /></td>' +
+                                        '<td style="text-align: left">'+campoidentificacion+'</td>'+
+                                        '<td style="text-align: justify">'+nombres+'<br><span class="label label-warning">EVALUACIÓN PENDIENTE</span></td>'+
+                                        '<td style="text-align: left">'+campotelefono+'</td>'+
+                                        '<td style="text-align: left">'+campoemail+'</td>'+
+                                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminarexterno" idreg="0" idfila="'+context.toString()+'" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                                        '</tr>';
+
+                            $("#detalle_externos").append(nueva_fila);
+                            $("#detalle_externos").find(".eliminarexterno").tooltip();
+                            $(".eliminarexterno").unbind("click.eliminarexterno");
+                            $(".eliminarexterno").bind("click.eliminarexterno", eliminarExterno);
+                            bindNotificarExterno();
+                            actualizarListaExterno();
+                            actualizarListaExternoNotificado();
+                        }
+
+                        $('#itemspanelpersona').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarPersona = function (tipo){
+                let idper = $('#auxpersona_select2').attr("idp");
+                let npersona = $('#auxpersona_select2').attr("nombre");
+                let usuario = $('#auxpersona_select2').attr("usuario");
+                let repetido = false;
+
+                if(usuario == ''){
+                    mensajeWarningSwal("Atención!!!", "La persona: " + npersona + " no tiene usuario asignado");
+                    return false;
+                }
+
+                if(tipo == 'I'){
+                    if($('.detalleinternos[idpe="'+idper+'"]').length > 0)
+                    {
+                        repetido = true;
+                    }
+
+                    if(repetido){
+                        mensajeWarningSwal("Atención!!!", "La persona: " + npersona + " ya ha sido agregada al detalle de evaluadores internos");
+                        return false;
+                    }
+                }
+                else{
+                    if($('.detalleexternos[idpe="'+idper+'"]').length > 0)
+                    {
+                        repetido = true;
+                    }
+
+                    if(repetido){
+                        mensajeWarningSwal("Atención!!!", "La persona: " + npersona + " ya ha sido agregada al detalle de evaluadores externos");
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            bindNotificarInterno = function (){
+                $(".notificarinterno").unbind();
+                $(".notificarinterno").on("change" , function() {
+                    actualizarListaInternoNotificado();
+                });
+            };
+
+            eliminarInterno = function() {
+                let idf = $(this).attr("idfila");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+                $("#filainterno_"+idf).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items3.push(item);
+                }
+
+                secuenciainterno = 0;
+                $("#tbdetalleinternos tbody tr").each(function (index) {
+                    secuenciainterno ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciainterno.toString());
+                    });
+                });
+
+                if(secuenciainterno == 0)
+                    agregarFilaDefaultInterno();
+
+                actualizarListaInterno();
+                actualizarListaInternoNotificado();
+            };
+
+            actualizarListaInterno = function () {
+                lista_items1 = [];
+                let idreg, idpe;
+                let c = 0;
+                $(".detalleinternos").each(function(){
+                    idreg = $(this).attr('idreg');
+                    idpe = $(this).attr('idpe');
+                    let item = {
+                        idreg: idreg,
+                        idpe: idpe
+                    };
+                    lista_items1.push(item);
+                    c++;
+                });
+
+                if(c < {{ maximointerno }})
+                    $("#agregarinterno").show();
+                else
+                    $("#agregarinterno").hide();
+
+                $("body").initSwitchery();
+            };
+
+            actualizarListaInternoNotificado = function (){
+                let iddet;
+                lista_items5 = [];
+                $(".notificarinterno").each(function(){
+                    iddet = $(this).attr("iddet");
+                    lista_items5.push({'id': $(this).attr("iddet"),
+                                       'valor': $(this).is(":checked")});
+                    console.log($(this).is(":checked"));
+                });
+            };
+
+            agregarFilaDefaultInterno = function (){
+                let filadefault = '<tr id="fila_default_internos">'+
+                                '<td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVALUADORES INTERNOS</td>'+
+                                '</tr>';
+                $("#detalle_internos").append(filadefault);
+                $("#id_internos_aux").val("");
+            };
+
+            borrarFilaDefaultInterno = function (){
+                $("#fila_default_internos").remove();
+                $("#id_internos_aux").val("OK");
+            };
+
+            bindNotificarExterno = function (){
+                $(".notificarexterno").unbind();
+                $(".notificarexterno").on("change" , function() {
+                    actualizarListaExternoNotificado();
+                });
+            };
+
+            eliminarExterno = function() {
+                let idf = $(this).attr("idfila");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+                $("#filaexterno_"+idf).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items4.push(item);
+                }
+
+                secuenciaexterno = 0;
+                $("#tbdetalleexternos tbody tr").each(function (index) {
+                    secuenciaexterno ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaexterno.toString());
+                    });
+                });
+
+                if(secuenciaexterno == 0)
+                    agregarFilaDefaultExterno();
+
+                actualizarListaExterno();
+                actualizarListaExternoNotificado()
+            };
+
+            actualizarListaExterno = function () {
+                lista_items2 = [];
+                let idreg, idpe;
+                let c = 0;
+                $(".detalleexternos").each(function(){
+                    idreg = $(this).attr('idreg');
+                    idpe = $(this).attr('idpe');
+                    let item = {
+                        idreg: idreg,
+                        idpe: idpe
+                    };
+                    lista_items2.push(item);
+                    c++;
+                });
+
+                if(c < {{ maximoexterno }})
+                    $("#agregarexterno").show();
+                else
+                    $("#agregarexterno").hide();
+
+                $("body").initSwitchery();
+            };
+
+            actualizarListaExternoNotificado = function (){
+                let iddet;
+                lista_items6 = [];
+                $(".notificarexterno").each(function(){
+                    iddet = $(this).attr("iddet");
+                    lista_items6.push({'id': $(this).attr("iddet"),
+                                       'valor': $(this).is(":checked")});
+                    console.log($(this).is(":checked"));
+                });
+            };
+
+            agregarFilaDefaultExterno = function (){
+                let filadefault = '<tr id="fila_default_externos">'+
+                                '<td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVALUADORES EXTERNOS</td>'+
+                                '</tr>';
+                $("#detalle_externos").append(filadefault);
+                $("#id_externos_aux").val("");
+            };
+
+            borrarFilaDefaultExterno = function (){
+                $("#fila_default_externos").remove();
+                $("#id_externos_aux").val("OK");
+            };
+
+            $(".eliminarinterno").unbind("click.eliminarinterno");
+            $(".eliminarinterno").bind("click.eliminarinterno", eliminarInterno);
+            bindNotificarInterno();
+
+            $(".eliminarexterno").unbind("click.eliminarexterno");
+            $(".eliminarexterno").bind("click.eliminarexterno", eliminarExterno);
+            bindNotificarExterno();
+
+            actualizarListaInterno();
+            actualizarListaInternoNotificado();
+            actualizarListaExterno();
+            actualizarListaExternoNotificado();
+
+            {% if evaluadoresinternos %}
+                $("#id_internos_aux").val("OK");
+            {% endif %}
+
+            $("#id_titulolibro, #id_titulocapitulo").css('resize', 'none');
+            $("#id_titulolibro, #id_titulocapitulo").css("padding", "5px");
+
+            {% if evaluacionescompletas or obrarelevancia.estado.valor == 14 %}
+                $("#formbutton").hide();
+                $("#formcancel").removeClass("btn btn-danger").addClass("btn btn-info").html("Aceptar");
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_obrarelevancia?action=postulaciones&idc={{ obrarelevancia.convocatoria.id|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_obrarelevancia?action=postulaciones&idc={{ obrarelevancia.convocatoria.id|encrypt }}{% endblock %}
+{% block formdestinationswal %}/adm_obrarelevancia?action=postulaciones&idc={{ obrarelevancia.convocatoria.id|encrypt }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='asignarevaluador'/>
+    <input type='hidden' name='id' id='id' value='{{ obrarelevancia.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/adm_obrarelevancia?action=postulaciones&idc={{ obrarelevancia.convocatoria.id|encrypt }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    {# EVALUADORES INTERNOS #}
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_internos" style="padding:0 10px; background: white;">Evaluadores Internos (Fechas de Evaluación: Del {{ convocatoria.inicioevalint|date:"d-m-Y" }} al {{ convocatoria.finevalint|date:"d-m-Y" }})</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetalleinternos" style="margin-bottom: 0px;">
+            <thead>
+                <tr>
+                    <th style="width: 3%; text-align: center; text-transform: none">#</th>
+                    <th style="width: 3%; text-align: center; text-transform: none">Not.</th>
+                    <th style="width: 14%; text-align: center; text-transform: none">Identificación</th>
+                    <th style="width: 42%; text-align: center; text-transform: none">Nombres</th>
+                    <th style="width: 15%; text-align: center; text-transform: none">Teléfonos</th>
+                    <th style="width: 20%; text-align: center; text-transform: none">E-mail</th>
+                    <th style="width: 3%;">
+                        {% if not einternascompletas and obrarelevancia.estado.valor != 14 %}
+                            <a href="javascript:;" id="agregarinterno" class="btn btn-success btn-mini agregarevaluador" tipo="I" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Evaluador Interno"><i class="fa fa-plus"></i> </a>
+                        {% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="detalle_internos">
+                {% for evaluador in evaluadoresinternos %}
+                    {% with evaluacion=obrarelevancia|args:evaluador.persona|args:1|call:"evaluacion" %}
+                        <tr class="detalleinternos" id="filainterno_{{ forloop.counter }}" idreg="{{ evaluador.id }}" idpe="{{ evaluador.persona.id }}" nombre="{{ evaluador.persona.nombre_completo_inverso }}">
+                            <td style="text-align: right">{{ forloop.counter }}</td>
+                            <td style="text-align: center;"><input type="checkbox" class="js-switch notificarinterno" iddet="0" {% if evaluador.notificado %}checked{% endif %} {% if evaluador.notificado or evaluacion %}disabled{% endif %} /></td>
+                            <td style="text-align: left">
+                                <span class="fa fa-id-badge tu" title="Identificación"></span> {{ evaluador.persona.identificacion }}<br>
+                                <span class="fa fa-key tu" title="Usuario"></span> {{ evaluador.persona.usuario }}
+                            </td>
+                            <td style="text-align: justify">
+                                {{ evaluador.persona.nombre_completo_inverso }}<br>
+                                {% if evaluacion %}
+                                    <span class="label label-success">EVALUACIÓN REGISTRADA</span>
+                                {% else %}
+                                    <span class="label label-warning">EVALUACIÓN PENDIENTE</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left">
+                                {% if evaluador.persona.telefono %}
+                                    <span class="fa fa-mobile tu" title="Celular"></span> {{ evaluador.persona.telefono }}<br>
+                                {% endif %}
+                                {% if evaluador.persona.telefono_conv %}
+                                    <span class="fa fa-phone-square tu" title="Teléfono"></span> {{ evaluador.persona.telefono_conv }}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left">
+                                {% if evaluador.persona.email or evaluador.persona.emailinst %}
+                                    {% if evaluador.persona.email %}
+                                        {{ evaluador.persona.email }}<br>
+                                    {% endif %}
+                                    {{ evaluador.persona.emailinst }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not evaluacion %}
+                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminarinterno" idreg="{{ evaluador.id }}" idfila="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr id="fila_default_internos">
+                        <td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVALUADORES INTERNOS</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_internos_aux" value="">
+        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+    </div>
+    {# EVALUADORES INTERNOS #}
+    {# EVALUADORES EXTERNOS #}
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_externos" style="padding:0 10px; background: white;">Evaluadores Externos (Fechas de Evaluación: Del {{ convocatoria.inicioevalext|date:"d-m-Y" }} al {{ convocatoria.finevalext|date:"d-m-Y" }})</span></h6>
+    </div>
+    <div class="row-fluid">
+        <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetalleexternos" style="margin-bottom: 0px;">
+            <thead>
+                <tr>
+                    <th style="width: 3%; text-align: center; text-transform: none">#</th>
+                    <th style="width: 3%; text-align: center; text-transform: none">Not.</th>
+                    <th style="width: 14%; text-align: center; text-transform: none">Identificación</th>
+                    <th style="width: 42%; text-align: center; text-transform: none">Nombres</th>
+                    <th style="width: 15%; text-align: center; text-transform: none">Teléfonos</th>
+                    <th style="width: 20%; text-align: center; text-transform: none">E-mail</th>
+                    <th style="width: 3%;">
+                        {% if not eexternascompletas and obrarelevancia.estado.valor != 14 %}
+                            <a href="javascript:;" id="agregarexterno" class="btn btn-success btn-mini agregarevaluador" tipo="E" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Evaluador Externo"><i class="fa fa-plus"></i> </a>
+                        {% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="detalle_externos">
+                {% for evaluador in evaluadoresexternos %}
+                    {% with evaluacion=obrarelevancia|args:evaluador.persona|args:2|call:"evaluacion" %}
+                        <tr class="detalleexternos" id="filaexterno_{{ forloop.counter }}" idreg="{{ evaluador.id }}" idpe="{{ evaluador.persona.id }}" nombre="{{ evaluador.persona.nombre_completo_inverso }}">
+                            <td style="text-align: right">{{ forloop.counter }}</td>
+                            <td style="text-align: center;"><input type="checkbox" class="js-switch notificarexterno" iddet="0" {% if evaluador.notificado %}checked{% endif %} {% if evaluador.notificado or evaluacion %}disabled{% endif %} /></td>
+                            <td style="text-align: left">
+                                <span class="fa fa-id-badge tu" title="Identificación"></span> {{ evaluador.persona.identificacion }}<br>
+                                <span class="fa fa-key tu" title="Usuario"></span> {{ evaluador.persona.usuario }}
+                            </td>
+                            <td style="text-align: justify">
+                                {{ evaluador.persona.nombre_completo_inverso }}<br>
+                                {% if evaluacion %}
+                                    <span class="label label-success">EVALUACIÓN REGISTRADA</span>
+                                {% else %}
+                                    <span class="label label-warning">EVALUACIÓN PENDIENTE</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left">
+                                {% if evaluador.persona.telefono %}
+                                    <span class="fa fa-mobile tu" title="Celular"></span> {{ evaluador.persona.telefono }}<br>
+                                {% endif %}
+                                {% if evaluador.persona.telefono_conv %}
+                                    <span class="fa fa-phone-square tu" title="Teléfono"></span> {{ evaluador.persona.telefono_conv }}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left">
+                                {% if evaluador.persona.email or evaluador.persona.emailinst %}
+                                    {% if evaluador.persona.email %}
+                                        {{ evaluador.persona.email }}<br>
+                                    {% endif %}
+                                    {{ evaluador.persona.emailinst }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not evaluacion %}
+                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminarexterno" idreg="{{ evaluador.id }}" idfila="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr id="fila_default_externos">
+                        <td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE EVALUADORES EXTERNOS</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_externos_aux" value="">
+        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+    </div>
+    {# EVALUADORES EXTERNOS #}
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static"  id="itemspanelpersona" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><span class="paneltitlepersona">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodypersona">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar" tipo=""> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

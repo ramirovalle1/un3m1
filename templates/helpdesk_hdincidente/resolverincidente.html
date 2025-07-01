@@ -1,0 +1,810 @@
+{% extends "ajaxformbs.html" %}
+_select2{% block extraheading %}
+
+    <script type="text/javascript">
+
+        var productos = {}
+
+        eliminarItem = function () {
+            var id = $(this).attr('idp');
+
+            var producto = $(this).closest("tr").find(".producto div").text().trim();
+                productos[id]=producto
+
+            $('#fila_'+id).remove();
+            if ($('.eliminaritem').length < 1){
+                $('#itemsbody').html('<tr id="detallevacio"><td colspan="10">NO HA SELECCIONADO UN PRODUCTO</td></tr>')
+            }
+
+        };
+
+        function cargarItemsEnSelect2(diccionario, selectId) {
+            var $select = $('#' + selectId);
+
+            $.each(diccionario, function (id, nombre) {
+                $select.append($('<option>', {
+                    value: id,
+                    text: nombre
+                }));
+            });
+            $select.trigger('change.select2');
+            productos = {}
+        }
+
+
+        $(function () {
+
+            $('#id_estado').change(function () {
+                if ($(this).val() == 3) {
+                    $('#detalleproductoincidente').show()
+                    $("#fieldset_proceso").show();
+                    $("#fieldset_estadobaja").show();
+                    $("#fieldset_causa").show();
+                } else {
+                    $('#detalleproductoincidente').hide()
+                    $("#fieldset_proceso").hide();
+                    $("#fieldset_estadobaja").hide();
+                    $("#fieldset_causa").hide();
+                }
+            });
+
+            $('#id_asunto').addClass("validate[required]");
+            $('#id_resolucion').addClass("validate[required]");
+            $('#id_fechareporte').addClass("validate[required]");
+            $('#id_horareporte').addClass("validate[required]");
+            $('#detalleproductoincidente').on('DOMNodeInserted DOMNodeRemoved', function () {
+
+                // Eliminar productos del select que ya estan en la tabla
+                var tdProductos = $("#detalleproductoincidente .producto");
+                var productosSeleccionados = [];
+                    tdProductos.each(function (){
+                        var producto = $(this).find("div").text().trim();
+                        productosSeleccionados.push(producto);
+                    });
+                    $("#id_producto option").filter(function () {
+                        return productosSeleccionados.indexOf($(this).text().trim()) > -1; // Excluir las opciones que ya están en la tabla
+                    }).remove();
+
+            });
+
+            $('#id_producto').select2({width: '100%',dropdownParent: $("#itemspanel")});
+
+            $("#itemsadicionar").click(function () {
+                $('#id_cantidad').val(1)
+                cargarItemsEnSelect2(productos, "id_producto")
+                $("#id_producto").val(null).trigger("change");
+                $("#id_unidadmedida").val(null).trigger("change");
+                $('#select2-id_producto-container').text("---------")
+                $("#itemspanel").modal({backdrop: "static", width: "700px"}).modal("show");
+            });
+
+            $('#itemspanel_adicionarcerrar').click(function () {
+                var id_producto = $('#id_producto').val();
+                var producto = $('#select2-id_producto-container').text();
+                var id_unidadmedida = $('#id_unidadmedida').val();
+                var unidadmedida = $('#select2-id_unidadmedida-container').text();
+                var cantidad = $('#id_cantidad').val();
+                var stock = 0;
+                var calculo = 0;
+
+                $.ajax({
+                        type: "POST",
+                        url: "/helpdesk_hdincidente",
+                        data: {'action': 'validar_stock_producto', 'id': id_producto, 'cantidad': cantidad, 'unidadmedida': id_unidadmedida },
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                calculo = parseInt(data.cantidad);
+                                stock = parseInt(data.cantidadenstock);
+                                if (calculo < 0) {
+                                    Swal.fire({
+                                        toast: true,
+                                        position: 'top-end',
+                                        type: 'error',
+                                        title: `Ingrese una cantidad menor al Stock: ${stock}`,
+                                        showConfirmButton: false,
+                                        timer: 1500
+                                    });
+                                    return false;
+                                }else{
+                                    if (cantidad <= 0) {
+                                        Swal.fire({
+                                            toast: true,
+                                            position: 'top-end',
+                                            type: 'error',
+                                            title: 'Ingrese una cantidad',
+                                            showConfirmButton: false,
+                                            timer: 1500
+                                        });
+                                        return false;
+                                    }
+                                    if (!(id_producto) || !(id_unidadmedida) || !(cantidad)) {
+                                        Swal.fire({
+                                            toast: true,
+                                            position: 'top-end',
+                                            type: 'error',
+                                            title: 'Complete los campos',
+                                            showConfirmButton: false,
+                                            timer: 1500
+                                        });
+                                        return false;
+
+                                    } else {
+                                        $("#itemspanel").modal("hide");
+                                        Swal.fire({
+                                            type: 'success',
+                                            title: 'Producto agregado',
+                                            showConfirmButton: false,
+                                            timer: 1500
+                                        });
+                                    }
+                                    $('#detallevacio').remove()
+                                    $('#detalleproductoincidente').append(`<tr id="fila_${id_producto}">
+                                                                                <td style="text-align: justify" class="producto" id="producto1">
+                                                                                <div>${producto}</div>
+                                                                                </td>
+                                                                                <td style="text-align: center;display:none"><input style="text-align: center" name="producto" type="hidden" value="${id_producto}"></td>
+                                                                                <td style="text-align: center" class="unidadmedida" id="unidadmedida">
+                                                                                <div>${unidadmedida}</div>
+                                                                                </td>
+                                                                                <td style="text-align: center;display:none"><input style="text-align: center" name="unidadmedida" type="hidden" value="${id_unidadmedida}"></td>
+                                                                                <td style="text-align: center" class="cantidad" id="cantidad">
+                                                                                <div>${cantidad}</div>
+                                                                                </td>
+                                                                                <td style="text-align: center;display:none"><input style="text-align: center" name="cantidad" type="hidden" value="${cantidad}"></td>
+                                                                                <td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu'  title='Eliminar'  idp='${id_producto}' ><i class='fa fa-remove'></i></a></td>
+                                                                            </tr>`);
+
+                                    $(".eliminaritem").unbind("click.eliminarItem");
+                                    $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+            });
+
+            $("#id_producto").change(function (){
+                $("#id_unidadmedida").empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let id = $(this).val()
+                if (id >0) {
+                    $.ajax({
+                        type: "POST",
+                        url: "/helpdesk_hdincidente",
+                        data: {'action': 'cargar_unidadesmedida', 'id': id},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_unidadmedida').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+             $("#id_persona_select2").addClass("validate[required]");
+             $("#id_fechareporte, #id_fecharesolucion").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            horareporte = $(".selectorhora");
+            horareporte.timepicker({minuteStep: 1,appendWidgetTo: 'body', showSeconds: false, showMeridian: false, defaultTime: true});
+            $("#id_persona_select2").val(0).trigger("change");
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+            $("#id_persona_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/helpdesk_hdincidente?action=buscaradmin&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_persona").attr({"value":(evt.params.data.id)});
+            });
+            $("#id_departamento_select2").val(0).trigger("change");
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+        });
+    </script>
+
+    <script type="text/javascript">
+        $(function() {
+
+            $("#id_asunto, #id_persona_select2,#id_departamento_select2,#id_grupo,#id_categoria,#id_subcategoria, #id_activo_select2,#id_medioreporte,#id_horareporte,#id_estado,#id_resolucion").addClass("validate[required]");
+            $("#fieldset_proceso").hide();
+            $("#fieldset_estadobaja").hide();
+            $("#fieldset_causa").hide();
+            $('#select2-id_estado-container').change(function () {
+                console.log('pruena')
+            })
+            {% if es_tics %}
+                if (document.getElementById('id_revisionequipoexterno').checked==true){
+                    $("#id_revisionequiposincodigo").prop('checked', false);
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    if (document.getElementById('id_revisionequiposincodigo').checked==true){
+                        $("#id_revisionequipoexterno").prop('checked', false);
+                        $("#fieldset_serie").show();
+                        $("#fieldset_activo").hide();
+                        $("#fieldset_fechacompra").hide();
+                        $("#fieldset_vidautil").hide();
+                        $("#fieldset_tiemporestante").hide();
+                    }else{
+                        $("#fieldset_serie").hide();
+                        $("#fieldset_fechacompra").show();
+                        $("#fieldset_vidautil").show();
+                        $("#fieldset_tiemporestante").show();
+                        $("#fieldset_activo").show();
+                    }
+                }
+            {% else %}
+                $("#fieldset_revisionequiposincodigo").hide();
+                $("#fieldset_revisionequipoexterno").hide();
+                $("#fieldset_serie").hide();
+            {% endif %}
+            {% if resuelto %}
+                document.getElementById('id_estado').disabled=true;
+            {% endif %}
+
+
+            document.getElementById('id_estadobaja').disabled=true;
+            document.getElementById('id_proceso').disabled=true;
+            ItemsDisplay = function (item) {
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+            $("#id_persona_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/helpdesk__hdagente?action=buscaradmin&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_persona").attr({"value":(evt.params.data.id)});
+            });
+
+            $("#id_activo_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        {#                        return "/reportes?action=data&model=ActivoFijo&p=1&s=10&q=" + params.term;#}
+                        return "/helpdesk__hdagente?action=buscaractivo&q=" + params.term+"&idt="+$('#id_tipoincidente').val();
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_activo").attr({"value":(evt.params.data.id)});
+                datos_activo();
+                {#                $("#id_fechacompra").attr({"value":(evt.params.data.fecha)});#}
+            });
+            datos_activo=function () {
+                id = $("#id_activo").val();
+                $.post("/helpdesk__hdagente", {'action': 'datosactivo', 'id': id}, function(data) {
+                    if (data.result) {
+                        document.getElementById('id_fechacompra').value=data.fechaingreso;
+                        document.getElementById('id_vidautil').value=data.vidautil;
+                        document.getElementById('id_tiemporestante').value=data.tiempo;
+                    }
+                }, 'json');
+            };
+
+            $('#id_categoria').change(function (){
+                $('#id_subcategoria').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var idr = $(this).val();
+                var id_tipoincidente=$("#id_tipoincidente").val();
+                $.post("/helpdesk_hdincidente", {'action': 'selectcategoria', 'id': idr}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_subcategoria').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                    }
+                }, 'json');
+                if(id_tipoincidente==3 ){
+                    if(idr == 9 ){
+                        $("#fieldset_activo").show();
+                        $("#fieldset_fechacompra").show();
+                        $("#fieldset_vidautil").show();
+                        $("#fieldset_tiemporestante").show();
+                    }else {
+                        $("#fieldset_activo").hide();
+                        $("#fieldset_fechacompra").hide();
+                        $("#fieldset_vidautil").hide();
+                        $("#fieldset_tiemporestante").hide();
+                    }
+                }
+            });
+
+
+            $('#id_subcategoria').change(function (){
+                $('#id_detallesubcategoria').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                id = $(this).val();
+                $.post("/helpdesk_hdagente", {'action': 'selectdetalle', 'id': id}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_detallesubcategoria').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                    }
+                }, 'json');
+            });
+
+            $('#id_detallesubcategoria').change(function (){
+                id = $(this).val();
+                $.post("/helpdesk__hdagente", {'action': 'valiprioridad', 'id': id}, function(data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        if (data.tiene_prioridad==false){
+                            smoke.alert('El detalle seleccionado no tiene configurada la prioridad');
+                        }
+                    }
+                }, 'json');
+            });
+
+            {#$('#id_estado').change(function (){#}
+            {#    id = $(this).val();#}
+            {#    $('#id_proceso').empty().append('<option value="">---------</option>').val(0).trigger("change");#}
+            {#    $('#id_estadobaja').empty().append('<option value="">---------</option>').val(0).trigger("change");#}
+            {#    $.post("/helpdesk__hdagente", {'action': 'selectestado', 'id': id}, function(data) {#}
+            {#        if (data.result) {#}
+            {#            if (data.esta_resuelto == true){#}
+            {#                document.getElementById('id_proceso').disabled=true;#}
+            {#                for (elemento in data.lista) {#}
+            {#                    $('#id_proceso').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');#}
+            {#                }#}
+            {#                {% if es_tics %}#}
+            {#                    $("#fieldset_causa").show();#}
+            {#                    $("#fieldset_proceso").show();#}
+            {#                    $("#fieldset_estadobaja").show();#}
+            {#                {% endif %}#}
+            {#            }else{#}
+                            {#document.getElementById('id_proceso').disabled=true;#}
+                            {#document.getElementById('id_estadobaja').disabled=true;#}
+            {#                $("#fieldset_proceso").hide();#}
+            {#                $("#fieldset_estadobaja").hide();#}
+            {#                $("#fieldset_causa").hide();#}
+            {#            }#}
+            {#        }#}
+            {#    }, 'json');#}
+            {# });#}
+
+            $('#id_estado').change(function (){
+                id = $(this).val();
+
+                $('#id_proceso').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $('#id_estadobaja').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                {#if (id==3){#}
+                {#    $("#fieldset_fecharesolucion").show();#}
+                {#{else{#}
+                {#    $("#fieldset_fecharesolucion").hide();#}
+                $.post("/helpdesk_hdincidente", {'action': 'selectestado', 'id': id}, function(data) {
+                    if (data.result) {
+                        if (data.esta_resuelto == true){
+                            document.getElementById('id_proceso').disabled=false;
+                            for (elemento in data.lista) {
+                                $('#id_proceso').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                            $("#fieldset_causa").show();
+                        }else{
+                            document.getElementById('id_proceso').disabled=true;
+                            document.getElementById('id_estadobaja').disabled=true;
+                            $("#fieldset_causa").hide();
+                        }
+                    }
+                }, 'json');
+            });
+
+            $('#id_proceso').change(function (){
+                $('#id_estadobaja').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var id= $(this).val();
+                $.post("/helpdesk_hdincidente", {'action': 'selectestadoproceso', 'id': id}, function(data) {
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_estadobaja').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                        }
+                        document.getElementById('id_estadobaja').disabled=false;
+                    }
+                }, 'json');
+            });
+
+            $('#id_estadobaja').change(function () {
+                var id = $(this).val();
+                $.post("/helpdesk_hdincidente", {'action': 'selectdetalleestpro', 'id': id}, function(data) {
+                    if (data.results) {
+                        document.getElementById('id_resolucion').value=document.getElementById('id_resolucion').value+' '+data.detalle;
+                    }
+                }, 'json');
+            });
+            $("#id_revisionequipoexterno").click(function () {
+                if (document.getElementById('id_revisionequipoexterno').checked==true){
+                    $("#id_revisionequiposincodigo").prop('checked', false);
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_fechacompra").show();
+                    $("#fieldset_vidautil").show();
+                    $("#fieldset_tiemporestante").show();
+                    $("#fieldset_activo").show();
+                }
+            });
+            $("#id_revisionequiposincodigo").click(function () {
+                if (document.getElementById('id_revisionequiposincodigo').checked==true){
+                    $("#id_revisionequipoexterno").prop('checked', false);
+                    $("#fieldset_serie").show();
+                    $("#fieldset_activo").hide();
+                    $("#fieldset_fechacompra").hide();
+                    $("#fieldset_vidautil").hide();
+                    $("#fieldset_tiemporestante").hide();
+                }else{
+                    $("#fieldset_serie").hide();
+                    $("#fieldset_fechacompra").show();
+                    $("#fieldset_vidautil").show();
+                    $("#fieldset_tiemporestante").show();
+                    $("#fieldset_activo").show();
+                }
+            });
+            $(".cargarformulario").click(function() {
+                $('#id_cantidad').val('')
+                $("#id_material").change()
+                $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                $("#itemspanel .incompletoaddpreguntas").hide();
+            });
+            $("#add_itemspanel").click(function(){
+                var idmaterial = $("#id_material").val();
+                var idcantidad = $("#id_cantidad").val();
+                var idunidadmedida = $("#id_unidadmedida").val();
+                if (idmaterial == '' || idcantidad == ''|| idunidadmedida == '' ){
+                    smoke.alert('Llene todos los campos');
+                    return false;
+                }
+                bloqueointerface();
+                $.post("/helpdesk_hdincidente", {'action': 'addmaterialincidente', 'idincidente': {{ incidente.id }}, 'idmaterial': idmaterial, 'idcantidad': idcantidad, 'idunidadmedida': idunidadmedida }, function(data) {
+                    if (data.result) {
+                        $.unblockUI();
+                        $.post("/helpdesk_hdincidente", {'action':'vermaterialesincidente', 'idincidente': {{ incidente.id }} }, function(datos) {
+                            if (datos.result == 'ok') {
+                                $.unblockUI();
+                                $('#itemspanel').modal('hide');
+                                $("#contenidomateriales").html(datos.html);
+                            }
+                        }, 'json');
+                    }
+                }, 'json');
+            });
+            $("#cancel_itemspanel").click(function(){
+                $('#itemspanel').modal('hide');
+            });
+            $("#cancel_eliminarmaterial").click(function(){
+                $('#modalmaterial').modal('hide');
+            });
+            $("#id_cantidad").blur(function(){
+                numerico($(this), 0, 0, 0);
+            });
+            $("#del_materialincidente").click(function(){
+                var idmaterial =$('#idmaterial').val()
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/helpdesk_hdincidente",
+                    data: {'action': 'delmaterialincidente', 'idmaterial': idmaterial },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $('#modalmaterial').modal('hide');
+                            $.post("/helpdesk_hdincidente", {'action':'vermaterialesincidente', 'idincidente': {{ incidente.id }} }, function(datos) {
+                                if (datos.result == 'ok') {
+                                    $.unblockUI();
+                                    $("#contenidomateriales").html(datos.html);
+                                }
+                            }, 'json');
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+        });
+        function eliminarmaterial(idmaterial) {
+            var idmater = idmaterial;
+            $("#idmaterial").val(idmaterial);
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "/helpdesk_hdincidente",
+                data: {'action': 'conmaterialesincidentes', 'idmater': idmater },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al obtener los datos.");
+                },
+                success: function (data) {
+                    if (data.result == "ok") {
+                        $('#leyendamaterial').html(data.nombre)
+                        $("#modalmaterial").modal({backdrop:'static', width: '600px'}).modal('show');
+                        $.unblockUI();
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                }
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block formaction %}/helpdesk_hdincidente{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+
+{% block formsuffix %}
+
+    {% if incidente.mi_detalle %}
+        <fieldset class="control-group nomargins" >
+            <div class="controls">
+                <table style="width: 628px; margin-right: 20px;" align="right"  class="table table-bordered table-condensed">
+                    <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Fecha</th>
+                        <th>Detalle de revisión</th>
+                        <th>Ayudantes</th>
+                    </tr>
+                    </thead>
+                    <tbody id="contenidodispositivos">
+                    {% for lis in lista %}
+                        {% if lis.resolucion %}
+                            <tr>
+                                <td>{{ lis.id}}</td>
+                                <td>{{ lis.fecharesolucion}}</td>
+                                <td>{{ lis.resolucion}}</td>
+                                <td>
+                                    {% if ayudantes %}
+                                        {% for ayudantes in ayudantes %}
+                                            {{ forloop.counter }}.- {{ ayudantes.persona }}<br>
+                                        {% endfor %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </fieldset>
+        <br>
+    {% endif %}
+
+
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive" style="padding-left: 5%">
+                <table class="table table-bordered" id="detalleproductoincidente" style="display: none" >
+                    <thead>
+                        <tr>
+                            <th class="text-center" colspan="3">Productos Implementados</th>
+                            <th class="text-center">
+                                <button type="button" id="itemsadicionar" class="btn btn-success"><span class="fa fa-plus"></span></button>
+{#                                 <button type="button" class="btn btn-large btn-info" style="margin-left:5px; " onclick="uiModalSeachTableServices.open()"><i class="fa fa-list"></i></button>#}
+                            </th>
+                        </tr>
+                        <tr>
+                            <th style=" background-color: #f5f4f8;">Producto</th>
+                            <th style="width: 200px; text-align: center; background-color: #f5f4f8;">Unidad de medida</th>
+                            <th style="width: 100px; text-align: center; background-color: #f5f4f8;">Cantidad</th>
+                            <th style="width: 40px; text-align: center; background-color: #f5f4f8;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsbody">
+                        <tr id="detallevacio" ><td colspan="10">NO HA SELECCIONADO UN PRODUCTO</td></tr>
+{#                        <th class="text-justify" colspan="4">Total</th>#}
+{#                        <th id="totaltabla" style="width: 100px; text-align: center"></th>#}
+                    </tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+<div class="modal fade" id="itemspanel" tabindex="-1" aria-labelledby="itemspanelLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered ">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="paneltitle" id="itemspanelLabel">Ingrese un Producto</h3>
+
+      </div>
+      <div class="modal-body" id="itemspanel_body">
+        <div id="form2">
+          {% for field in form2 %}
+          <div class="form-group">
+            <label for="id_{{ field.name }}" class="form-label control-label-modal" style="margin-bottom: 0px; margin-top: 10px">{{ field.label }}:</label>
+            <div class="controls-modal">
+              {{ field }}
+              <p class="form-text">{{ field.help_text }}</p>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" id="itemspanel_adicionarcerrar">
+          <i class="fa fa-plus"></i> Adicionar
+        </button>
+        <button type="button" class="btn btn-danger" data-dismiss="modal" id="itemspanel_cerrar">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{% endblock %}
+
+{% block formextra %}
+    <input type='hidden' name='action' value='resolverincidente'/>
+    <input type='hidden' name='id' value='{{ incidente.id }}'/>
+{% endblock %}
+{% block formback %}/helpdesk_hdincidente?id={{ incidente.id }}{% endblock %}
+{% block buttonname %}Guadar{% endblock %}
+{% block formadicional %}
+    {% if incidente.tipoincidente.id == 3 %}
+        <div class="modal fade static" id="modalmaterial" style="display: none;">
+            <div class="modal-header">
+                <h4 id="paneltitle">Eliminar Material</h4>
+            </div>
+            <div class="modal-body panelbody">
+                <p style="margin-top: 10px;">Esta seguro(a) que desea eliminar: <b id="leyendamaterial">---</b></p>
+                <input type="hidden" id="idmaterial" name="idmaterial">
+            </div>
+            <div class="modal-footer">
+                <p style="text-align: right; margin-bottom: 0">
+                    <a href="javascript:;" id="del_materialincidente" class='btn btn-danger'> Eliminar</a>
+                    <a href="javascript:;" id="cancel_eliminarmaterial" class='btn btn-default'> Cancelar</a>
+                </p>
+            </div>
+        </div>
+        <div class="modal fade static" id="itemspanel" style="display: none;">
+            <div class="modal-header">
+                <h4 id="paneltitle">Adicionar Materiales</h4>
+            </div>
+            <div class="modal-body panelbody">
+                <div class="alert alert-info incompletoaddpreguntas" style="display: none;">
+                    <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+                </div>
+                {{ formmaterialesincidentes }}
+            </div>
+            <div class="modal-footer">
+                <p style="text-align: right; margin-bottom: 0">
+                    <a href="javascript:;" id="add_itemspanel" class='btn btn-success'> Guardar</a>
+                    <a href="javascript:;" id="cancel_itemspanel" class="btn btn-danger"> Cancelar</a>
+                </p>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

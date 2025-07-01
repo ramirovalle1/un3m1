@@ -1,0 +1,273 @@
+{% load sga_extras %}
+{% load humanize %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script>
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            var ec = '{{ solicitud.estado }}';
+            var vdepositado = '{{ solicitud.monto }}';
+            var mostrarboton = '{% if permite_modificar %}S{% else %}N{% endif %}';
+
+            $("#estadosolicitud, #banco, #tipocuenta, #numerocuenta").addClass("validate[required]");
+
+            $('#estadosolicitud').change(function() {
+                var control = $(this);
+                $("#observacion").val("");
+                $("#montodevolver").val("");
+                valor = control.val();
+
+                if((valor == '2' || valor =='')){
+                    $("#observacion").prop('disabled', true).removeClass("validate[required]");
+                    if(valor == '2')
+                        $("#montodevolver").prop('disabled', false).addClass("validate[required, min[0.01], max["+vdepositado+"]");
+                    else
+                        $("#montodevolver").prop('disabled', true).removeClass("validate[required]");
+                }
+                else{
+                    $("#observacion").prop('disabled', false).addClass("validate[required]");
+                    $("#montodevolver").prop('disabled', true).removeClass("validate[required]");
+                }
+            });
+
+            {#if(ec == '2' || ec == '3') #}
+            $("#estadosolicitud").val(ec).trigger("change");
+
+            {% if not permite_modificar %}
+                $("#guardar").css('display','none');
+            {% else %}
+                $("#guardar").css('display','inline-block');
+            {% endif %}
+
+            $('#guardar').click(function () {
+                $("#formulario").validationEngine('attach',{ scroll: false });
+                var valid = $("#formulario").validationEngine('validate', { scroll: false });
+
+                if(valid){
+                    bloqueointerface();
+                    var formdata = new FormData($("#formulario")[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: "/rec_devoluciondinero",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                location.href = "/rec_devoluciondinero?estadodocumento={{ estadodocumento }}";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            $(".solo-digitos").bind("keypress", function (e) {
+                var keyCode = e.which ? e.which : e.keyCode
+                if (!(keyCode >= 48 && keyCode <= 57)) {
+                    //$(".error").css("display", "inline");
+                    return false;
+                }else{
+                    //$(".error").css("display", "none");
+                }
+            });
+
+            $('#numerocuenta').blur(function(){
+                digitos($(this));
+            });
+
+            $('#montodevolver').blur(function(){
+                numerico($(this), 0, 20000, 2);
+            });
+
+            $('.nav-tabs a').on('shown.bs.tab', function(event){
+                var x = $(event.target).parent().index();        // active tab
+                if(x == 0 && mostrarboton == 'S')
+                    $("#guardar").css('display','inline-block');
+                else
+                    $("#guardar").css('display','none');
+            });
+
+            {#$("#guardar").css('display','none');#}
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class="tabbable">
+        <ul class="nav nav-tabs">
+            <li class="active"><a class="tabs" href="#1" data-toggle="tab"><i class="fa fa-check-square"></i> Revisión y Validación</a></li>
+{#            {% if permite_modificar %}#}
+                <li><a class="tabs" href="#2" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Comprobante de Depósito</a></li>
+                <li><a class="tabs" href="#3" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Cédula Solicitante</a></li>
+                <li><a class="tabs" href="#4" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Certificado Cuenta Bancaria</a></li>
+{#            {% endif %}#}
+        </ul>
+        <div class="tab-content" style="overflow: inherit">
+            <div class="tab-pane active" id="1">
+                {% if permite_modificar %}
+                    <form name="formulario" id="formulario">
+                        <table class="table table-bordered table-striped" >
+                            <tbody>
+                                <tr>
+                                    <td colspan="4"><strong>Datos de la Solicitud</strong></td>
+                                </tr>
+                                <tr>
+                                    <td width="20%"><strong>Identificación:</strong><input type='hidden' name='id' id='id' value='{{ ids }}' />
+                                    <input type='hidden' name='action' value='validarsolicitud' /></td>
+                                    <input type='hidden' name='validacuenta' value='{% if validarcuenta %}S{% else %}N{% endif %}' /></td>
+                                    <td colspan="3" width="80%">{{ beneficiario.identificacion }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Nombres:</strong></td>
+                                    <td colspan="3">{{ beneficiario.nombre_completo_inverso }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Motivo Devolución:</strong></td>
+                                    <td colspan="3" style="text-align: justify">{{ solicitud.motivo }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Monto Depositado:</strong></td>
+                                    <td colspan="3">$ {{ solicitud.monto|floatformat:2|intcomma }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="4"><strong>Datos de la Cuenta Bancaria</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Banco:</strong></td>
+                                    <td colspan="3">
+                                        <select id="banco" name="banco" style="width: 95%" {% if not validarcuenta %}disabled{% endif %}>
+                                            <option value="">---------</option>
+                                            {% for banco in bancos %}
+                                                <option value="{{ banco.id }}" {% if banco.id == cuentabancaria.banco.id %}selected{% endif %}>{{ banco.nombre }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tipo de Cuenta:</strong></td>
+                                    <td>
+                                        <select id="tipocuenta" name="tipocuenta" style="width: 100%" {% if not validarcuenta %}disabled{% endif %}>
+                                            <option value="">---------</option>
+                                            <option value="1" {% if cuentabancaria.tipocuentabanco.id == 1 %}selected{% endif %}>AHORRO</option>
+                                            <option value="2" {% if cuentabancaria.tipocuentabanco.id == 2 %}selected{% endif %}>CORRIENTE</option>
+                                        </select><div class="help-text"></div>
+                                    </td>
+                                    <td><strong>N° Cuenta:</strong></td>
+                                    <td><input class="input-large solo-digitos" style="text-align: left; text-transform: uppercase;" maxlength="15" id="numerocuenta" name="numerocuenta" type="text" value="{{ cuentabancaria.numero }}" {% if not validarcuenta %}disabled{% endif %} >
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="4"><strong>Aprobación/Rechazo Solicitud</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Estado:</strong></td>
+                                    <td>
+                                        <select id="estadosolicitud" name="estadosolicitud" style="width: 200px">
+                                            <option value="" selected>---------</option>
+                                            <option value="2">APROBADO</option>
+                                            <option value="3">RECHAZADO</option>
+                                        </select>
+                                        <div class="help-text"></div>
+                                    </td>
+                                    <td><strong>Monto a Devolver $:</strong></td>
+                                    <td>
+                                        <input class="input-large" style="text-align: right; text-transform: uppercase;" maxlength="8" id="montodevolver" name="montodevolver" type="text" value="" >
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Observaciones:</strong></td>
+                                    <td colspan="3">
+                                        <textarea id="observacion" name="observacion" value="" style="width: 95%; text-transform: uppercase"></textarea>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                {% else %}
+                    <table class="table table-bordered table-striped" >
+                        <tbody>
+                            <tr>
+                                <td colspan="4"><strong>Datos de la Solicitud</strong></td>
+                            </tr>
+                            <tr>
+                                <td width="20%"><strong>Identificación:</strong></td>
+                                <td colspan="3" width="80%">{{ beneficiario.identificacion }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Nombres:</strong></td>
+                                <td colspan="3">{{ beneficiario.nombre_completo_inverso }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Motivo Devolución:</strong></td>
+                                <td colspan="3">{{ solicitud.motivo }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Monto Depositado:</strong></td>
+                                <td colspan="3">$ {{ solicitud.monto|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4"><strong>Datos de la Cuenta Bancaria</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Banco:</strong></td>
+                                <td colspan="3">{{ cuentabancaria.banco.nombre }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tipo de Cuenta:</strong></td>
+                                <td>{{ cuentabancaria.tipocuentabanco.nombre }}</td>
+                                <td><strong>N° Cuenta:</strong></td>
+                                <td>{{ cuentabancaria.numero }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4"><strong>Aprobación/Rechazo Solicitud</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Estado:</strong></td>
+                                <td><span class="label label-{% if solicitud.estado == 2 %}success{% else %}important{% endif %}">{{ solicitud.get_estado_display }}</span></td>
+                                <td><strong>Monto a Devolver $:</strong></td>
+                                <td>{% if solicitud.montodevolver %}<span class="label label-info" >{{ solicitud.montodevolver|floatformat:2|intcomma }}</span>{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Observaciones:</strong></td>
+                                <td colspan="3" style="text-align: justify">{{ solicitud.observacion }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+{#            {% if permite_modificar %}#}
+                <div class="tab-pane" id="2">
+                    <iframe border=0 frameborder=0 height=600px width=770 src="{{ solicitud.archivodeposito.url }}"></iframe>
+                </div>
+                <div class="tab-pane" id="3">
+                    <iframe border=0 frameborder=0 height=600px width=770 src="{{ solicitud.archivocedula.url }}"></iframe>
+                </div>
+                <div class="tab-pane" id="4">
+                    <iframe border=0 frameborder=0 height=600px width=770 src="{{ cuentabancaria.archivo.url }}"></iframe>
+                </div>
+{#            {% endif %}#}
+        </div>
+    </div>
+{% endblock %}

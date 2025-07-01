@@ -1,0 +1,294 @@
+{% load sga_extras %}
+<style>
+    .dataTables_filter {
+        padding-bottom: 15px;
+    }
+
+    .table.dataTable tfoot th, table.dataTable tfoot td {
+        border-top: 1px solid #E5E8E8 !important;
+        text-transform: uppercase;
+    }
+
+    .checked .fa {
+        color: var(--bs-warning);
+    }
+    .loghistory .dataTables_wrapper .dataTables_filter {
+        display: none;
+    }
+
+</style>
+{#<select style="width: 200px;">#}
+{#    <option value="0">--TODOS--</option>#}
+{#    {% for x in basechoices %}#}
+{#        <option value="{{ x.0 }}">{{ x.1 }}</option>#}
+{#    {% endfor %}#}
+{#</select>#}
+<div class="row">
+    <div class="col-md-12">
+        <div class="input-group mb-2">
+            <input id="input-search-loghistory" type="text" class="form-control" placeholder="Buscar por query o base afectada..." aria-label="Buscar" aria-describedby="button-search-misfavoritos" name="s">
+            <div class="input-group-append">
+                <button class="btn btn-primary" type="submit" id="button-search-loghistory"><i class="fa fa-search"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mb-2">
+    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+        <div class="table-responsive loghistory">
+            <table class='table table-bordered tabla_paginada table-padding0'>
+                <thead>
+                <tr>
+                    <th>FECHA EJECUCIÓN</th>
+                    <th>BASE AFECTADA</th>
+                    <th style="text-align:center;width: 60px;">QUERY</th>
+                    <th style="width: 60px; text-align: left">FILAS AFECTADAS</th>
+                    <th style="width: 60px; text-align: center">ARCHIVO</th>
+                </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+
+        $('#header_close_ip3, #footer_close_ip3 ').click(function () {
+           $('#itemspanel3').modal('hide');
+        });
+
+        $('#itemspanel3 #btn-submit-favoritos').click(function () {
+            let form = new FormData($('#itemspanel3 #form_favoritos')[0]);
+            if (form.get('descripcion')) {
+                $.ajax({
+                    type: "POST",
+                    url: "/gestion",
+                    data: form,
+                    success: function(data) {
+                        if (data.result) {
+                            let btn = $('#itemspanel2 #btn-add-favorites-'+form.get('id'));
+                            btn.addClass('checked').attr('idfav');
+                            alertaSuccess("Datos guardados correctamente");
+                            $('#form_favoritos #id_descripcion').val('');
+                            $('#itemspanel3').modal('hide');
+                            $(this).off('click');
+                        } else {
+                            $.unblockUI();
+                            data.mensaje ? alertaDanger(data.mensaje) : null;
+                            $(this).off('click');
+                        }
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        $.unblockUI();
+                        var msg = '';
+                        if (jqXHR.status === 0) {
+                            msg = 'Not connect: Verify Network.';
+                        } else if (jqXHR.status == 404) {
+                            msg = 'Requested page not found [404]';
+                        } else if (jqXHR.status == 500) {
+                            msg = 'Internal Server Error [500].';
+                        } else if (textStatus === 'parsererror') {
+                            msg = 'Requested JSON parse failed.';
+                        } else if (textStatus === 'timeout') {
+                            msg = 'Time out error.';
+                        } else if (textStatus === 'abort') {
+                            msg = 'Ajax request aborted.';
+                        } else {
+                            msg = 'Uncaught Error: ' + jqXHR.responseText;
+                        }
+                        NotificationJG.error("Error al enviar los datos: " + msg);
+                    },
+                    always: function () {
+                        $.unblockUI();
+                    },
+                    dataType: "json",
+                    cache: false,
+                    contentType: false,
+                    processData: false
+                });
+            }else{
+                $('#form_favoritos #help-descripcion').text('*Campo requerido');
+                setTimeout(function() {$('#form_favoritos #help-descripcion').text('')}, 3000);
+            }
+        });
+
+        const tabla_paginada = $('.tabla_paginada').DataTable({
+            //searchDelay: 1000,
+            serverSide:true,
+            processing:true,
+            iDisplayLength: 15,
+            ajax: function(data, callback, settings){
+                //var filtro = data.columns[data.order[0].column].data.replace(/\./g,"__");
+                console.log(data)
+                $.get("/gestion?action=loadmislogstable", {limite:data.length, inicio:data.start, search:data.search.value}, function (res) {
+                    if (!res.result){
+                        res = JSON.parse(res);
+                        callback({
+                            recordsTotal:res.length,
+                            recordsFiltered:res.length,
+                            data:res.data
+                        })
+                    }else{
+                        alertaDanger(res.mensaje)
+                    }
+                });
+
+            },
+            responsive: false,
+            ordering: false,
+            paging: true,
+            searching: true,
+            language: {
+                "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+            },
+            bInfo: true,
+            dom: 'Bfrtip',
+            buttons: [],
+            columnDefs: [
+                {
+                    targets: 0,
+                    data:'fecha_creacion',
+                    width:'15%',
+                    className:'text-center',
+                    render: function ( data, type, row, meta ){
+                        return `<a class="btn-icon btn btn-ghost btn-sm rounded-circle neomorphism-button ${ row.logqueryfavoritos__status ? 'checked' : '' }" id="btn-add-favorites-${row.id}" onclick="addfavoritos(this, '${row.id}')" href="javascript:void(0);"><i class="fa fa-star"></i></a>&nbsp;&nbsp;${data ? data.split(' ')[0] +' '+ data.split(' ')[1].split(':')[0] +':'+data.split(' ')[1].split(':')[1] : ''}`;
+                    }
+                },
+                {
+                    targets: 1,
+                    data:'baseafectada',
+                    width:'12%',
+                    className:'text-center',
+                    render: function ( data, type, row, meta ){
+                        return data;
+                    }
+                },
+                {
+                    targets: 2,
+                    data:'query',
+                    width:'57%',
+                    render: function ( data, type, row, meta ){
+                        return `<div class="btn-group btn-group-sm float-end" role="group"><a class="btn btn-default tu" title="" onclick="copyToClipboard(this, '${row.id}')"><i class="fa fa-clipboard"></i></a><a class="btn btn-default" onclick="copyAllQuery('${row.id}')"><i class="fa fa-keyboard-o"></i></a></div><p id="query-data-${row.id}">${data}</p>`;
+                    }
+                },
+                {
+                    targets: 3,
+                    data:'filasafectadas',
+                    width:'8%',
+                    className:'text-center',
+                    render: function ( data, type, row, meta ){
+                        return '<span>'+ data +'</span>';
+                    }
+                },
+                {
+                    targets: 4,
+                    data:'url_archivo',
+                    width:'8%',
+                    className:'text-center',
+                    render: function ( data, type, row, meta ){
+                        if (data){
+                            return `<a href="${data}" target="_blank" class="btn btn-warning btn-mini tr" title="Descargar"><i class="fa fa-download"></i></a>`;
+                        }else{
+                            return '';
+                        }
+                    }
+                },
+            ],
+        });
+        $('.tabla_paginada tbody').on('click', 'tr', function () {
+            var data = tabla_paginada.row(this).data();
+        });
+
+        $("#button-search-loghistory").click(function () {
+           tabla_paginada.search($("#input-search-loghistory").val().trim()).draw();
+       });
+
+        $('#input-search-loghistory').keyup(function(e) {
+            if(e.keyCode == 13) {
+                tabla_paginada.search($(this).val().trim()).draw();
+            }
+        });
+
+    });
+
+
+
+    count = (self) => {
+        if (self.value.length){
+            $("#form_favoritos .status").show();
+            $('#char').html(self.value.length + "/500 caracteres");
+            $('#words').html(self.value.trim().split(/\s+/).length + " palabras");
+        }else{
+            $("#form_favoritos .status").hide();
+        }
+    }
+
+    copyAllQuery = (id) => {
+        var data = $("#query-data-"+id).text()
+        pegarCampo(data);
+        $("#itemspanel2").modal('hide');
+    }
+
+    copyToClipboard = (self, id) => {
+        $(self).find('.fa-clipboard').removeClass('fa-clipboard').addClass('fa-check');
+        navigator.clipboard.writeText($("#query-data-"+id).text());
+        setTimeout(function () {
+            $(self).find('.fa-check').removeClass('fa-check').addClass('fa-clipboard');
+        }, 1000)
+    }
+
+    addfavoritos = (self, pk) => {
+        //$(".btn-add-favorites").toggleClass("main");
+        //$("#itemspanel2").modal('hide');
+        if (!$(self).hasClass('checked')){
+            $("#itemspanel3 #form_favoritos input[name=id]").val(pk);
+            $("#itemspanel3 #form_favoritos #id_descripcion").val('');
+            $("#form_favoritos .status").hide();
+            $("#itemspanel3").modal({backdrop: 'static', width: '1000'}).modal('show').on('hidden.bs.modal', function (e) {
+                //$("#itemspanel2").modal('show');
+            });
+        }else {
+            Swal.fire({
+                title: `Estás por eliminar este registro de tus favoritos. ¿Deseas continuar?`,
+                text: "",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    let idlog = pk;
+                    $.ajax({
+                        type: "POST",
+                        url: "/gestion",
+                        ContentType: 'application/json',
+                        data: {'action': 'delfavoritos', 'id': idlog, 'csrfmiddlewaretoken': '{{ csrf_token }}'},
+                        success: function(data) {
+                            if (data.result) {
+                                $.unblockUI();
+                                $('#itemspanel2 #btn-add-favorites-'+idlog).removeClass('checked');
+                                alertaSuccess(`Eliminado... &#9996;`)
+                            } else {
+                                $.unblockUI();
+                                alertaDanger(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            alertaDanger("Error al enviar los datos.");
+                        },
+                        always:function () {
+                            $.unblockUI();
+                        }
+                    });
+                } else {
+                }
+            })
+        }
+
+    }
+</script>

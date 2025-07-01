@@ -1,0 +1,192 @@
+{% load sga_extras %}
+<input type="hidden" name="id" value="{{ id|encrypt }}"/>
+<input type="hidden" name="action" value="{{ action }}"/>
+
+{% for field in form %}
+    {% if field.field.widget.attrs.separator %}
+        {% if field.field.widget.attrs.blanklinebefore %}
+        {% endif %}
+        <div style="width: 100%; height: max-content">
+            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                    <span style="padding:0 10px; background: #f5f5f5;">
+                        {% if field.field.widget.attrs.separatortitle %}
+                            {{ field.field.widget.attrs.separatortitle }}
+                        {% endif %}
+                     </span>
+            </h6>
+        </div>
+    {% endif %}
+    <div id="fieldset_{{ field.name }}" class="col-lg-{{ field.field.widget.attrs.col }}"
+         style="float: left; padding-right: 10px;">
+        <label class="control-label pr-2" for="id_{{ field.name }}"><b>{{ field.label }}&nbsp;:</b></label>
+        {{ field }}
+        <p class="help-text">{{ field.help_text }} </p>
+    </div>
+{% endfor %}
+
+<div class="row-fluid">
+    <div style="text-align: right; float: left; width: 100%">
+        {#        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</button>#}
+        {% if action == 'traeralumnos' %}
+            <a href="javascript:;" id="exportarnota" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</a>
+        {% elif action == 'editencuesta' %}
+            <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar
+            </button>
+        {% endif %}
+        <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-times-circle"></i>
+            Cancelar</a>
+    </div>
+</div>
+<div class="modal fade static" id="recalcularmodal" style="display: none;">
+    <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4><b class="paneltitle">Asignar encuesta al estudiante</b></h4>
+            </div>
+            <div class="modal-body">
+                <div class="progress" style="height: 35px">
+                    <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" id="progressbar"
+                         style="font-size: medium; font-weight: bold;"></div>
+                </div>
+                <b>
+                    <div id="recalcularmodalprogresshint">
+                    </div>
+                </b>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+
+        ocultar_campos = function () {
+                if ($("#id_encuesta").val() > 0) {
+                    $("#fieldset_fechainicioencuesta").show();
+                    $("#fieldset_fechafinencuesta").show();
+
+                } else {
+                    $("#fieldset_fechainicioencuesta").hide() ;
+                    $("#fieldset_fechafinencuesta").hide();
+
+                }
+            };
+
+        ocultar_campos();
+
+        $("#id_encuesta").change(function () {
+            ocultar_campos();
+        });
+
+
+        $("select").select2({width: '100%'});
+        $("#exportarnota").click(function () {
+            bloqueointerface();
+            var formdata = new FormData($("#itemspanel form")[0]);
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: formdata,
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                        var indice = 0;
+                        var cantidad = parseInt(data.cantidad);
+                        var inscritos = data.inscritos;
+                        var id_encuesta = data.id_encuesta;
+                        recalculo(inscritos, indice, (cantidad - 1), id_encuesta);
+                        {#mensajeSuccessSwal('Notificacion', 'Encuesta asignada exitosamente.', "/adm_seguimientoacademico?action=verencuestas")#}
+                    } else {
+                        $.unblockUI();
+                        mensajeErrorSwal('Error', 'Ha ocurrido un error al asignar la encuesta o ya existe una encuesta activa', "/adm_seguimientoacademico?action=verencuestas")
+                    }
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    $.unblockUI();
+                    {#smoke.alert("Error de conexión.");#}
+                    var msg = '';
+                    if (jqXHR.status === 0) {
+                        msg = 'Not connect: Verify Network.';
+                    } else if (jqXHR.status == 404) {
+                        msg = 'Requested page not found [404]';
+                    } else if (jqXHR.status == 500) {
+                        msg = 'Internal Server Error [500].';
+                    } else if (textStatus === 'parsererror') {
+                        msg = 'Requested JSON parse failed.';
+                    } else if (textStatus === 'timeout') {
+                        msg = 'Time out error.';
+                    } else if (textStatus === 'abort') {
+                        msg = 'Ajax request aborted.';
+                    } else {
+                        msg = 'Uncaught Error: ' + jqXHR.responseText;
+                    }
+                    //smoke.alert("Error al enviar los datos: " + msg);
+                    NotificationJG.error("Error al enviar los datos: " + msg);
+                },
+                dataType: "json",
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        });
+    });
+
+    function fallorecalculo(nombrepersona, err) {
+        $.unblockUI();
+        $("#recalcularmodal").modal("hide");
+        Swal.fire(`Fallo al asignar la encuesta de ${nombrepersona} error: ${err}`, "Encuesta Alumno", 'error');
+    }
+
+    function terminarecalculo() {
+        $("#recalcularmodal").modal("hide");
+        mensajeSuccessSwal('Notificacion', 'Encuesta asignada exitosamente.', "/adm_seguimientoacademico?action=verencuestas")
+    }
+
+    function recalculo(lista, elemento, cantidad, id_encuesta) {
+        var inscrito = lista[elemento];
+        var intentos = 0
+        var cp = (100 / (cantidad + 1)) * elemento + '%';
+        if (elemento > cantidad) {
+            terminarecalculo();
+        } else {
+            var nombrepersona = inscrito[1] + ' ' + inscrito[2] + ' ' + inscrito[3];
+            $("#recalcularmodalprogresshint").html('<i class="fa fa-user"></i> ' + nombrepersona);
+            $("#progressbar").css({'width': cp});
+            $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {
+                    "id_ins": inscrito[0],
+                    "id_encuesta": id_encuesta,
+                    "action": "asignar_encuesta_individual"
+                },
+                success: function (data) {
+
+                    if (data.result == 'ok') {
+                        intentos = 0;
+                        recalculo(lista, elemento + 1, cantidad, id_encuesta)
+                    } else {
+                        intentos += 1;
+                        if (intentos >= 3) {
+                            fallorecalculo(nombrepersona, data.mensaje);
+                        } else {
+                            recalculo(lista, elemento, cantidad, id_encuesta);
+                        }
+                    }
+                },
+                error: function () {
+                    intentos += 1;
+                    if (intentos >= 3) {
+                        fallorecalculo(nombrepersona, "error");
+                    } else {
+                        recalculo(lista, elemento, cantidad, id_encuesta);
+                    }
+                },
+                dataType: "json"
+            });
+        }
+    }
+</script>

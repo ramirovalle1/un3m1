@@ -1,0 +1,313 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css?v=1">
+    <script type="text/javascript">
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+        $(function(){
+            $("#id_responsable, #id_gestion, #id_servicio, #id_ubicacion, #id_bloque, #id_oficina, #id_piso, #id_desde, #id_hasta, #id_dia_aux").addClass("validate[required]");
+
+            let accionbuscar = "buscarpersonalinvestigacion";
+
+            ItemsDisplay = function (item) {
+                if (item.name || item.text){
+                    if(item.name)
+                        return $('<span>' + item.name+ '</span>');
+                    else
+                        return $('<span>' + item.text+ '</span>');
+                }else{
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_responsable").select2({
+                width: '100%',
+                placeholder: "-------------------------------------------",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    },
+                    "errorLoading": function () {
+                        return "No se pudieron cargar los resultados...";
+                    },
+                },
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `/adm_proyectoinvestigacion?action=${accionbuscar}&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+
+            }).on("select2:unselect", function (evt) {
+
+            });
+
+            $('#id_gestion').change(function(){
+                $('#id_servicio').empty().trigger("change");
+                let control = $(this);
+                let id = parseInt($("#id_gestion").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_asesoriainvestigacion",
+                        data: {'action': 'serviciogestion', 'id': id, 'tipo': '0'},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_servicio').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            {% for diacab in diascab %}
+                $("#tiposervicios1{{ diacab.numero }}").addClass("validate[required]");
+                $("#tiposervicios2{{ diacab.numero }}").addClass("validate[required]");
+            {% endfor %}
+
+            {% for dia in dias %}
+                $("#id_turno_dia{{ dia }}_aux").addClass("validate[required]");
+
+                $("#dia{{ dia }}").click(function () {
+                    $("#tiposervicios1{{ dia }}").val("").trigger("change");
+                    $("#tiposervicios2{{ dia }}").val("").trigger("change");
+                    if ($(this).is(':checked')){
+                        $("#tiposervicios1{{ dia }}").prop("disabled", false);
+                        $("#tiposervicios1{{ dia }}").addClass("validate[required]");
+                        $("#tiposervicios2{{ dia }}").prop("disabled", false);
+                        $("#tiposervicios2{{ dia }}").addClass("validate[required]");
+                        $(".turnodia{{ dia }}").each(function() {
+                            $(this).prop('checked', true);
+                            $(this).prop('disabled', false);
+                        });
+                    }else{
+                        $("#tiposervicios1{{ dia }}").prop("disabled", true);
+                        $("#tiposervicios1{{ dia }}").removeClass("validate[required]");
+                        $("#tiposervicios2{{ dia }}").prop("disabled", true);
+                        $("#tiposervicios2{{ dia }}").removeClass("validate[required]");
+                        $(".turnodia{{ dia }}").each(function() {
+                            $(this).prop('checked', false);
+                            $(this).prop('disabled', true);
+                        });
+                    }
+
+                    $("#id_turno_dia{{ dia }}_aux").val("S");
+
+                    actualizarListaDia{{ dia }}();
+                    verificarDiaMarcado();
+                });
+
+                $(".turnodia{{ dia }}").click(function(){
+                    let tm{{ dia }} = 0;
+                    $(".turnodia{{ dia }}").each(function(){
+                        if($(this).is(":checked"))tm{{ dia }}++;
+                    });
+
+                    if(tm{{ dia }} > 0)
+                        $("#id_turno_dia{{ dia }}_aux").val("S");
+                    else
+                        $("#id_turno_dia{{ dia }}_aux").val("");
+
+                    actualizarListaDia{{ dia }}();
+                });
+
+                actualizarListaDia{{ dia }} = function (){
+                    lista_items{{ dia }} = [];
+                    $(".turnodia{{ dia }}").each(function(){
+                        lista_items{{ dia }}.push({'idturno': $(this).attr("idturno"),
+                                                    'marcado': $(this).is(":checked")});
+                    });
+                };
+
+                verificarDiaMarcado = function (){
+                    let marcados = 0;
+                    $(".dias").each(function(){
+                        if($(this).is(":checked"))marcados++;
+                    });
+
+                    if(marcados > 0)
+                        $("#id_dia_aux").val("S");
+                    else
+                        $("#id_dia_aux").val("");
+                };
+
+                actualizarListaDia{{ dia }}();
+            {% endfor %}
+
+            let data;
+            let newOption
+            data = {
+                id: {{ horario.responsable.id }},
+                text: '{{ horario.responsable.nombre_completo_inverso }}'
+            };
+            newOption = new Option(data.text, data.id, true, true);
+            $('#id_responsable').append(newOption).trigger('change');
+            {% if tipovista == 'RS' %}
+                $('#id_responsable').attr("disabled", "disabled");
+            {% else %}
+                $("#id_responsable").addClass("validate[required]");
+            {% endif %}
+            $("#id_servicio").val(JSON.parse('{{ servicios }}')).trigger('change');
+            //$("#id_hasta").attr("max", "2024-06-06")
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_asesoriainvestigacion?action=horariosservicios{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_asesoriainvestigacion?action=horariosservicios{% endblock %}
+{% block formdestinationswal %}/adm_asesoriainvestigacion?action=horariosservicios{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edithorarioservicio'/>
+    <input type='hidden' name='id' value='{{ horario.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/adm_asesoriainvestigacion?action=horariosservicios{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formtop %}
+    {% if horario.estado == 3 %}
+        <div class="alert alert-warning" role="alert">
+            <b>Observaciones: </b>{{ horario.observacion }}
+        </div>
+    {% endif %}
+{% endblock %}
+{% block formsuffix %}
+    <div id="fieldset_horario" class="col-md-12" style="float: left;">
+        <div class="row">
+
+        </div>
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_horario" style="padding-right: 10px;">Horarios:</label>
+                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_dia_aux" value="S">
+                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">
+                <div class="table-responsive-xxl">
+                    <table class="table table-bordered table-striped" id="tbhorarios">
+                        <thead class="table-light">
+                            <tr>
+                                <th>&nbsp;</th>
+                                {% for diacab in diascab %}
+                                    <th style="width: {{ diacab.ancho }}%; text-align: center;"><input id="dia{{ diacab.numero }}" name="dia{{ diacab.numero }}" dia="{{ diacab.numero }}" {% if diacab.marcado %}checked{% endif %} class="dias" type="checkbox"><label for="dia{{ diacab.numero }}">{{ diacab.nombre }}</label></th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_turnos">
+                            <tr>
+                                <td>S1</td>
+                                {% for diacab in diascab %}
+                                    <td>
+                                        <select id="tiposervicios1{{ diacab.numero }}" name="tiposervicios1{{ diacab.numero }}" class="tiposervicios1s" {% if not diacab.tiposervicios1 %}disabled{% endif %}>
+                                            {% for tipo in tiposervicio %}
+                                                <option value="{{ tipo.0 }}" {% if tipo.0 == diacab.tiposervicios1 %}selected{% endif %}>{{ tipo.1|truncatechars:9 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>S2</td>
+                                {% for diacab in diascab %}
+                                    <td>
+                                        <select id="tiposervicios2{{ diacab.numero }}" name="tiposervicios2{{ diacab.numero }}" class="tiposervicioss2" {% if not diacab.tiposervicios2 %}disabled{% endif %}>
+                                            {% for tipo in tiposervicio %}
+                                                <option value="{{ tipo.0 }}" {% if tipo.0 == diacab.tiposervicios2 %}selected{% endif %}>{{ tipo.1|truncatechars:9 }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                            {% for detalle in detalles %}
+                                <tr>
+                                    <td>&nbsp;</td>
+                                    {% for turno in detalle.turnosdias %}
+                                        <td style="text-align: center">
+                                            <input class="turnodia{{ turno.dia }}" idturno="{{ turno.idturno }}" id="hora{{ turno.dia }}_{{ turno.idturno }}" type="checkbox" {% if turno.marcado == 'S' %}checked{% endif %} {% if turno.bloqueado == 'S' %}disabled{% endif %}>
+                                            <label class="small" for="hora{{ turno.dia }}_{{ turno.idturno }}">{{ turno.comienza|date:"H:i" }} - {{ turno.termina|date:"H:i" }}</label>
+                                        </td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                            <tr>
+                                <td>&nbsp;</td>
+                                {% for dia in dias %}
+                                    <td style="text-align: center">
+                                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_turno_dia{{ dia }}_aux" value="S">
+                                        <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{#    <div id="fieldset_observacion" class="col-md-12" style="float: left;">#}
+{#        <div class="row">#}
+{##}
+{#        </div>#}
+{#        <div class="input-group">#}
+{#            <div class="label-text col-md-3 col-sm-3 col-12" style="display: table; height: 30px; text-align: right;">#}
+{#                <div style="display: table-cell; vertical-align: middle; line-height: 18px">#}
+{#                    <label for="id_observacion" style="padding-right: 10px;">Observaciones:</label>#}
+{#                </div>#}
+{#            </div>#}
+{#            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">#}
+{#                <textarea name="observacion" cols="40" rows="4" col="12" class="form-control" data-nameinput="observacion" id="id_observacion" style="padding: 3px;">{{ horario.observacion }}</textarea>#}
+{#                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"> </div>#}
+{#            </div>#}
+{#        </div>#}
+{#    </div>#}
+{% endblock %}

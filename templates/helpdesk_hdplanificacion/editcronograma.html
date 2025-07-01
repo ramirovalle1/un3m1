@@ -1,0 +1,324 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(document).ready(function () {
+
+
+            $('#id_bloque').empty().append('<option value="">---------</option>').val(0).trigger("change");
+
+            var sem = $("#semana").val();
+
+            $.post("/helpdesk_hdplanificacion", {'action': 'selectcronogramabloque', 'sem': sem}, function(data) {
+                if (data.result == 'ok') {
+                    for (elemento in data.lista) {
+                        $('#id_bloque').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+
+                    }
+
+                }
+            }, 'json');
+        });
+        $(function() {
+            $("#id_asunto, #id_persona_select2,#id_departamento_select2,#id_grupo,#id_categoria,#id_subcategoria, #id_activo_select2,#id_medioreporte,#id_horareporte,#id_estado,#id_resolucion").addClass("validate[required]");
+            $("#id_fechainicio, #id_fechafin").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide');});
+            $('#id_bloque').change(function (){
+                $('#id_ubicacion').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var id = $("#semana").val();
+                var blo = $("#id_bloque").val();
+                $.post("/helpdesk_hdplanificacion", {'action': 'selectcronograma', 'id': id,'blo':blo}, function(data) {
+                    if (data.result == 'ok') {
+                        for (elemento in data.lista) {
+                            $('#id_ubicacion').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+
+                        }
+
+                    }
+                }, 'json');
+            });
+
+            $('#id_ubicacion').change(function (){
+                $('#id_bien').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                var sem = $("#semana").val();
+                var blo = $("#id_ubicacion").val();
+
+
+                $.post("/helpdesk_hdplanificacion", {'action': 'selectbien', 'sem': sem,'blo': blo}, function(data) {
+                    if (data.result == 'ok') {
+
+                        for (elemento in data.listas) {
+
+                            $('#id_bien').append('<option value="' + data.listas[elemento][0] + '">' + data.listas[elemento][1] + '</option>');
+
+
+                        }
+                    }
+                }, 'json');
+            });
+            $('#id_bien').change(function (){
+
+                var sem = $("#semana").val();
+                var blo = $("#id_ubicacion").val();
+                id = $(this).val();
+                $.post("/helpdesk_hdplanificacion", {'action': 'selectbiencantidad', 'id': id,'sem':sem,'blo':blo}, function(data) {
+                    if (data.result == 'ok') {
+                        for (elemento in data.listas) {
+                            $('#id_cantidad').val(data.listas[elemento][0]);
+
+                        }
+
+                    }
+                }, 'json');
+            });
+
+
+            $(".cargarformulario").click(function() {
+                $('#id_cantidad').attr('readonly', true);
+                $('#id_cantidad').val('');
+                $("#id_material").change();
+                $("#itemspanel").modal({backdrop:'static', width: '400px'}).modal('show');
+                $("#itemspanel .incompletoaddpreguntas").hide();
+            });
+
+
+            $("#add_itemspanel").click(function(){
+                var idbloque = $("#id_bloque").val();
+                var idubicacion = $("#id_ubicacion").val();
+                var idbien = $("#id_bien").val();
+                var idcantidad = $("#id_cantidad").val();
+                var idfechainicio= $("#id_fechainicio").val();
+                var idfechafin= $("#id_fechafin").val();
+                if (idbloque == '' || idcantidad == ''|| idubicacion == ''||idbien == '' || idfechainicio == ''|| idfechafin == '' ){
+                    smoke.alert('Llene todos los campos');
+                    return false;
+                }
+                bloqueointerface();
+                $.post("/helpdesk_hdplanificacion", {'action': 'addactividad', 'idmaterialmantenimiento': {{ crosemana.id }}, 'idbloque': idbloque, 'idcantidad': idcantidad, 'idubicacion': idubicacion, 'idbien': idbien, 'idfechainicio': idfechainicio, 'idfechafin': idfechafin }, function(data) {
+                    if (data.result) {
+                        $.unblockUI();
+                        $.post("/helpdesk_hdplanificacion", {'action':'veractividad', 'idmaterialmantenimiento': {{ crosemana.id }} }, function(datos) {
+                            if (datos.result == 'ok') {
+                                $.unblockUI();
+                                $('#itemspanel').modal('hide');
+                                $("#contenidomateriales").html(datos.html);
+                            }
+                        }, 'json');
+                    }
+                }, 'json');
+            });
+            $("#cancel_itemspanel").click(function(){
+                $('#itemspanel').modal('hide');
+            });
+            $("#cancel_itemspanel").click(function(){
+                $('#itemspanel').modal('hide');
+            });
+            $("#cancel_eliminaractividad").click(function(){
+                $('#modalmaterial').modal('hide');
+            });
+            $("#id_cantidad").blur(function(){
+                numerico($(this), 0, 0, 0);
+            });
+            $("#del_actividad").click(function(){
+                var idactividad =$('#idactividad').val()
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/helpdesk_hdplanificacion",
+                    data: {'action': 'delactividad', 'idactividad': idactividad },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos.");
+                    },
+                    success: function (data) {
+                        if (data.result == "ok") {
+                            $('#modalmaterial').modal('hide');
+                            $.post("/helpdesk_hdplanificacion", {'action':'veractividad', 'idmaterialmantenimiento': {{ crosemana.id }} }, function(datos) {
+                                if (datos.result == 'ok') {
+                                    $.unblockUI();
+                                    $("#contenidomateriales").html(datos.html);
+                                }
+                            }, 'json');
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    }
+                });
+
+            });
+
+
+            ItemsDisplay = function (item) {
+                if(item.text=='undefined')
+                {
+                    return '---------';
+                }
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+            $("#id_gruposistema_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/helpdesk_hdplanificacion?action=buscargrupo&q=" + params.term ;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_gruposistema").attr({"value":(evt.params.data.id)});
+            });
+
+        });
+        function eliminaractividad(idactividad) {
+            var idmater = idactividad;
+            $("#idactividad").val(idactividad);
+            alert("g");
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "/helpdesk_hdplanificacion",
+                data: {'action': 'conactividad', 'idmater': idmater },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al obtener los datos.");
+                },
+                success: function (data) {
+                    if (data.result == "ok") {
+                        $('#leyendamaterial').html(data.nombre);
+                        $("#modalmaterial").modal({backdrop:'static', width: '600px'}).modal('show');
+                        $.unblockUI();
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                }
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}/helpdesk_hdplanificacion?action=viewcronograma{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/helpdesk_hdplanificacion?action=viewcronograma{% endblock %}
+{% block formaction %}/helpdesk_hdplanificacion?action=viewcronograma{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formsuffix %}
+
+    <fieldset class="control-group nomarginsmateriales" >
+        <div class="controls">
+            <table style="width: 820px; margin-right: 20px;" align="right"  class="table table-bordered table-condensed">
+                <thead>
+                <tr>
+                    <th colspan="6" style="text-align: center" width="90%">Detalle Semanal</th>
+                    <th colspan="1" style="text-align: center" width="10%"><a href="javascript:;" id="itemsadicionarrai" class="btn btn-success btn-mini cargarformulario"><span class="fa fa-plus"></span></a></th>
+                </tr>
+                <tr>
+                    <th>Código</th>
+                    <th>Ubicación</th>
+                    <th>Sistema/Equipos</th>
+                    <th>Cantidad</th>
+                    <th>Fecha Inicio</th>
+                    <th>Fecha Fin</th>
+                    <th>Acciones</th>
+                </tr>
+                </thead>
+                <tbody id="contenidomateriales">
+                {% if crosemanales %}
+                    {% for listado in crosemanales %}
+                        <tr>
+                            <td data-title='Codigo'>{{ listado.id}}</td>
+                            <td data-title='Ubicación'>{{ listado.bloque.bloque }} - {{ listado.bloque.ubicacion }}</td>
+                            <td style="text-align: center;"  data-title='Sistema/Equipo' > {{ listado.bien.sistemaequipo }} </td>
+                            <td data-title='Cantidad'>{{ listado.cantidad}}</td>
+                            <td style="text-align: center;"  data-title='Fecha Inicio' >{{ listado.fechainicio|date:"Y-m-d" }}</td>
+                            <td style="text-align: center;"  data-title='Fecha Fin' >{{ listado.fechafin|date:"Y-m-d"}}</td>
+                            <td style="text-align: center">
+                                <a href="javascript:;" onclick="eliminaractividad({{ listado.id }})" class="btn btn-danger btn-mini"><span class="fa fa-trash"></span></a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </fieldset>
+    <br>
+
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editcronograma'/>
+    <input type='hidden' name='id' id="semana" value='{{ crosemana.id }}'/>
+
+
+{% endblock %}
+{% block formback %}/helpdesk_hdplanificacion?action=viewcronograma{% endblock %}
+{% block buttonname %}Guadar{% endblock %}
+{% block formadicional %}
+
+    <div class="modal fade static" id="modalmaterial" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Eliminar Material</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <p style="margin-top: 10px;">Esta seguro(a) que desea eliminar: <b id="leyendamaterial">---</b></p>
+            <input type="hidden" id="idactividad" name="idactividad">
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="del_actividad" class='btn btn-danger'> Eliminar</a>
+                <a href="javascript:;" id="cancel_eliminaractividad" class='btn btn-default'> Cancelar</a>
+            </p>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h4 id="paneltitle">Adicionar Actividades</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info incompletoaddpreguntas" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            {{ crosemanal }}
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="add_itemspanel" class='btn btn-success'> Guardar</a>
+                <a href="javascript:;" id="cancel_itemspanel" class="btn btn-danger"> Cancelar</a>
+            </p>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,416 @@
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <style >
+    .oscurecer-img{
+      border-radius: 12px 12px 0px 0px;
+    }
+    .aclarar-img{
+      filter: brightness(150%);
+    }
+    .contenedor{
+        background-color: white; width: 100px; height: 130px; position: relative;
+        display: inline-block;
+        text-align: center;"
+    }
+    .texto-encima{
+        position: absolute;
+        top: 10px;
+
+    }
+    .centrado{
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    .texto-encima{
+        position: absolute;
+        top: 10px;
+    }
+</style>
+    <style>
+        /* Formateamos el label que servirá de contenedor */
+        .switch {
+          position: relative;
+          display: inline-block;
+          width: 33px;
+          height: 20px;
+          border-radius: 20px;
+        }
+
+        /* Ocultamos el checkbox html */
+        .switch input {
+          display:none;
+        }
+
+        /* Formateamos la caja del interruptor sobre la cual se deslizará la perilla de control o slider */
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(213,216,220,0.74);
+          -webkit-transition: .4s;
+          transition: .4s;
+        }
+
+        /* Pintamos la perilla de control o slider usando el selector before */
+        .slider:before {
+          position: absolute;
+          content: "";
+          height: 20px;
+          width: 20px;
+          left: 0px;
+          bottom: 0px;
+          box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+          background-color: white;
+          -webkit-transition: .4s;
+          transition: .4s;
+        }
+
+        /* Cambiamos el color de fondo cuando el checkbox esta activado */
+        input:checked + .slider {
+          background-color: rgba(17,218,35,0.56);
+        }
+
+        /* Deslizamos el slider a la derecha cuando el checkbox esta activado */
+        input:checked + .slider:before {
+          -webkit-transform: translateX(15px);
+          -ms-transform: translateX(15px);
+          transform: translateX(15px);
+        }
+
+        /* Aplicamos efecto de bordes redondeados en slider y en el fondo del slider */
+        .slider.round {
+          border-radius: 30px;
+        }
+
+        .slider.round:before {
+          border-radius: 50%;
+        }
+    </style>
+    <script>
+        var numImplemento = 1;
+        var switchery;
+        var secciones=[];
+        $("select").select2({width: '100%'});
+
+        $(function () {
+            $("#id_horario").addClass("validate[required]");
+            let elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+            elems.forEach(function (html) {
+                var switchery = new Switchery(html, {
+                    size: 'small',
+                    color: 'rgba(17,218,35,0.56)',
+                    secondaryColor: 'rgba(213,216,220,0.74)'
+                });
+            });
+            let clicktercero = document.querySelector('#id_tercero')
+
+            clicktercero.onchange = function() {
+                if ($(this).is(':checked') === true) {
+                   $('#id_tipotercero').removeAttr('disabled')
+                }else {
+                    ocultar()
+                }
+             }
+
+            $('#reservarturno').on('click', function () {
+                    bloqueointerface()
+                    var info= document.getElementsByName("infoImplemento[]");
+                    console.log(info);
+                    $.ajax({
+                        type: "POST",
+                        url: `{{ request.path }}`,
+                        data: {
+                            'action': 'reservar',
+                            'id': '{{ horario.id }}',
+                            'fecha':'{{ fecha }}',
+                            'tercero':clicktercero.checked
+
+                        },
+                        success: function (data) {
+                            $.unblockUI()
+                            if (data.result === 'ok') {
+                                cargarbusqueda()
+                                $("#itemspanel #close").click()
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI()
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                })
+            $('#tbfamiliar').on("click", "tbody tr td .deleteInfoImplemento", function () {
+                $(this).parents('tr').remove();
+            })
+            $('.seccion').change(function(){
+              if ($(this).is(':checked') === true) {
+                  secciones.push($(this).attr('id'))
+                  $(this).val(secciones)
+                }else {
+                   let pos = secciones.indexOf($(this).attr('id'))
+                   secciones.splice(pos, 1)
+                   $(this).val(secciones)
+                }
+            })
+
+            $('#id_tipotercero').select2({
+                    placeholder: 'Seleccionar tipo',
+                    allowClear: true,
+                    width:"100%"}).on('select2:select', function (e) {
+                       var data = $("#id_tipotercero option:selected").val()
+                       if (data==1){
+                            $('.fam').removeAttr('hidden')
+                            $('#familiares').removeAttr('disabled')
+
+                            $('.cant').attr('hidden','hidden')
+                            $('#id_cantidad').attr('disabled','disabled')
+                            $('#id_cantidad').val(0)
+                       }else{
+                            $('.fam').attr('hidden','hidden')
+                            $('#familiares').attr('disabled','disabled')
+                            $('#familiares').val(null).trigger('change');
+
+                            $('.cant').removeAttr('hidden', 'disabled')
+                            $('#id_cantidad').removeAttr('disabled','disabled')
+                            $('#id_cantidad').val(1)
+               }
+            })
+            $('#id_horario').select2({
+                    placeholder: 'Seleccionar turno',
+                    allowClear: true,
+                    width:"100%"
+                })
+            {% if secciones %}
+                $('#id_horario').select2({
+                    placeholder: 'Seleccionar turno',
+                    allowClear: true,
+                    width:"100%"
+                }).on('select2:select', function (e) {
+                    cargarsecciones($(this).val())
+                });
+            {% endif %}
+
+            });
+
+        function ocultar(){
+            $('.fam').attr('hidden','hidden')
+            $('#familiares').attr('disabled','disabled')
+            $('#familiares').val(null).trigger('change')
+            $('.cant').attr('hidden','hidden')
+            $('#id_cantidad').attr('disabled','disabled')
+            $('#id_cantidad').val(0)
+            $('#id_tipotercero').val(0).trigger('change')
+            $('#id_tipotercero').attr('disabled','disabled')
+        }
+
+        function btnAddFamiliar() {
+            $('#tbfamiliar tbody').append($('<tr>', {'id': numImplemento}).append(
+            $('<td>').append($('<select>', {
+                'class': 'form-control seleccion',
+                'aria-hidden': "true",
+                'selected':'1',
+                'name': 'infoImplemento[]',
+                'id': `fam${numImplemento}`,
+
+            })
+            {% for familiar in familiares %}
+                .append( $('<option>',{
+                    value: '{{ familiar.id }}',
+                    text: '{{familiar.nombre}}'
+                }))
+            {% endfor %}
+            ),
+
+            $('<td style="text-align: center; width: 10px">', {}).append($('<button>', {
+                'type': 'button',
+                'required': 'true',
+                'onclick': `deleteInfo(${numImplemento})`,
+                'class': 'btn btn-danger btn-mini deleteInfoImplemento',
+                'html': '<i class="fa fa-times"></i>'
+            }))));
+            numImplemento += 1;
+        }
+
+        function deleteInfo(id) {
+            numImplemento -= 1;
+            $(`#${id}`).closest('tr').remove();
+        }
+
+        function listar_familiares(id) {
+            var sel = $('#fam' + id);
+                var currSelectValue = $(sel).children();
+                    if ($((sel).children()).length == 0) {
+                        {% for familiar in familiares %}
+                            $(sel).append($("<option>", {
+                                value: `{{ familiar.id }}`,
+                                text: '{{ familiar.nombre }}'
+                             }));
+                        {% endfor %}
+                    }
+         }
+
+        function cargarsecciones(seleccion){
+            $("#secciones").empty()
+            {% for horario in horarios %}
+                if ("{{ horario.id }}" == seleccion){
+                    $('#secciones').append(`
+                     <ul class="menuPanel" style="grid-gap: 5px;grid-template-columns: repeat(auto-fill,minmax(100px, 1fr));">
+                        {% for seccion in secciones %}
+                            <li style="background-color: white; width: 100px; color: #4d4d4d">
+                        {% if seccion.fondo %}
+                            <img src="{{ seccion.fondo.url }}" alt="Carril" class="oscurecer-img" style="height: 55px; width: 100%">
+                        {% endif %}
+                        {% with cupos=seccion|args:fecha|args:horario.id|call:"cupo_disponible_seccion" %}
+                             <p style="font-size: 10px; line-height: 12px">
+                                <b>{{ seccion.nombre }}</b>
+                                <br>
+                                <b>Disponible: {{ cupos }}</b>
+                            </p>
+
+                                {% if cupos == 0 %}
+                                    {% if seccion.icono %}
+                                    <div style="margin:0px; padding:0px; text-aling:center">
+                                        <img src="{{seccion.icono.url}}" alt="natacion" style="width: 40px; height: 40px;">
+                                    </div>
+                                    {% endif %}
+                                {% else %}
+                                <div style="margin-bottom: 10px">
+                                <label class="switch">
+                                    <input type="checkbox" name="seccion[]" id="{{ seccion.id }}" value="{{ seccion.id }}" class="js-switch seccion">
+                                    <div class="slider round"></div>
+                                </label>
+                                 </div>
+                                {% endif %}
+
+                            {% endwith %}
+                        </li>
+                        {% endfor %}
+                </ul>
+                <hr>`);
+                }
+            {% endfor %}
+        }
+
+</script>
+{% endblock %}
+{% block canvas %}
+    <input type="hidden" name="fecha" value="{{ fecha }}">
+    <input type="hidden" name="action" value="reservar">
+    <div class="span12" style="margin-left: 0px">
+        <div class="row-fluid" >
+            <div class="uk-grid-small" style="width: 100%; font-size: 14px;!important;">
+                <div class="span6" >
+                    <p style="margin-top: 0px"><i class="fa fa-user"></i> {{ persona }}</p>
+                    <p style="margin-top: 0px"><i class="fa fa-location-arrow"></i> {{ actividad.area}}</p>
+                    <p style="margin-top: 0px"><i class="fa fa-swimmer"></i> {{ actividad }}</p>
+                </div>
+                <div class="span6">
+                    <p style="margin-top: 0px"><i class="fa fa-tag"></i> {{ horariodia.get_dia_display }}</p>
+                    <p style="margin-top: 0px"><i class="fa fa-calendar"></i> {{ fecha }}</p>
+                    <p style="margin-top: 0px"><i class="fa fa-clock-o"></i> Turnos disponibles
+                    <select name="horario" id="id_horario" required>
+                        <option></option>
+                        {% for horario in horarios %}
+                            {% with turnos=horario|args:fecha|call:"cupos_reservados" %}
+                                {% if turnos > 0 %}
+                                    {% with disponible=horario|args:fecha|call:"horario_disponible" %}
+                                        {% if disponible %}
+                                            <option value="{{ horario.id }}" >{{ horario.turno}} - Cupos disponibles: {{ turnos }} </option>
+                                        {% else %}
+                                            <option value="0" disabled>{{ horario.turno}} - Tiempo de reserva finalizado</option>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% else %}
+                                     <option value="0" disabled>{{ horario.turno}} - Cupos agotados</option>
+                                {% endif %}
+                            {% endwith %}
+                        {% endfor %}
+                    </select>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <hr>
+        <div id="secciones" class="se">
+        </div>
+    </div>
+
+    <div class="course-card-trailer">
+            <div class="p-3">
+                <div class="span12">
+                    <b>Incluir terceros ? : </b>
+                    <input type="checkbox" name="tercero" id="id_tercero" class="js-switch">
+                </div>
+                <div class="span3" style="margin-left: 0px;">
+                    <b>Tipo: </b>
+                    <select name="tipotercero" id="id_tipotercero" disabled="true" required>
+                            <option></option>
+                            {% for tipotercero in tipoterceros %}
+                                <option value="{{ tipotercero.0 }}">{{ tipotercero.1 }}</option>
+                            {% endfor %}
+                    </select>
+                </div>
+                <div class="span6 cant" hidden>
+                    <label><b>Cantidad</b></label>
+                    <input disabled="true" type="number" name="cantidad" id="id_cantidad" min="1" max="32" placeholder="0" style="width: 50px; text-align: center; ">
+
+                </div>
+                <div class="span6 fam" hidden>
+                    <label><b>Seleccione uno o varios familiares</b></label>
+                    <select name="familiares[]" multiple="multiple" id="familiares" class="form-control" disabled="true">
+                        {% for familiar in familiares %}
+                            <option value="{{ familiar.id }}">{{ familiar.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="tbterceros" hidden>
+                    <table id="tbfamiliar" class="table-bordered table">
+                        <thead>
+                            <tr>
+                                <th style="background-color: white; text-align: center" >Familiar</th>
+                                <th style="background-color: white; text-align: center; width: 20px"><i class="fa fa-cog"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th></th>
+                                <th style="text-align: center">
+                                    <a onclick="btnAddFamiliar()"
+                                       class="btn btn-primary btn-mini tooltips"
+                                       data-placement="top"
+                                       data-original-title="Agregar">
+                                        <i class="fa fa-plus-circle"></i></a><br>
+                                </th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="span12" style="text-align: right; margin-top: 20px">
+                    <button  type="submit" id="submit" style="padding: 8px;!important; font-size: 14px;" class="btn btn-primary uk-width-1-4 transition-3d-hover">
+                        <i class="fa fa-tag"></i> Reservar</button>
+{#                    <a href="javascript:void(0);" onclick="reservar()" type="submit" id="submit" style="padding: 8px;!important; font-size: 16px;" class="btn btn-primary uk-width-1-5 transition-3d-hover">#}
+{#                        <i class="fa fa-tag"></i> Guardar</a>#}
+                    <a href="javascript:void(0);" id="close" data-bs-dismiss="modal" style="padding: 8px;!important; font-size: 14px;" class="btn btn-danger uk-width-1-4 transition-3d-hover">
+                        <i class="fa fa-window-close"></i> Cancelar</a>
+                </div>
+            </div>
+    </div>
+
+{% endblock %}
+
+
+
+

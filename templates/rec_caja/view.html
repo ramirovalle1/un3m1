@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block heading %}
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <script type="text/javascript">
+        $(function() {
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/rec_caja?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $("#anioejercicio").change(function () {
+                var id = $(this).val();
+                var t = $("#tiposel").val();
+                bloqueointerface();
+                location.href = '/rec_caja?action=cambioperiodo&id=' + id + '&t]=' + t;
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class='headtitle'>
+                {% if caja %}
+                    <h3 class="texto-blue">Cajero: {{ caja }}</h3>
+                    <h4 class="texto-blue">Punto de venta: {{ caja.puntoventa }}</h4>
+                {% endif %}
+                <h6>{{ title }}</h6>
+            </div>
+        </div>
+    </div>
+    {% if dias <= 0 %}
+        <div class="alert alert-danger" id="incompleto" >
+            <i class="fa fa-info-sign"></i> El certificado de {{ NOMBRE_CERTIFICADO }} caducó el {{ FECHA_CADUCIDAD_CERTIFICADO|date:'d-m-Y' }}, por favor realizar la renovación
+        </div>
+    {% else %}
+        <div class="alert alert-info" id="incompleto" >
+            <i class="fa fa-info-sign"></i> El certificado de {{ NOMBRE_CERTIFICADO }} caduca el {{ FECHA_CADUCIDAD_CERTIFICADO|date:'d-m-Y' }} quedan  {{ dias }} días para caducar
+        </div>
+    {% endif %}
+
+    <div class="container-fluid">
+        <div class='row'>
+            <div class="col-sm-3">
+                {% if caja %}
+                    <a href="javascript:;" class="btn btn-success"
+                       onclick="mensajeConfirmSwal('Abrir sesión de cobranzas en caja','Esta seguro(a) de abrir una sesión de caja para iniciar los cobros de rubros',true,'{{ request.PATH }}','addsesion','{{ caja.id }}','{{ request.PATH }}')">
+                        <i class="fa fa-plus"></i> Adicionar</a>
+            {% endif %}
+                {% if caja or persona.usuario.is_superuser %}
+                    <a href="{{ request.PATH }}?action=cajeros" class="btn btn-default">
+                                <i class="fa fa-users"></i> Cajeros</a>
+                        {% endif %}
+            <a href="javascript:void(0)" class="btn btn-default"
+                    onclick="formModalBase('','Reporte de facturas','reportefactura','','modal-md')">
+                                <i class="fa fa-file-excel-o"></i> Reporte</a>
+            </div>
+            <div class='col-sm-4' style="text-align: right;">
+                <form class="form-search" onsubmit="return busqueda()">
+                    <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"
+                    style="width: {% if search or ids %}60{% else %}70{% endif %}%!important;"/>
+                    <a href="javascript:;" id='search' class='btn btn-primary-old'><i class="fa fa-search "></i> </a>
+                    {% if search or ids %}
+                        <a href="/rec_caja" class='btn btn-default'><i class="fa fa-refresh"></i> </a>
+                    {% endif %}
+                </form>
+            </div>
+            <div class="col-sm-3">
+                <select id='anioejercicio' style="width: 100px">
+                    {% for anio in anios %}
+                        <option value='{{ anio.id }}'
+                                {% if mianio == anio.anioejercicio %}selected="selected"{% endif %}>{{ anio }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+   <div class="card mb-4">
+        <div class="card-body rounded-3 border-dark-info">
+            <table class="tabla_responsive table table_primary">
+                <thead>
+                <tr>
+                    <th style="width: 60px; text-align: center"># Arqueo</th>
+                    <th>Cajero</th>
+                    <th style="width: 60px; text-align: center">Cant.Fact.</th>
+                    <th style="width: 100px; text-align: center">Punto de venta</th>
+                    <th style="text-align: center; width: 80px;">Fecha</th>
+                    <th style="text-align: center; width: 100px;">Fondo Inicial</th>
+                    <th style="text-align: center; width: 100px;">Total Recaudado</th>
+                    <th style="text-align: center; width: 80px;">Estado</th>
+                    <th style="text-align: center; width: 40px;">Info</th>
+                    <th style="text-align: center; width: 80px;"> </th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for sesion in sesiones %}
+                    <tr>
+                        <td>{{ sesion.numero }}</td>
+                        <td>{{ sesion.caja.persona }}</td>
+                        <td style="text-align: center">{{ sesion.cantidad_facturas_sesion }}</td>
+                        <td style="text-align: center">{{ sesion.caja.puntoventa }}</td>
+                        <td style="text-align: center;">{{ sesion.fecha|date:'d-m-Y' }}</td>
+                        <td style="text-align: right;">$ {{ sesion.fondo|floatformat:2|intcomma }}</td>
+                        <td style="text-align: right;">{% if not sesion.abierta %}$ {{ sesion.cierre_sesion.total|floatformat:2|intcomma }}{% endif %}</td>
+                        <td style="text-align: center;">
+                            {% if sesion.abierta %}
+                                <label class="label label-warning">ABIERTA</label>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+
+                                <a class="btn btn-info btn-mini tu"
+                                   {% if not sesion.abierta %}
+                                   onclick="formModalBase('{{ sesion.id }}','Detalles','detalle_sesioncaja','0','modal-md',false)"
+                                    {% else %}
+                                   onclick="formModalBase('{{ sesion.id }}','Detalles','detalle_sesioncaja_abierta','0','modal-xl',false)"
+                                   {% endif %}
+                                   title="Resumen" href='javascript:void(0);' > <i class='fa fa-list'></i> </a>
+
+
+
+{#                                <a class="btn btn-warning btn-mini detalleactivo2 tu" title="Resumen" href='javascript:;' cid="{{ sesion.id }}"> <i class='fa fa-list'></i> </a>#}
+
+                        </td>
+                        <td class="text-center w-3">
+                            <div class="dropdown">
+                                <div class="dropdown dropleft">
+                                    <a href="javascript:void(0);"
+                                       class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                       aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                    </a>
+                                    <ul class="dropdown-menu">
+                                        <span class="dropdown-header"><i class="fa fa-cogs"></i> Acciones</span>
+                                        {% if sesion.abierta and sesion.caja == caja %}
+                                            <li><a class="dropdown-item" href="/rec_caja?action=cerrarsesion&id={{ sesion.id }}"><i
+                                                    class="fa fa-remove dropdown-item-icon"></i> Cerrar Sesi&oacute;n</a></li>
+                                        {% endif %}
+                                        {% if not sesion.abierta and perms.sagest.puede_modificar_cierre_caja %}
+                                            <li><a class="dropdown-item" href="/rec_caja?action=modificarcierre&id={{ sesion.id }}"><i
+                                                    class="fa fa-remove dropdown-item-icon"></i> Modificar</a></li>
+                                        {% endif %}
+                                        {% if reporte_0 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_0.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_0.nombre }}&sesion={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen caja</a></li>
+                                        {% endif %}
+                                        {% if reporte_4 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_4.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_4.nombre }}&sesion={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Total Recaudado</a></li>
+                                        {% endif %}
+                                        {% if reporte_5 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_5.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_5.nombre }}&sesion={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Total Dep. Tercero</a></li>
+                                        {% endif %}
+                                        {% if reporte_6 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_6.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_6.nombre }}&sesion={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Total Rec. Banco</a></li>
+                                        {% endif %}
+                                        {% if reporte_1 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_1.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_1.nombre }}&id={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen rubros</a></li>
+                                        {% endif %}
+                                        {% if reporte_8 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_8.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_8.nombre }}&id={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen rubros todos</a></li>
+                                        {% endif %}
+                                        {% if reporte_7 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_7.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_7.nombre }}&id={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen bancos</a></li>
+                                        {% endif %}
+                                        {% if reporte_2 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_2.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_2.nombre }}&id={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen recibo caja</a></li>
+                                        {% endif %}
+                                        {% if reporte_3 %}
+                                            <li><a class="dropdown-item reportedirecto" href="javascript:;"
+                                                   tipos="{{ reporte_3.tiporeporte }}"
+                                                   nhref="/reportes?action=run&n={{ reporte_3.nombre }}&id={{ sesion.id }}"><i
+                                                    class="fa fa-print dropdown-item-icon"></i> Resumen Ed.,Loc.,Resid.</a></li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not sesiones %}
+                    <tr>
+                        <td colspan="10">NO EXISTEN SESIONES</td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        <div class="card-footer border-top-0">
+                        {% include 'paginacionb4.html' %}
+                    </div>
+        </div>
+    </div>
+{#    <div class='row-fluid'>#}
+{#        <div class="span12">#}
+{#            {% if paging.num_pages > 20 %}#}
+{#                <div class='pagination'>#}
+{#                    <ul>#}
+{#                        {% if paging.primera_pagina %}#}
+{#                            <li><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page=1">1</a></li>#}
+{#                            <li><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>#}
+{#                        {% endif %}#}
+{#                        {% for pagenumber in paging.paginas %}#}
+{#                            <li {% if pagenumber == page.number %}class='active'{% endif %}><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>#}
+{#                        {% endfor %}#}
+{#                        {% if paging.ultima_pagina %}#}
+{#                            <li><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}" class="active">...</a></li>#}
+{#                            <li><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>#}
+{#                        {% endif %}#}
+{#                    </ul>#}
+{#                </div>#}
+{#            {% else %}#}
+{#                <div class='pagination'>#}
+{#                    <ul>#}
+{#                        {% for pagenumber in paging.page_range %}#}
+{#                            <li {% if pagenumber == page.number %}class='active'{% endif %}><a href="/rec_caja?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>#}
+{#                        {% endfor %}#}
+{#                    </ul>#}
+{#                </div>#}
+{#            {% endif %}#}
+{#        </div>#}
+{#    </div>#}
+    <div class="modal fade static" id="detalleactivomodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Resumen de la sesión de caja</h3>
+        </div>
+        <div class="modal-body" id="detalleactivomodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalleactivomodal_aceptar" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}

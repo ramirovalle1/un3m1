@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <style>
+        .dialog-buttons button {
+            background-color: #6dbb4a;
+            border-color: #6dbb4a;
+            color: #FFFFFF;
+        }
+        .dialog-buttons button.cancel {
+            background-color: #ec6459;
+            border-color: #ec6459;
+            color: #FFFFFF;
+        }
+        .smoke {
+            background-color: #f5f5f5;
+        }
+    </style>
+    <style>
+
+        html {
+            scroll-behavior: smooth;
+        }
+        .btn-group {margin-bottom: 10px;}
+
+        @media only screen and (max-width: 767px) {
+            .btn-group {
+                display: block;
+            }
+
+            .btn-group .btn {
+                display: block;
+                float: none;
+                width: 100%;
+            }
+        }
+        @media (max-width: 768px) {
+            .dropbottom button.btn {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+        }
+        .dataTables_filter {
+            display:none!important;
+        }
+    </style>
+    <script>
+        var busqueda = function(page/*=undefined*/){
+            var term = $("#searchinput").val().trim().toUpperCase();
+            page = typeof page == 'undefined' ? 1 : page;
+            if(term.length>0){
+                bloqueointerface();
+                location.href = `/adm_convalidacionpractica?action=listarinscritos&s=${term}&id={{ actividad.id }}&op=0`;
+            }
+            else{
+                bloqueointerface();
+            }
+            return false;
+        };
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+
+             $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            {#busqueda = function () {#}
+            {#    location.href = "/adm_convalidacionpractica?action=listarinscritos&s="+$("#searchinput").val().toUpperCase()+"&id="+{{ actividad.id }};#}
+            {#;#}
+
+            $(".revisararchivos").click(function () {
+                var id = $(this).attr('id');
+                var op = $(this).attr('op');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_convalidacionpractica",
+                    data: {'action': 'cargararchivosinscritos', 'id': id, 'op': op},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyrevisararchivos").html(data.data);
+                            $(".paneltitlerevisararchivos").html(data.title);
+                            $("#itemspanelrevisararchivos").modal({
+                                backdrop: 'static',
+                                width: '80%',
+                                height: '580px'
+                            }).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+             $("#itemspanelrevisararchivos .cerrar").click(function () {
+                $('#itemspanelrevisararchivos').modal('hide');
+            });
+
+            $("#itemspanelrevisararchivos .cerrar2").click(function () {
+                $('#itemspanelrevisararchivos').modal('hide');
+            });
+
+            $("#itemspanelrevisararchivos .guardar").click(function () {
+                if (!datosregistrocumplimientocompletos())
+                    return false;
+
+                var tp = 0, ta = 0, tr = 0;
+                $('select[name="estadoregistro[]"]').each(function () {
+                    valor = parseInt($(this).val());
+
+                    if (valor == 0)
+                        tp++;
+                    else if (valor == 6)
+                        ta++;
+                    else
+                        tr++;
+                });
+
+                msg = "¿Está seguro de guardar el Registro de Cumplimiento de la siguiente manera?\n";
+                msg = msg + "APROBADOS: " + ta.toString() + ", "
+                msg = msg + "REPROBADOS: " + tr.toString()
+
+                smoke.confirm(msg, function (e) {
+                        if (e) {
+                            envioformularioreg("/adm_convalidacionpractica", "revisararchivos", false);
+                            return false;
+                        }
+                    }, {
+                        ok: "SI, GUARDAR",
+                        cancel: "NO, CANCELAR",
+                        classname: "custom-class",
+                        reverseButtons: true
+                    }
+                );
+            });
+
+            
+        });
+
+            function firmarDocumentoCustom(id) {
+                console.log(id)
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: `/adm_convalidacionpractica`,
+                    data: {
+                        'action': 'firmararchivo',
+                        'id': id
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true) {
+                            $("#itemspanelfirmardocumentos .panelbodyfirmardocumento").html(data.data);
+                            $("#itemspanelfirmardocumentos").modal({
+                                backdrop: 'static',
+                                width: '90%',
+                                height: '580px'
+                            }).modal('show');
+                        } else {
+                            smoke.alert("Error a visualizar el archivo a firmar");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            };
+
+            function revisarFirma(id) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: '{{ request.path }}',                    
+                    data: {
+                        'id': id,
+                        'action': 'verificarfirmas'
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        console.log("Dentro de la revision")
+                        console.log(data)
+                        if (data.result === true) {
+                            if (data.context.firmasValidas === true){
+                                $('#f'+data.idState).text("Firmado");
+                            }else{
+                                $('#f'+data.idState).text("No Firmado");
+                            }
+                            ActualizarTabla(data.context)
+                            console.log(data.context)
+                            $("#itemspanelrevisarfirma").modal({
+                                backdrop: 'static',
+                                width: '90%',
+                                height: '580px'
+                            }).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje)
+                        }
+
+                    },
+                    error: function (data) {
+                        smoke.alert("Error al verificar documento")
+                    },
+                    dataType: "json"
+                });
+            }
+
+            function ActualizarTabla(data) {
+                $('#tabla_verify tbody tr').empty()
+                if (data.certificado) {
+                    data.certificado.forEach(function (dato) {
+                        $('.tabla_paginada tbody').prepend($('<tr>', {
+                            'id': `box_${dato.cedula}`,
+                            'rol': 'row',
+                            'class': 'odd'
+                        }).append(
+                            $('<td>', {'class': 'text-center'}).append($('<p>', {
+                                'class': 'text-secondary',
+                                'text': `${dato.cedula}`,
+                            })),
+                            $('<td>', {'class': 'text-center'}).append($('<p>', {
+                                'class': 'text-secondary',
+                                'text': `${dato.emitidoPara}`,
+                            })),
+                            $('<td>', {'class': 'text-center'}).append($('<p>', {
+                                'class': 'text-secondary',
+                                'text': `${dato.emitidoPor}`,
+                            })),
+                            $('<td>', {'class': 'text-center'}).append($('<p>', {
+                                'class': 'text-secondary',
+                                'text': `${dato.fechaFirma}`,
+                            })),
+                            $('<td>', {'class': 'text-center'}).append(function () {
+                                if (dato.certificadoDigitalValido) {
+                                    return $('<p>', {
+                                        'class': 'text-valido',
+                                        'text': 'Válido',
+                                    });
+                                } else {
+                                    return $('<p>', {
+                                        'class': 'text-invalido',
+                                        'text': 'Inválido',
+                                    });
+                                }
+                            }),
+                        ));
+                    });
+                } else {
+                    $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_`, 'rol': 'row', 'class': 'odd'}).append(
+                        $('<td>', {'class': 'text-center align-middle', 'colspan': '6'}).append($('<h4>', {
+                            'class': 'text-secondary text-danger',
+                            'text': `${data.error}`,
+                        }))
+                    ));
+                }
+
+            }
+
+    </script>
+    <script>
+        $(document).ready(function () {
+            console.log("Documento listo"); // Verifica que el documento esté listo
+            $("#form_firma_documento_vin").on("submit", function (event) {
+                console.log("Formulario enviado"); // Verifica que el evento de envío se captura
+                event.preventDefault(); // Evita el envío por defecto del formulario
+                console.log("Prevent default ejecutado");
+
+                var formData = new FormData(this);
+
+                $.ajax({
+                    type: "POST",
+                    url: $(this).attr('action'), // La URL del atributo 'action' del formulario
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function (data) {
+                        $.unblockUI();
+                        console.log("Respuesta recibida", data); // Verifica que la respuesta se reciba
+                        console.log(data.result)
+                        if (data.result == "ok") {
+                            NotificationJG.success('DOCUMENTO FIRMADO', 'Aviso!', 10000);
+                            $('#itemspanelfirmardocumentos').modal('hide');
+                            $('#'+data.idBoton).text("Firmado");
+                            $('#f'+data.idBoton).text("Firmado");
+                        } else {
+                            smoke.alert("Ocurrió un error al firmar el documento");
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+
+
+    </script>
+
+{% endblock %}
+{% block canvas %}
+    <div id="no-more-tables"><!-- inicio no more tables-->
+        <div class='row'>
+            <div class='col-lg-12'>
+                <div class="headtitle">
+                    <h3>{{ title }}</h3>
+                    <h6>TIPO: {{ actividad.get_tipoactividad_display }}</h6>
+                    <h6>ACTIVIDAD: {{ actividad.titulo }}</h6>
+                    <h6>LIDER: {{ actividad.profesor }}</h6>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" >
+        <div id="no-more-tables"><!-- inicio no more tables-->
+            <div class='row'>
+                <div class="col12">
+                    <table id="tablaBusqueda" class="table table-hover tablaBusquedaSearch">
+                        <tbody>
+                        <tr>
+                            <td>
+                                <form class="d-flex" onsubmit="return busqueda()">
+                                    <input class='form-control me-2' type='text' id='searchinput' value='{{ search }}'
+                                           autocomplete="off" placeholder="BUSCAR ESTUDIANTE"/>
+                                    <a href="javascript:;" id='search' class='btn btn-info me-2'><i
+                                            class="fa fa-search "></i></a>
+                                    {% if search or ids %}
+                                        <a href="/adm_convalidacionpractica?action=listarinscritos&id={{ actividad.id }}&op=0"
+                                           id='allresults' class='btn btn-info'><span class="fa fa-refresh "></span>
+                                            Todos</a>
+                                        {#                                    <a href="javascript:;" class='btn btn-mini btn-inverse tu action_clean' title="Limpiar"><span class="fa fa-remove"></span></a>#}
+                                    {% endif %}
+                                </form>
+                            </td>
+                        </tr>
+
+                        </tbody>
+                    </table>
+                </div>
+                {#                <form method="GET" action="{{ request.path }}">#}
+
+            </div>
+        </div>
+
+        <div id="no-more-tables"><!-- inicio no more tables-->
+            <div class='row'>
+                <div class='col-12'>
+                    <label style="display: inline-block;" class="text-dark pe-3 fw-bolder"><i class="fa fa-ticket"></i> {{ actividad.cupo }} CUPOS ASIGNADOS</label>
+                    <label style="display: inline-block;" class="text-secondary pe-3 fw-bolder" ><i
+                            class="fa fa-user-plus"></i> {{ actividad.total_alumnos_preinscritos }} PREINSCRITOS</label>
+                    <label style="display: inline-block;" class="text-success pe-3 fw-bolder"><i class="fa fa-users"></i> {{ actividad.total_alumnos_inscritos }}
+                        INSCRIPCIONES ACEPTADAS</label>
+                    <label style="display: inline-block;" class="text-info pe-3 fw-bolder"><i class="fa fa-ticket"></i> {{ actividad.total_cupo_disponible }}
+                        CUPOS DISPONIBLES</label>
+                    {% with estado=actividad.estado %}
+                        <label style="display: inline-block;" class="{% if estado == 1 %}text-info
+              {% elif estado == 2 %}text-secondary
+              {% elif estado == 3 %}text-dark
+              {% elif estado == 4 or estado == 7 %}text-warning
+              {% elif estado == 6 or estado == 8 or estado == 9 %}text-success
+              {% else %}text-danger
+              {% endif %} fw-bolder">ESTADO DE
+                            ACTIVIDAD: {{ actividad.get_estado_display }}</label>
+                    {% endwith %}
+                </div>
+            </div>
+        </div>
+
+        <div id="no-more-tables">
+            <div class="row">
+                <div class='col-12'>
+                    <table class='table table_primary table-striped'>
+                        <thead>
+                        <tr>
+                            <th style="width: 5%; text-align: center;">#</th>
+                            <th style="width: 20%; text-align: center;"><i class="fa fa-users"></i> Datos de Estudiante
+                            </th>
+                            <th style="width: 20%; text-align: center;">Carrera</th>
+                            <th style="width: 10%; text-align: center;">Nivel</th>
+                            <th style="width: 25%; text-align: center;">Datos de Actividad</th>
+                            <th style="width: 5%; text-align: center;">Estado</th>
+                            <th style="width: 5%; text-align: center;">Archivos</th>
+                        </tr>
+                        </thead>
+
+                        <tbody>
+                        {% for inscrito in inscritos %}
+                            <tr>
+                                <td style="text-align: center"><strong>{{ forloop.counter }}</strong></td>
+                                <td style="text-align: justify">
+                                    <i class="fa fa-user pe-2"></i> <span class="fw-bolder">{{ inscrito.inscripcion.persona.nombre_completo_minus }}</span><br>
+                                    <i class="fa fa-address-card pe-2"></i><span class="fw-bolder">{{ inscrito.inscripcion.persona.identificacion }}</span>
+                                    <br>
+                                    <i class="fa fa-envelope pe-2"></i><span class="fw-bolder">{{ inscrito.inscripcion.persona.emailinst }} </span><br>
+                                    <label class="fw-bolder">Cod. {{ inscrito.pk }}</label>
+                                </td>
+                                <td style="text-align: left">
+                                    <div class="fw-bolder">{{ inscrito.inscripcion.carrera }}</div>
+                                </td>
+                                <td style="text-align: center">
+                                    <span class="fw-bolder">{{ inscrito.inscripcion.mi_nivel }}</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <label class="fw-bolder">Horas Cumplidas: <span class="text-success"
+                                            >{{ inscrito.cargadosrequisitos }}</span></label>
+                                    {% if inscrito.cantidad_archivos %}
+                                        <label class="fw-bolder">Archivos Subidos: <span class="text-info"
+                                                >{{ inscrito.cantidad_archivos }}</span></label>
+
+                                    {% else %}
+                                        <label class="fw-bolder text-warning" >No Registra Archivos Subidos</label>
+
+                                    {% endif %}
+
+                                    {% if inscrito.requisitos_pendientes %}
+                                        <label class="fw-bolder">Archivos Pendientes Por Revisar: <span class="text-warning"
+                                                >{{ inscrito.requisitos_pendientes }}</span></label>
+
+                                    {% endif %}
+                                    {% if inscrito.cantidad_archivos_corregidos %}
+                                        <label class="fw-bolder">Archivos Por Corregir: <span class="text-info"
+                                                >{{ inscrito.cantidad_archivos_corregidos }}</span></label>
+                                    {% else %}
+
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center">
+                                    {% with estado=inscrito.estado %}
+                                        <span class="fw-bolder {% if estado == 1 %}text-secondary
+            {% elif estado == 2 %}text-info
+            {% elif estado == 3 or estado == 7 %}text-danger
+            {% elif estado == 4 %}text-warning
+            {% elif estado == 5 %}text-dark
+            {% else %}text-success
+            {% endif %}">{{ inscrito.get_estado_display }}</span>
+                                    {% endwith %}
+                                </td>
+                                <td style="text-align: center">
+                                    {#                                <a href="javascript:;" id="{{ inscrito.id }}" aid="{{ actividad.id }}"#}
+                                    {#                                   class="btn btn-warning mostrararchivos" title="Mostrar Archivos"><i#}
+                                    {#                                        class="fa fa-archive"></i></a>#}
+
+
+                                    <div class="dropdown dropstart">
+                                        <a class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                           data-bs-toggle="dropdown"
+                                           href="javascript:;" data-offset="-140" aria-haspopup="true"
+                                           aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v"></i>
+                                        </a>
+                                        <div class="dropdown-menu">
+                                            <a href="javascript:;" id="{{ inscrito.id }}" op="{{ opcion }}"
+                                               aid="{{ actividad.id }}" class="dropdown-item revisararchivos">
+                                                <i class='fa fa-archive'></i> Revisar archivos </a>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" style="text-align: center">NO EXISTEN ESTUDIANTES INSCRITOS A LA
+                                    ACTIVIDAD
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelrevisararchivos" tabindex="-1" aria-labelledby="itemspanelrevisararchivosLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title paneltitlerevisararchivos" id="itemspanelrevisararchivosLabel">Revisar y Validar Contrato de Beca</h5>
+                    <button type="button" class="btn-close cerrar2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body panelbodyrevisararchivos">
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelfirmardocumentos" tabindex="-1" aria-labelledby="itemspanelfirmardocumentosLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title paneltitlefirmardocumento" id="itemspanelfirmardocumentosLabel">Firmar documento</h5>
+                    <button type="button" class="btn-close cerrar2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}" id="form_firma_documento_vin">
+                        {% csrf_token %}
+                        <div class="row panelbodyfirmardocumento">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelrevisarfirma" tabindex="-1" aria-labelledby="itemspanelrevisarfirmaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title paneltitlerevisarfirma" id="itemspanelrevisarfirmaLabel">Revisar Documento</h5>
+                    <button type="button" class="btn-close cerrar2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                        <div class="row panelbodyrevisarfirma">
+                        </div>
+                        <div class="col-12">
+                            <table class="table table-bordered tabla_paginada" id="tabla_verify">
+                                <thead class="table-light">
+                                <tr>
+                                    <th colspan="6" class="text-center">RESULTADOS DE LA VERIFICACIÓN DE
+                                                    ARCHIVO FIRMADO ELECTRÓNICAMENTE
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>Cédula</th>
+                                    <th>Nombres</th>
+                                    <th>Entidad Certificadora</th>
+                                    <th>Fecha Firmado</th>
+                                    <th>Firma</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Seleccione su documento y
+                                                    verifique.
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                </div>
+                <div class="modal-footer" style="text-align: right">
+                    <button type="button" class="btn btn-primary cerrar" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}

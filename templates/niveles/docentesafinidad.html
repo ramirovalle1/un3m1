@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/bootstrap4/plugins/bs-stepper/css/bs-stepper.min.css">
+    <link href="/static/picons-thin/style.css" rel="stylesheet">
+    <link href="/static/widget_ppp.css" rel="stylesheet"/>
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+
+    <style>
+        .dataTables_wrapper .dataTables_filter {
+            display: none;
+        }
+
+        table.table thead th, table.table thead td {
+            padding: 0 4px 0 4px;
+            border-bottom: 0;
+            background-color: #f0f0f0;
+            vertical-align: middle;
+            font-size:11px !important;
+        }
+
+        table.table tbody th, table.table tbody td {
+            padding: 0 4px 0 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size:11px !important;
+        }
+
+        .hoverable {
+            cursor:pointer;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function () {
+            $(".fancybox").fancybox();
+            const tabla2 = $('.tabla_responsive2').DataTable({
+                responsive: true,
+                ordering: false,
+                paging: false,
+                searching: true,
+                bInfo: false,
+                dom: 'Bfrtip',
+                language: {
+                    "url": '/static/js/i18n/Spanish.json'
+                },
+                buttons: []
+            });
+            tabla2.buttons().container().appendTo('.tabla_responsive2 .col-md-6:eq(0)');
+            $('.tabla_responsive2 tbody').on('click', 'tr', function () {
+                var data = tabla2.row(this).data();
+            });
+
+            $(".search2").keyup(function () {
+               tabla2.search($(this).val().trim()).draw();
+           });
+
+            $(".informacionsolicitud").click(function () {
+                var tipo = "3";
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/librosbiblioteca",
+                    data: {'action': 'solicitudes', 'tipo': tipo},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#detallesolicitudmodal_body").html(data.html);
+                            $("#detallesolicitudmodal").modal({"backdrop": "static", "width": "1000px"}).modal("show");
+                            $('.confirmacionmodal').bind('click.conectar_confirmacion', conectar_confirmacion);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $("#detallesolicitudmodal_cerrar").click(function () {
+                $("#detallesolicitudmodal").modal("hide");
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            var h = $(window).height() - 332;
+            var table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging": false,
+                "ordering": false,
+                "info": false,
+                "searching": false,
+                // "scrollY": h,
+                "order": [[2, 'asc']],
+                "columnDefs": [{"visible": false, "targets": 1}],
+                "drawCallback": function (settings) {
+                    var api = this.api();
+                    var rows = api.rows({page: 'current'}).nodes();
+                    var last = null;
+                    api.column(1, {page: 'current'}).data().each(function (group, i) {
+                        if (last !== group) {
+                            $(rows).eq(i).before(
+                                '<tr class="group"><td colspan="14" height="30" bgcolor="#f1f1f1">' + group + '</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+            $("#btn_cerrar").click(function () {
+                $(".itemspaneldetalle_tlibro").modal("hide");
+            });
+            $(".detallelibro").click(function () {
+                var id = $(this).attr('idl');
+                $.get("/librosbiblioteca", {'action': 'detalle_libro', 'id': id}, function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $(".panelbodydetalle_libro").html(data.data);
+                        $(".itemspaneldetalle_tlibro").modal({backdrop: 'static', width: '1000px'}).modal('show');
+                    }
+                }, 'json');
+            });
+            $(".cargararchivo").click(function () {
+                var idmate = $(this).attr('idmate');
+                var idpostu = $(this).attr('idpostu');
+                $.ajax({
+                    type: "GET",
+                    url: "/niveles",
+                    data: {'action': 'subirinvitacion', 'idmate': idmate , 'idpostu': idpostu , 'idasign': '{{ idasign|safe }}', 'idcv':'{{ convocatoria.id }}'},
+                    success: function (data) {
+                        if (data.result === 'ok') {
+                            $(".panelbody").html(data.data);
+                            $(".paneltitle").html(data.title);
+                            $("#itemspanel").modal({backdrop:'static', width: '450px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+
+        function seleccionar(valor) {
+            $("#tipobusqueda").val(valor)
+        }
+
+        function formModal(id, text, action) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbodymatricula').html(data.data);
+                        $('#itemspanelmatricula .paneltitlematricula').html(text);
+                        $("#itemspanelmatricula").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModa2(id, text, action, idmaestriaadmision) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idmaestriaadmision': idmaestriaadmision,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbodymatricula').html(data.data);
+                        $('#itemspanelmatricula .paneltitlematricula').html(text);
+                        $("#itemspanelmatricula").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const verdocumento = (url) => {
+            let w = $(window).width();
+            let h = $(window).height();
+            window.open(url, 'invitación', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=1,width='+ w * 0.5 +',height='+ h * 0.5 +',left = 390,top = 50');
+        }
+
+        const invitacionpdf = (idmateria, idpostulante, nombre) => {
+            /*openwindow('POST' ,'/niveles', {action:'invitacionpdf',idmateria:idmateria,idpostulante:idpostulante, csrfmiddlewaretoken: '{{ csrf_token }}'}, '_blank');*/
+            let w = $(window).width();
+            let h = $(window).height();
+            Swal.fire({
+                html: `<b>¿Estas seguro de enviarle invitación al postulante </b> ${nombre}?`,
+                text: "Esta acción es irreversible",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.post("/niveles", {'action': 'invitacionpdf', 'idmateria': idmateria, 'idpostulante': idpostulante, 'csrfmiddlewaretoken': '{{ csrf_token }}'}, function (data) {
+                        if (data.result) {
+                            $.unblockUI();
+                            if (data.url) {
+                              window.open(data.url, nombre, 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=1,width='+ w * 0.5 +',height='+ h * 0.5 +',left = 390,top = 50');
+                              location.reload();
+                            }
+                        } else {
+                            NotificationJG.error(data.mensaje);
+                            $.unblockUI();
+                        }
+                    }, 'json');
+                }
+            });
+        }
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/i18n/es.js"></script>
+    <script type="text/javascript" src="/static/js/fontawesomev3.js?v=1.0.0"></script>
+
+    {#    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>#}
+    {#    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>#}
+    {#    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>#}
+{% endblock %}
+{% block atras %}/niveles?action=convocatorias&id={{ materia.nivel.id }}{% if mallaid %}&mallaid={{ mallaid }}{% endif %}{% if nivelmallaid %}&nivelmallaid={{ nivelmallaid }}{% endif %}{% if paraleloid %}&paraleloid={{ paraleloid }}{% endif %}&mid={{ materia.pk }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12 ps-1'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ materia.asignaturamalla.asignatura.nombre }} - {{ materia.paralelo }} - {{ materia.asignaturamalla.malla.carrera.get_modalidad_display }}</h3>
+                <h6>{{ convocatoria }}</h6>
+            </div>
+        </div>
+    </div><br>
+
+    {% if not coordinadorcarrera %}
+{#        <div class="alert alert-warning">#}
+{#            <a  href="javascript:;" class="close" data-bs-dismiss="alert">×</a>#}
+{#            <h6 class="alert-heading">LO SENTIMOS,</h6>#}
+{#            <i class="fa fa-warning"></i>  No puede enviar invitación, no se encuentra asignado un coordinador de maestría.#}
+{#        </div>#}
+    {% endif %}
+    {% if inscripcionespendientes %}
+        <div class="alert alert-info">
+            <a  href="javascript:;" class="close" data-bs-dismiss="alert">×</a>
+            <p><i class="fa fa-info"></i> {{ inscripcionespendientes|safe }}</p>
+        </div>
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-body border-top border-3 rounded-3 border-dark-info">
+            <table class="table table-bordered">
+                <thead>
+                <tr>
+                    <th>CAMPO AMPLIO</th>
+                    <th>CAMPO ESPECÍFICO</th>
+                    <th>CAMPO DETALLADO</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>{{ materia.asignaturamalla.areaconocimientotitulacion }}</td>
+                    <td>{{ materia.asignaturamalla.subareaconocimiento }}</td>
+                    <td>{{ materia.asignaturamalla.subareaespecificaconocimiento }}</td>
+                </tr>
+                </tbody>
+            </table>
+    {% if invitaciones %}
+        <div class="table-responsive" style="max-height: 200px;">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th class="ps-4">POSTULANTES CON INVITACIÓN</th>
+                        {% for pasos in listadopasos %}
+                            {% widthratio 100 listadopasos|length 1 as val %}
+                            {% widthratio forloop.counter 1 val as opacity %}
+{#                            {{ opacity|floatformat:"0" }}#}
+                            <th style="text-align: center;padding: 0">
+                                <b class="">PASO<br> {{ pasos.numeropaso }}</b>
+                            </th>
+                        {% endfor %}
+                        <th style="text-align: center"><i class="fa fa-cogs"></i></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for invitacion in invitaciones %}
+                    <tr>
+                        <td style="text-align: left;vertical-align: middle;">
+                            <table style="border: 0">
+                                <tr>
+                                    <td style="width: 20%;text-align: center;border: 0">
+                                        {% if invitacion.inscripcion.postulante.persona.foto.foto %}
+                                            <a href="https://sga.unemi.edu.ec{{ invitacion.inscripcion.postulante.persona.foto.foto.url }}" class="fancybox" title="{{ invitacion.inscripcion.postulante.persona }}">
+                                                <img class="avatar img-circle profile_info_image img-thumbnail" src="https://sga.unemi.edu.ec{{ invitacion.inscripcion.postulante.persona.foto.foto.url }}" width="40px" height="20">
+                                            </a>
+                                        {% else %}
+                                            {% if invitacion.inscripcion.postulante.persona.sexo_id == 1 %}
+                                                <img class="avatar img-circle profile_info_image"
+                                                     src="/static/images/iconos/mujer.png">
+                                            {% else %}
+                                                <img class="avatar img-circle profile_info_image"
+                                                     src="/static/images/iconos/hombre.png">
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td style="width: 80%">
+                                        <div class="row ps-2">
+                                            <div class="col-12">
+                                                <span class="fa fa-id-card" style="font-size: 11px;"></span> <span><b>{{ invitacion.inscripcion.postulante.persona.cedula }} | {{ invitacion.inscripcion.postulante.persona.nombre_completo_inverso_titulo }}</b></span><br>
+                                                <span style="font-size: 11px;">
+                                                    <span class="fa fa-envelope" aria-hidden="true"></span> <a style="color:#5C5776" href="mailto:{{ invitacion.inscripcion.postulante.persona.emailinst }}">{{ invitacion.inscripcion.postulante.persona.emailinst|default:"" }}</a>&nbsp;|&nbsp;
+                                                {% for telefono in invitacion.inscripcion.postulante.persona.lista_telefonos %}
+                                                    <span class="fa fa-phone-square" aria-hidden="true"></span> {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                                {% if invitacion.inscripcion.postulante.persona.telefono %}
+                                                    <a class="btn btn-xs btn-success tu" href='https://web.whatsapp.com/send?l=en&phone=+593{{ invitacion.inscripcion.postulante.persona.telefono }}&text=Hola {{ invitacion.inscripcion.postulante.persona }}' target="_blank" title="Enviar mensaje por whatsapp"><i class="fa fa-whatsapp text-white"></i></a>
+                                                {% endif %}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                        {% for pasos in listadopasos %}
+                            <td style="text-align: center">
+                                {% if invitacion.pasosproceso.numeropaso > pasos.numeropaso %}
+                                    <span title="{{ pasos.nombre }}" style="background-color: #5bb75b;" class="bs-stepper-circle bs fs-6 tu hoverable"><i class="fa fa-check"></i></span>
+                                {% else %}
+                                    {% if invitacion.pasosproceso.numeropaso == pasos.numeropaso %}
+                                        <span title="{{ pasos.nombre }}" style="background-color: #f89406;" class="bs-stepper-circle bs fs-6 tu hoverable"><i class="fa fa-check"></i></span>
+                                    {% else %}
+                                        <span title="{{ pasos.nombre }}" style="background-color: #c1c1c1;" class="bs-stepper-circle bs fs-6 tu hoverable"><i class="fa fa-check"></i></span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                        <td style="text-align: center">
+                            <div class="dropdown dropstart">
+                                <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                </a>
+                                <div class="dropdown-menu fs-6">
+                                    <span class="dropdown-header">ACCIONES</span>
+                                    <a class="dropdown-item" onclick="formModal('{{ invitacion.inscripcion.postulante.id|encrypt }}', 'DATOS PERSONALES | {{ invitacion.inscripcion.postulante.persona }}', 'verdatospersonales', true, '95%')" href="javascript:void(0);"><span class="fa fa-list"></span>&nbsp;Datos personales</a>
+                                    <a class="dropdown-item" onclick="verdocumento('{{ invitacion.archivo.url }}')" href="javascript:void(0);"><span class="fa fa-file-pdf-o"></span> &nbsp;Ver documento invitación</a>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+        </div>
+    </div>
+    <form method="GET">
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control search2" placeholder="Buscar por nombre o cedula del postulante..." aria-label="Buscar" aria-describedby="button-addon2" name="s" value="{{ search }}">
+                    <div class="input-group-append">
+                        <button class="btn btn-primary" type="submit" id="button-addon2"><i class="fa fa-search"></i></button>
+                        {% if search %}
+                            <a title="Ver todo" href="?action=docentesafinidad&mallaid=364&paraleloid=0&mid=45356&idcv=6" class="btn btn-default tr cleartext"><i class="fas fa-sync-alt"></i></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    <div class='row-fluid'>
+        <div class='col-12'>
+            <div class="card mb-4">
+                <div class="card-body border-top border-3 rounded-3 border-dark-info">
+                <table class="tabla_responsive2 table table-bordered ">
+                    <thead>
+                        <tr>
+                            <th class="text-center">N°</th>
+                            <th class="ps-4" style="position: sticky;top: 0;">POSTULANTES APROBADOS</th>
+                            <th class="text-center">CLASIFICACIÓN</th>
+                            <th style="text-align: center"><i class="fa fa-cogs"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for postu in postulantes %}
+                        <tr>
+                            <td class="text-center">{{ forloop.counter }}</td>
+                            <td style="text-align: left;vertical-align: middle;">
+                                <div class="row ps-2">
+                                    <div class="col-md-1 text-center">
+                                        {% if postu.postulante.persona.foto.foto %}
+                                            <img class="avatar img-circle profile_info_image img-thumbnail"
+                                                 src="https://sga.unemi.edu.ec{{ postu.postulante.persona.foto.foto.url }}"
+                                                 width="40px" height="20">
+                                        {% else %}
+                                            {% if postu.postulante.persona.sexo_id == 1 %}
+                                                <img class="avatar img-circle profile_info_image"
+                                                     src="/static/images/iconos/mujer.png">
+                                            {% else %}
+                                                <img class="avatar img-circle profile_info_image"
+                                                     src="/static/images/iconos/hombre.png">
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-11">
+                                        <span class="fa fa-id-card"></span> <span><b>{% if postu.postulante.persona.cedula %}{{ postu.postulante.persona.cedula }}{% else %}{{ postu.postulante.persona.pasaporte }}{% endif %} | {{ postu.postulante.persona.nombre_completo_inverso_titulo }}</b></span><br>
+                                        <span>
+                                            <span class="fa fa-envelope" aria-hidden="true"></span> <a style="color:#5C5776" href="mailto:{{ postu.postulante.persona.emailinst }}">{{ postu.postulante.persona.emailinst|default:"" }}</a>&nbsp;|&nbsp;
+                                        {% for telefono in postu.postulante.persona.lista_telefonos %}
+                                            <span class="fa fa-phone-square" aria-hidden="true"></span> {{ telefono }}{% if not forloop.last %}, {% endif %}
+                                        {% endfor %}
+                                        {% if postu.postulante.persona.telefono %}
+                                            <a class="btn btn-xs btn-success tu" href='https://web.whatsapp.com/send?l=en&phone=+593{{ postu.postulante.persona.telefono }}&text=Hola {{ postu.postulante.persona }}' target="_blank" title="Enviar mensaje por whatsapp"><i class="fa fa-whatsapp text-white"></i></a>
+                                        {% endif %}
+                                        </span>
+                                    </div>
+                                </div>
+
+{#                                <div class="media flex-nowrap align-items-center m-4" style="white-space: nowrap;">#}
+{#                                    <div class="avatar avatar-sm mr-8pt" style="width: 60px">#}
+{#                                        {% if postu.postulante.persona.foto.foto %}#}
+{#                                            <img class="avatar img-circle profile_info_image img-thumbnail"#}
+{#                                                 src="https://sga.unemi.edu.ec{{ postu.postulante.persona.foto.foto.url }}"#}
+{#                                                 width="40px" height="40px">#}
+{#                                        {% else %}#}
+{#                                            {% if postu.postulante.persona.sexo_id == 1 %}#}
+{#                                                <img class="avatar img-circle profile_info_image"#}
+{#                                                     src="/static/images/iconos/mujer.png">#}
+{#                                            {% else %}#}
+{#                                                <img class="avatar img-circle profile_info_image"#}
+{#                                                     src="/static/images/iconos/hombre.png">#}
+{#                                            {% endif %}#}
+{#                                        {% endif %}#}
+{#                                    </div>#}
+{#                                    <div class="media-body">#}
+{#                                        <div class="d-flex align-items-center">#}
+{#                                            <div class="flex d-flex flex-column">#}
+{#                                                <strong><span class="fa fa-id-badge"></span>#}
+{#                                                    {% if postu.postulante.persona.cedula %}#}
+{#                                                        {{ postu.postulante.persona.cedula }} {% else %}#}
+{#                                                        {{ postu.postulante.persona.pasaporte }} {% endif %}#}
+{#                                                    |#}
+{#                                                    <span class="fa fa-user"></span> {{ postu.postulante.persona }}#}
+{#                                                </strong><br>#}
+{#                                                <span class="fa fa-envelope"></span> <a href="mailto:{{ postu.postulante.persona.email }}">{{ postu.postulante.persona.email }}</a>#}
+{#                                                | <span#}
+{#                                                    class="fa fa-phone-square"></span> {{ postu.postulante.persona.telefono }}#}
+{#                                                {% if postu.postulante.persona.telefono %}#}
+{#                                                    <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ postu.postulante.persona.telefono }}&text=Hola {{ postu.postulante.persona }}'#}
+{#                                                       target="_blank" class="btn btn-mini btn-success tu"#}
+{#                                                       title="Enviar mensaje por whatsapp"><i#}
+{#                                                            class="fa fa-whatsapp"></i></a>#}
+{#                                                {% endif %}#}
+{#                                            </div>#}
+{#                                        </div>#}
+{#                                    </div>#}
+{#                                </div>#}
+                            </td>
+                            <td class="text-center">{{ postu.convocatoria.tipodocente }}</td>
+                            <td style="text-align: center">
+                                <div class="dropdown dropstart">
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140"
+                                       aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                    </a>
+                                    <div class="dropdown-menu fs-6">
+                                        <span class="dropdown-header">ACCIONES</span>
+                                        <li class="dropdown-item"><a onclick="formModal('{{ postu.postulante.id|encrypt }}', 'DATOS PERSONALES | {{ postu.postulante.persona }}', 'verdatospersonales', true, '95%')" href="javascript:void(0);"><span class="fa fa-list"></span> Datos personales</a></li>
+                                        <li class="dropdown-item"><a href="?action=generar-invitacion&idmateria={{ materia.id }}&idpostulante={{ postu.id }}"><span class="fa fa-send"></span> Generar invitación</a></li>
+                                        {% if materia.horarios_asignadosorden %}
+                                            <li class="dropdown-item"><a onclick="invitacionpdf({{ materia.id }},{{ postu.id }}, '{{ postu.postulante.persona }}')" href="javascript:;"><i class="fa fa-share-square"></i> Generar y enviar invitación</a></li>
+{#                                            <li class="dropdown-item"><a href="javascript:;" id="itemsadicionarobj" class="cargararchivo" idmate="{{ materia.id }}" idpostu="{{ postu.id }}"><i class="fa fa-upload"></i> Subir y enviar invitación</a></li>#}
+                                            {% if postu.postulante.persona.es_profesor %}<li class="dropdown-item"><a href="{{ request.path }}?action=resultadosevaluaciondocenteposgrado&id={{ postu.postulante.persona.id|encrypt }}{% if mallaid %}&idmal={{ mallaid }}{% endif %}{% if paraleloid %}&idpa={{ paraleloid }}{% endif %}{% if materia %}&idmat={{ materia.pk }}{% endif %}{% if convocatoria %}&idcv={{ convocatoria.id }}{% endif %}"><i class="fa fa-bar-chart" aria-hidden="true"></i> Resultados Evaluación Docente</a></li>{% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">NO EXISTEN DATOS EN ESTA TABLA</td>
+                            </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="detallesolicitudmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle text-uppercase">Detalle Solicitud Articulos</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="detallesolicitudmodal_body"></div>
+                <div class="modal-footer">
+                    <div style="float: right">
+                        <a href="javascript:;" id="detallesolicitudmodal_cerrar" class="btn btn-info"> Cerrar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {#    MODAL ADICIONAR Y EDITAR#}
+    <div class="modal fade static" id="itemspanelmatricula" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitlematricula">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row-fluid panelbodymatricula">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle text-uppercase">Subir y enviar invitación</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body ">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="panelbody"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

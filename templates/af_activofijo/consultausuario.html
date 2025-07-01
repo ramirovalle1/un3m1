@@ -1,0 +1,180 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        $(function(){
+
+            $("#id_ubicacion").html('').append('<option selected="selected" value="">---------</option>');
+            $("#id_ubicacion").val(0).trigger("change");
+            $("#id_responsable").val(0).trigger("change");
+            $("#id_responsable, #id_ubicacion").attr({"value": "0"});
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+
+            actualizar_reporte = function () {
+                var resp = $("#id_responsable").val();
+                var ubi = $("#id_ubicacion").val();
+                if (ubi && resp){
+                    $("#reporte_catalogo").attr({"nhref": "/reportes?action=run&n={{ reporte_0.nombre }}&responsable_activos="+resp+"&ubicacion="+ubi});
+                }
+            };
+
+            $("#id_ubicacion").change(function(){
+
+                var id = $(this).val();
+                var idr = $("#id_responsable").val();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "activos_ubicacion", "id": id, "idr": idr},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                $("#itemsbody").html(data.data);
+                                $("#reporte").show();
+                                actualizar_reporte();
+                            } else {
+                                $("#id_ubicacion").val(0).trigger("change");
+                                $("#id_responsable").val(0).trigger("change");
+                                $("#reporte").hide();
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_catalogo").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                            $("#reporte").hide();
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+
+            $("#id_catalogo_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CatalogoBien&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; },
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay,
+                templateSelection: ItemsDisplay
+            }).on("select2:select", function (evt) {
+                $("#id_catalogo").attr({"value":(evt.params.data.id)});
+            });
+
+            $("#id_responsable").change(function(){
+                $("#id_ubicacion").html('').append('<option selected="selected" value="">---------</option>');
+                $("#id_ubicacion").val(0).trigger("change");
+                $("#reporte").hide();
+                var id = $(this).val();
+                $("#itemsbody").empty();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "ubicacionusuario", "id": id},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                for (x=0; x < data.lista.length; x++){
+                                    elemento = data.lista[x];
+                                    $("#id_ubicacion").append('<option value="'+elemento[0]+'">'+elemento[1]+'</option>');
+                                }
+                                if (data.lista.length == 1){
+                                    $("#id_ubicacion").prop("selectedIndex", 1).trigger("change");
+                                }
+                            } else {
+                                $("#id_catalogo_select2").val(0).trigger("change");
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_catalogo").val(0).trigger("change");
+                            $("#id_responsable").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/af_activofijo{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/af_activofijo{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/af_activofijo{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editacta'/>
+    <input type='hidden' name='id' value='{{ acta.id }}'/>
+{% endblock %}
+{% block formback %}/af_activofijo{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <b>ACTIVOS REGISTRADOS</b>
+        <div id="detalleactivos" style="width: 100%; max-height: 400px; overflow: auto">
+            <table class="table table-bordered filterable">
+                <thead>
+                <tr>
+                    <th style="width: 100px">C&oacute;digo Gobierno</th>
+                    <th style="width: 100px">C&oacute;digo Interno</th>
+                    <th>Activo</th>
+                    <th style=" width: 300px">Ubicaci&oacute;n</th>
+                    <th style=" width: 120px">Serie</th>
+                    <th style="width: 120px">Modelo</th>
+                    <th style=" width: 100px">Marca</th>
+                    <th style=" width: 120px">Estado</th>
+                </tr>
+                </thead>
+                <tbody id="itemsbody" class="datatable">
+                <tr>
+                    <td colspan="10">NO EXISTEN ACTIVOS</td>
+                </tr>
+                </tbody>
+                <tfoot id="reporte" style="display: none">
+                <tr>
+                    <td colspan="10">
+                        <a id="reporte_catalogo" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="" class="reportedirecto btn btn-success reporte tu"> <i class='fa fa-print'></i> IMPRIMIR</a>
+                    </td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+{% endblock %}

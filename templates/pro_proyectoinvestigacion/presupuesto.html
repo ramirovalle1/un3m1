@@ -1,0 +1,684 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <style>
+        .accordion-item{
+            border:1px solid rgba(0,0,0,.125);
+        }
+        .accordion-header{
+            padding: 1px;
+        }
+        .accordion-button{
+            padding: 10px;
+        }
+        .accordion-body{
+            padding: 2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            let tg="";
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $(".agregardetalle").click(function() {
+                let idt = $(this).attr('idt');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'adddetallepresupuesto', 'idt': idt, 'idp': '{{ proyecto.id|encrypt }}'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleagregardetalle").html(data.title);
+                            $(".panelbodyagregardetalle").html(data.data);
+                            $("#itemspanelagregardetalle").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelagregardetalle .guardar").click(function () {
+                tg = 'g';
+                enviarFormulario("/pro_proyectoinvestigacion", "adddetallepresupuesto");
+                return false;
+            });
+
+            $("#itemspanelagregardetalle .guardaryagregar").click(function () {
+                tg = 'ga';
+                enviarFormulario("/pro_proyectoinvestigacion", "adddetallepresupuesto");
+                return false;
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                let equiposok = true;
+                if(action === 'adddetallepresupuesto'){
+                    $("#frmAddDetallePresupuesto").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAddDetallePresupuesto").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'editdetallepresupuesto'){
+                    $("#frmEditDetallePresupuesto").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmEditDetallePresupuesto").validationEngine('validate', { scroll: false });
+                }
+                else if(action === 'subirproformadetalle'){
+                    $("#frmProformaDetallePresupuesto").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmProformaDetallePresupuesto").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action === 'adddetallepresupuesto'){
+                        formdata = new FormData($("#frmAddDetallePresupuesto")[0]);
+                    }
+                    else if (action === 'editdetallepresupuesto'){
+                        formdata = new FormData($("#frmEditDetallePresupuesto")[0]);
+                    }
+                    else if (action === 'subirproformadetalle'){
+                        formdata = new FormData($("#frmProformaDetallePresupuesto")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                        formdata.append("lista_items2", JSON.stringify(lista_items2));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result === 'ok'){
+                                $.unblockUI();
+                                if (action !== 'subirproformadetalle') {
+                                    $("#detalle_recurso_" + data.idtr).html(data.data);
+                                    $("#detalle_recurso_" + data.idtr).find(".editardetalle").tooltip();
+                                    $("#detalle_recurso_" + data.idtr).find(".eliminardetalle").tooltip();
+                                    $("#detalle_recurso_" + data.idtr).find(".proformadetalle").tooltip();
+                                    $(".eliminardetalle").unbind("click.eliminardetalle");
+                                    $(".eliminardetalle").bind("click.eliminardetalle", eliminarDetalle);
+                                    $(".editardetalle").unbind("click.editardetalle");
+                                    $(".editardetalle").bind("click.editardetalle", editarDetalle);
+                                    $(".proformadetalle").unbind("click.proformadetalle");
+                                    $(".proformadetalle").bind("click.proformadetalle", proformaDetalle);
+                                    $("#totalitems" + data.idtr).html(data.totalitems);
+                                    $("#totalrecurso" + data.idtr).html(formatoMoneda(data.totalrecurso));
+                                    $("#totalpresupuesto").html(formatoMoneda(data.totalpresupuesto));
+
+                                    if (parseFloat(data.totalequipos) > 0) {
+                                        if (data.tipoporcentaje === 1) {
+                                            if (parseFloat(data.totalequipos) < parseFloat(data.montominimoequipos)) {
+                                                $("#mensajeequipos").html("Atención!!! El monto mínimo del presupuesto para EQUIPOS debe ser " + formatoMoneda(data.montominimoequipos) + ". Usted tiene registrado " + formatoMoneda(data.totalequipos) + "");
+                                                $("#mensajeequipos").show();
+                                                equiposok = false;
+                                            } else {
+                                                $("#mensajeequipos").hide();
+                                                $("#mensajeequipos").hide();
+                                            }
+                                        } else {
+                                            if (parseFloat(data.totalequipos) > parseFloat(data.montominimoequipos)) {
+                                                $("#mensajeequipos").html("Atención!!! El monto máximo del presupuesto para EQUIPOS debe ser " + formatoMoneda(data.montominimoequipos) + ". Usted tiene registrado " + formatoMoneda(data.totalequipos) + "");
+                                                $("#mensajeequipos").show();
+                                                equiposok = false;
+                                            } else {
+                                                $("#mensajeequipos").hide();
+                                            }
+                                        }
+                                    } else {
+                                        $("#mensajeequipos").hide();
+                                    }
+
+                                    {% if permisoedicion %}
+                                        $("#mensajeedicion").removeClass("alert alert-warning").addClass("alert alert-info");
+                                        if (data.totalpresupuesto === data.montototalproyecto && equiposok) {
+                                            $("#mensajeedicion").html('<strong>Estimado docente, una vez que el valor de Total Presupuesto Registrado sea igual al Monto Total del proyecto usted debe dar click en </strong> <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del presupuesto"><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                            $("#finalizaredicion").tooltip();
+                                            $(".finalizaredicion").unbind("click.finalizaredicion");
+                                            $(".finalizaredicion").bind("click.finalizaredicion", finalizarEdicion);
+                                        } else {
+                                            $("#mensajeedicion").html('<strong>Estimado docente, una vez que el valor de Total Presupuesto Registrado sea igual al Monto Total del proyecto usted debe dar click en </strong> <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del presupuesto" disabled><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                        }
+                                    {% endif %}
+
+                                    if (tg === 'ga') {
+                                        limpiarFormulario();
+                                        $("#recurso").focus();
+                                    } else {
+                                        if (action === 'adddetallepresupuesto')
+                                            $("#itemspanelagregardetalle").modal('hide');
+                                        else
+                                            $("#itemspaneleditardetalle").modal('hide');
+                                    }
+
+                                    urlDestino = "";
+                                }else{
+                                    urlDestino = "/pro_proyectoinvestigacion?action=presupuesto&id={{ proyecto.id|encrypt }}";
+                                }
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType === 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            limpiarFormulario = function(){
+                $("#recurso").val("");
+                $("#descripcion").val("");
+                $("#cantidad").val("");
+                $("#valorunitario").val("");
+                $("#total").val("");
+                $("#observacion").val("");
+            };
+
+            editarDetalle = function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'editdetallepresupuesto', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".paneltitleeditardetalle").html(data.title);
+                            $(".panelbodyeditardetalle").html(data.data);
+                            $("#itemspaneleditardetalle").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            }
+
+            $("#itemspaneleditardetalle .guardar").click(function () {
+                tg = 'g';
+                enviarFormulario("/pro_proyectoinvestigacion", "editdetallepresupuesto");
+                return false;
+            });
+
+            eliminarDetalle = function() {
+                let auxboton = $(this);
+                let id = $(this).attr('id');
+                let descripcion = $(this).attr('titulo');
+                let url = "/pro_proyectoinvestigacion";
+                let action = "deldetallepresupuesto";
+                let urlDestino = "";//Para que no redireccione
+                let equiposok = true;
+
+                let idf = $(this).attr("idfila");
+                let idtr = $(this).attr("idtr");
+                let dtr = $(this).attr("dtr");
+
+                let titulo = "Eliminar Detalle de Presupuesto de Proyecto";
+                let mensaje = "¿Está seguro de eliminar el recurso <b>"+descripcion+"</b> del tipo <b>"+dtr+"</b>?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    auxboton.tooltip('hide');
+                                    $("#filadetalle_"+idf).remove();
+                                    $("#totalitems"+idtr).html(data.totalitems);
+                                    $("#totalrecurso"+idtr).html(formatoMoneda(data.totalrecurso));
+                                    $("#totalpresupuesto").html(formatoMoneda(data.totalpresupuesto));
+
+                                    if(parseFloat(data.totalequipos) > 0){
+                                        if(data.tipoporcentaje === 1){
+                                            if(parseFloat(data.totalequipos) < parseFloat(data.montominimoequipos)){
+                                                $("#mensajeequipos").html("Atención!!! El monto mínimo del presupuesto para EQUIPOS debe ser "+ formatoMoneda(data.montominimoequipos) +". Usted tiene registrado "+ formatoMoneda(data.totalequipos) +"");
+                                                $("#mensajeequipos").show();
+                                                equiposok = false;
+                                            }else {
+                                                $("#mensajeequipos").hide();
+                                            }
+                                        }else{
+                                            if(parseFloat(data.totalequipos) > parseFloat(data.montominimoequipos)){
+                                                $("#mensajeequipos").html("Atención!!! El monto máximo del presupuesto para EQUIPOS debe ser "+ formatoMoneda(data.montominimoequipos) +". Usted tiene registrado "+ formatoMoneda(data.totalequipos) +"");
+                                                $("#mensajeequipos").show();
+                                                equiposok = false;
+                                            }else {
+                                                $("#mensajeequipos").hide();
+                                            }
+                                        }
+                                    }else{
+                                        $("#mensajeequipos").hide();
+                                    }
+
+                                    {% if permisoedicion %}
+                                        $("#mensajeedicion").removeClass("alert alert-warning").addClass("alert alert-info");
+                                        if(data.totalpresupuesto === data.montototalproyecto && equiposok){
+                                            $("#mensajeedicion").html('<strong>Estimado docente, una vez que el valor de Total Presupuesto Registrado sea igual al Monto Total del proyecto usted debe dar click en </strong> <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del presupuesto"><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                            $("#finalizaredicion").tooltip();
+
+                                        }else{
+                                            $("#mensajeedicion").html('<strong>Estimado docente, una vez que el valor de Total Presupuesto Registrado sea igual al Monto Total del proyecto usted debe dar click en </strong> <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del presupuesto" disabled><span class="fa fa-check" ></span> Finalizar Edición</button>');
+                                        }
+                                    {% endif %}
+
+                                    if($("#tbrecurso_"+idtr+" tbody").children().length === 0 ){
+                                        let filadefault = '<tr id="fila_default_recurso_'+idtr+'">'+
+                                                    '<td colspan="9" style="text-align: center">NO EXISTEN DETALLES PARA EL TIPO DE RECURSO '+dtr+'</td>'+
+                                                    '</tr>';
+                                        $("#detalle_recurso_"+idtr).append(filadefault);
+                                    }else{
+                                        let secuencia = 0;
+                                        $("#tbrecurso_"+idtr+" tbody tr").each(function (index) {
+                                            secuencia ++;
+                                            $(this).children("td").each(function (index2) {
+                                                if(index2 === 0)
+                                                    $(this).html("<b>"+secuencia.toString()+"</b>");
+                                            });
+                                        });
+                                    }
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            };
+
+            formatoMoneda = function(valor){
+                let resultado = "$ " + Number(parseFloat(valor).toFixed(2)).toLocaleString('en', {minimumFractionDigits: 2});
+                return resultado;
+            };
+
+            $(".finalizaredicion").click(function() {
+                finalizarEdicion();
+            });
+
+            finalizarEdicion = function (){
+                let id = '{{ proyecto.id|encrypt }}';
+                let url = "/pro_proyectoinvestigacion";
+                let action = "finalizaredicionpresupuesto";
+                let urlDestino = "/pro_proyectoinvestigacion?action=presupuesto&id={{ proyecto.id|encrypt }}";
+                let titulo = "Finalizar Edición de los Rubros del Presupuesto";
+                let mensaje = "¿Está seguro de finalizar con la edición de los rubros del presupuesto del proyecto?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                            },
+                            success: function (data) {
+                                if (data.result === 'ok') {
+                                    $.unblockUI();
+                                    mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType === 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            };
+
+            proformaDetalle = function (){
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'proformadetallepresupuesto', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".panelbodyproformadetalle").html(data.data);
+                            $(".paneltitleproformadetalle").html(data.title);
+                            $("#itemspanelproformadetalle").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $("#itemspanelproformadetalle .guardar").click(function () {
+                enviarFormulario("/pro_proyectoinvestigacion", "subirproformadetalle");
+                return false;
+            });
+
+            $(".eliminardetalle").unbind("click.eliminardetalle");
+            $(".eliminardetalle").bind("click.eliminardetalle", eliminarDetalle);
+
+            $(".editardetalle").unbind("click.editardetalle");
+            $(".editardetalle").bind("click.editardetalle", editarDetalle);
+
+            $(".proformadetalle").unbind("click.proformadetalle");
+            $(".proformadetalle").bind("click.proformadetalle", proformaDetalle);
+
+            {% if totalequipos == 0 %}
+                $("#contmensajeequipos").hide();
+            {% else %}
+                {% if tipoporcentaje == 2 %}
+                    {% if totalequipos <= montominimoequipos %}$("#mensajeequipos").hide();{% endif %}
+                {% else %}
+                    {% if totalequipos >= montominimoequipos %}$("#mensajeequipos").hide();{% endif %}
+                {% endif %}
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Propuestas de Docentes (Convocatoria: {{ tituloconvocatoria }}) {{ totalequipos }} - {{ montominimoequipos }} - {{ tipoporcentaje }}</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {% if permisoedicion %}
+            <div class='row'>
+                <div class="col-sm-12">
+                    <div id="mensajeedicion" class="alert alert-{% if permisoedicion.estado == 1 %}warning{% else %}info{% endif %}" style="text-align: justify">
+                        {% if permisoedicion.estado == 1 %}
+                            <strong>Estimado docente, usted tiene pendiente la edición de los rubros del Presupuesto del proyecto</strong>
+                        {% else %}
+                            <strong>Estimado docente, una vez que el valor de Total Presupuesto Registrado sea igual al Monto Total del proyecto usted debe dar click en </strong>
+                            <button type="button" id="finalizaredicion" class="btn btn-success finalizaredicion" data-bs-toggle="tooltip" title="Finalizar edición del presupuesto"
+                                {% if proyecto.presupuesto != proyecto.montototal %}
+                                    disabled
+                                {% elif totalequipos > 0 %}
+                                    {% if tipoporcentaje == 2 %}
+                                        {% if totalequipos > montominimoequipos %}disabled{% endif %}
+                                    {% else %}
+                                        {% if totalequipos < montominimoequipos %}disabled{% endif %}
+                                    {% endif %}
+                                {% endif %}>
+                                <span class="fa fa-check" ></span> Finalizar Edición
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+{#        {% if proyecto.estado.valor == 1 %}#}
+{#            <div class='row'>#}
+{#                <div class="col-sm-12">#}
+{#                    <div class="alert alert-warning" style="text-align: justify">#}
+{#                        <strong>En el momento de la presentación de la propuesta se deberá adjuntar al menos dos proformas nacionales legalizadas, de personas naturales o jurídicas registradas en el Registro Único de Proveedores que contenga firma, sello, logotipo, nombre comercial o razón social. número de RUC, dirección, teléfono, ciudad, correo electrónico, etc..#}
+{#                                En caso de tratarse de un bien o servicio internacional, debe contar con un distribuidor autorizado con sede en el Ecuador que se encuentre registrado en el SERCOP.#}
+{#                                <br>#}
+{#                                La presentación de las proformas aplica para Equipos, Servicios, Materiales y Suministros#}
+{#                        </strong>#}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        {% endif %}#}
+        {# TITULO DEL PROYECTO #}
+        <div class='row'>
+            <div class="col-sm-12">
+                <div class="alert alert-primary d-flex align-items-center" role="alert">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-info-circle-fill me-2" viewBox="0 0 16 16">
+                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                    </svg>
+                    <div>
+                        {{ proyecto.titulo }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# TITULO DEL PROYECTO #}
+        <div class='row'>
+            <div class="col-sm-12">
+                 Monto Total del proyecto: <span class="badge bg-primary">$ {{ proyecto.montototal|floatformat:2|intcomma }}</span> |
+                Total Presupuesto Registrado: <span id="totalpresupuesto" class="badge bg-success">$ {{ proyecto.presupuesto|floatformat:2|intcomma }}</span> |
+                {{ textoequipos }} <span class="badge bg-info">$ {{ montominimoequipos|floatformat:2|intcomma }}</span>
+{#                <div id="contmensajeequipos" class="alert alert-danger">#}
+{#                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-exclamation-triangle-fill me-2" viewBox="0 0 16 16">#}
+{#                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>#}
+{#                    </svg>#}
+{#                    <div id="mensajeequipos">#}
+{#                        Atención!!! El monto {% if tipoporcentaje == 2 %}máximo{% else %}mínimo{% endif %} del presupuesto para EQUIPOS debe ser $ {{ montominimoequipos|floatformat:2|intcomma }}. Usted tiene registrado $ {{ totalequipos|floatformat:2|intcomma }}#}
+{#                    </div>#}
+{#                </div>#}
+                <br>
+                <div id="mensajeequipos" class="alert alert-danger" style="text-align: justify;">
+                    <strong>Atención!!! El monto {% if tipoporcentaje == 2 %}máximo{% else %}mínimo{% endif %} del presupuesto para EQUIPOS debe ser $ {{ montominimoequipos|floatformat:2|intcomma }}. Usted tiene registrado $ {{ totalequipos|floatformat:2|intcomma }}</strong>
+                </div>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="accordion" id="accordionPanelsStayOpenExample">
+                    {# ACORDIÓN POR TIPO DE RECURSO #}
+                    {% for recursoconvocatoria in recursosconvocatoria %}
+                        {% with detalles=proyecto|args:recursoconvocatoria.tiporecurso.id|call:"presupuesto_detalle_tiporecurso" totales=proyecto|args:recursoconvocatoria.tiporecurso.id|call:"totales_detalle_tiporecurso" %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="panelsStayOpen-heading{{ recursoconvocatoria.tiporecurso.id }}">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapse{{ recursoconvocatoria.tiporecurso.id }}" aria-expanded="true" aria-controls="panelsStayOpen-collapse{{ recursoconvocatoria.tiporecurso.id }}">
+                                <b>{{ forloop.counter }}.</b>&nbsp;{{ recursoconvocatoria.tiporecurso.descripcion|title }}&nbsp;
+                                <span class="badge bg-info" id="totalitems{{ recursoconvocatoria.tiporecurso.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total items">{{ totales.totalitems }}</span>&nbsp;
+                                <span class="badge bg-success" id="totalrecurso{{ recursoconvocatoria.tiporecurso.id }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Total tipo recurso">$ {{ totales.totaldetalle|floatformat:2|intcomma }}</span>
+                                </button>
+                            </h2>
+                            <div id="panelsStayOpen-collapse{{ recursoconvocatoria.tiporecurso.id }}" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-heading{{ recursoconvocatoria.tiporecurso.id }}">
+                                <div class="accordion-body">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table_primary table-bordered table-striped" id="tbrecurso_{{ recursoconvocatoria.tiporecurso.id }}" style="margin-bottom: 1px">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width: 1%;" class="text-center">N°</th>
+                                                    <th style="width: 25%;" class="text-center">Recurso</th>
+                                                    <th style="width: 25%;" class="text-center">Descripcion</th>
+                                                    <th style="width: 8%;" class="text-center">Cant</th>
+                                                    <th style="width: 8%;" class="text-center">Valor Unitario</th>
+                                                    <th style="width: 8%;" class="text-center">Total</th>
+                                                    <th style="width: 17%;" class="text-center">Observaciones</th>
+                                                    <th style="width: 5%;" class="text-center">Tot.Prof.</th>
+                                                    <th colspan="3" style="width: 3%;" class="text-center">
+                                                        {% if puedeeditar %}
+                                                            <a href="javascript:;" id="btnagregardetalle{{ recursoconvocatoria.tiporecurso.id }}" idt="{{ recursoconvocatoria.tiporecurso.id|encrypt }}" class="btn btn-success btn-mini agregardetalle" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Detalle {{ recursoconvocatoria.tiporecurso.descripcion|title }}"><i class="fa fa-plus"></i> </a>
+                                                        {% endif %}
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="detalle_recurso_{{ recursoconvocatoria.tiporecurso.id }}">
+                                                {% if detalles %}
+                                                    {% for detalle in detalles %}
+                                                        <tr id="filadetalle_{{ recursoconvocatoria.tiporecurso.id }}{{ forloop.counter }}">
+                                                            <td class="text-end"><b>{{ forloop.counter }}</b></td>
+                                                            <td class="text-justify">{{ detalle.recurso }}</td>
+                                                            <td class="text-justify">{{ detalle.descripcion }}</td>
+                                                            <td class="text-end">{{ detalle.cantidad }}</td>
+                                                            <td class="text-end">$ {{ detalle.valorunitario|floatformat:2|intcomma }}</td>
+                                                            <td class="text-end">$ {{ detalle.valortotal|floatformat:2|intcomma }}</td>
+                                                            <td class="text-justify">{{ detalle.observacion }}</td>
+                                                            <td class="text-center">{{ detalle.total_proformas }}</td>
+                                                            <td class="text-center">
+{#                                                                {% if puedeeditar and recursoconvocatoria.tiporecurso.aplica_proforma %}#}
+{#                                                                    <a href="javascript:;" class="btn btn-tini btn-warning proformadetalle" id="{{ detalle.id|encrypt }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Proformas"><i class="fa fa-cloud-upload"></i></a>#}
+{#                                                                {% endif %}#}
+                                                            </td>
+                                                            <td class="text-center">
+                                                                {% if puedeeditar and detalle.saldo > 0 %}
+                                                                    <a href="javascript:;" class="btn btn-tini btn-info editardetalle" id="{{ detalle.id|encrypt }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar"><i class="fa fa-edit"></i></a>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td class="text-center">
+                                                                {% if puedeeditar and detalle.saldo > 0 %}
+                                                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminardetalle" id="{{ detalle.id|encrypt }}" titulo="{{ detalle.recurso }}" idtr="{{ recursoconvocatoria.tiporecurso.id }}" dtr="{{ recursoconvocatoria.tiporecurso.descripcion }}" idfila="{{ recursoconvocatoria.tiporecurso.id }}{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <tr id="fila_default_recurso_{{ recursoconvocatoria.tiporecurso.id }}">
+                                                        <td colspan="11" class="text-center">No existen detalles para el tipo de recurso {{ recursoconvocatoria.tiporecurso.descripcion|title }}</td>
+                                                    </tr>
+                                                {% endif %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endwith %}
+                    {% endfor %}
+                    {# ACORDIÓN POR RUBRICA #}
+                </div>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelagregardetalle" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-plus"></i>&nbsp;<span class="paneltitleagregardetalle">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyagregardetalle">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardaryagregar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar y Agregar Otro</button>
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspaneleditardetalle" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-edit"></i>&nbsp;<span class="paneltitleeditardetalle">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodyeditardetalle">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 guardar"><i class="fa fa-check-circle" aria-hidden="true"></i> Guardar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelproformadetalle" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-cloud-upload"></i>&nbsp;<span class="paneltitleproformadetalle">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyproformadetalle pb-0 mb-0">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

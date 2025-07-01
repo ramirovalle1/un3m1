@@ -1,0 +1,433 @@
+{% extends "ajaxformbs.html" %}
+{% block atras %}/af_activofijo?action=mantenimientos
+{% endblock %}
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+            $('fieldset#fieldset_archivo > div > a').attr('class','btn btn-success');
+            $('fieldset#fieldset_archivo > div > a').attr('target','_blank');
+            $('fieldset > div > a').text('');
+            $('fieldset > div > a').append("<i class='fa fa-eye'></i>");
+            $('fieldset#fieldset_archivo > div.control').attr('id','bpdf');
+            $('fieldset#fieldset_archivo > div#bpdf > label').remove();
+            $('fieldset#fieldset_archivo > div#bpdf > input#archivo-clear_id').attr('title','Eliminar?')
+            $("#fieldset_archivo").css("width", "50%");
+            $("#fieldset_archivo .control").css("width", "225px");
+            $('#fieldset_custodio').insertAfter('#fieldset_estfent');
+            $('#ds').insertAfter("#fieldset_custodio");
+            {#$('#fieldset_custodio2').insertAfter('#fieldset_custodio');#}
+            $('#fieldset_horaeje').insertAfter($('#fieldset_fecha'));
+            $('#fieldset_horamax').css("margin-top","-55px");
+            $('#fieldset_horamax').css("margin-left","60px");
+            $('#fieldset_minutomax').css("margin-top","-55px");
+            $('#fieldset_minutomax').css("margin-left","300px");
+            $("#id_fecha").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fecha").addClass("validate[required]");
+            $('#fieldset_activo').insertBefore('#fieldset_tipoactivo');
+            $('#id_marca').attr('readonly',true);
+            $('#id_modelo').attr('readonly',true);
+            $("#id_cpu").attr({"value": "0"});
+            $("#id_cpu").attr({"value":({{ manpreventivos.activofijo.id }})});
+            $('#fieldset_danioenc > div.control').css('width', '73%');
+            $('#adddanio').appendTo($('#fieldset_danioenc'));
+            $('#adddanio').css('margin-top','2px');
+            $('#adddanio').css('margin-left','2px');
+            $('#adddanio').click(function () {
+                $('#tabladanio tbody').append('<tr><td style="word-break: break-all;">'+$('#select2-id_danioenc-container').attr('title')+'<input style="display: none" value="'+$('#select2-id_danioenc-container').attr('title')+'" name="danio[]">' +
+                    '</td><td style="word-break: break-all; background: white"><select class="validate[required]" name="danioop[]"><option value="1">REPARACION PIEZA O PARTE</option><option value="2">CAMBIO PIEZA O PARTE</option></select></td>' +
+                    '<td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td></tr>');
+            });
+            $('#id_estusu').change(function () {
+                if (this.checked){
+                    $('#fieldset_archivo').css('display','none');
+                    $('#adicionar').css('display','inline-block');
+                    bloqueofield(false);
+                }else{
+                    $('#fieldset_archivo').css('display','block');
+                    $('#adicionar').css('display','none');
+                    bloqueofield(true);
+                }
+            });
+            bloqueofield = function(val){
+                $('#id_horamax').attr('disabled',val);
+                $('#id_minutomax').attr('disabled',val);
+                $('#fieldset_estfrec').attr('disabled',val);
+                $('#fieldset_estfent').attr('disabled',val);
+                $('#fieldset_bsugiere').attr('disabled',val);
+                $('#fieldset_dsugiere').attr('disabled',val);
+                $('#id_piezaparte').attr('disabled',val);
+                $('#fieldset_custodio').attr('disabled',val);
+                $('#fieldset_custodio2').attr('disabled',val);
+            };
+            $('#id_estusu').trigger('change');
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    if ($("#id_cpu").val() == 0) {
+                        return '---------';
+                    } else {
+                        return '{{ manpreventivos.activofijo }}';
+                    }
+                }
+            };
+            $("#id_cpu_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=ActivoFijo&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_cpu").attr({"value":(evt.params.data.id)});
+            });
+            $('#id_tipoactivo').change(function() {
+                var idcat = $('#id_tipoactivo').val();
+                $('#id_piezaparte').empty();
+                $('ul.select2-selection__rendered').empty();
+                {#$('#id_piezaparte').append('<option value="">-----</option>');#}
+                {#$('#select2-id_piezaparte-container').attr('title', '------').text('------');#}
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_hdincidente",
+                    data: {'action': 'listatipopieza', 'idcat': idcat},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            for (elemento in data.lista) {
+                                $('#id_piezaparte').append('<option value="'+data.lista[elemento][0]+'">'+data.lista[elemento][1]+'</option>');
+                            }
+                        } else {
+                            control.val(0).trigger("change");
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        control.val(0).trigger("change");
+                        smoke.alert("Error de conexion.");
+                    },
+                    dataType: "json"
+                });
+            });
+            var x = "";
+            {% for tareas in daniomantenimiento %}
+                {% if tareas.id in danioactivo  %}
+                    x += {{ tareas.id }}+",";
+                {% endif %}
+            {% endfor %}
+            var limp = "";
+            {% for tareas in tareasmantenimiento %}
+                {% if tareas.id in tareasactivo  %}
+                    limp += {{ tareas.id }}+",";
+                {% endif %}
+            {% endfor %}
+            $('#id_limp').val(limp.substr(0,limp.length-1));
+            $('#id_dani').val(x.substr(0,x.length-1));
+
+            $("#formulario").on("click",".tiposman", function() {
+                listalimp = '';
+                $(".tiposman").each(function(){
+                    if( $(this).attr('checked') ) {
+                        var idcodtipo = $(this).attr('idcodtipo');
+                        listalimp+=(idcodtipo+",");
+                    }
+                });
+                listadan = '';
+                $(".tiposerr").each(function(){
+                    if( $(this).attr('checked') ) {
+                        var idcodtipo = $(this).attr('idcodtipo');
+                        listadan+=(idcodtipo+",");
+                    }
+                });
+                $('#id_limp').val();
+                $('#id_limp').val(listalimp.substr(0,listalimp.length-1));
+                $('#id_dani').val();
+                $('#id_dani').val(listadan.substr(0,listadan.length-1));
+            });
+
+            $("#formulario").on("click",".tiposerr", function() {
+                listalimp = '';
+                $(".tiposman").each(function(){
+                    if( $(this).attr('checked') ) {
+                        var idcodtipo = $(this).attr('idcodtipo');
+                        listalimp+=(idcodtipo+",");
+                    }
+                });
+                listadan = '';
+                $(".tiposerr").each(function(){
+                    if( $(this).attr('checked') ) {
+                        var idcodtipo = $(this).attr('idcodtipo');
+                        listadan+=(idcodtipo+",");
+                    }
+                });
+                $('#id_limp').val();
+                $('#id_limp').val(listalimp.substr(0,listalimp.length-1));
+                $('#id_dani').val();
+                $('#id_dani').val(listadan.substr(0,listadan.length-1));
+            });
+            $("#id_tipoactivo").change(function(){
+                $('#id_limp').val('');
+                $('#id_dani').val('');
+                $('.listadotiposman').empty().append('').val(0).trigger("change");
+                $('.listadodanio').empty().append('').val(0).trigger("change");
+                var id_tipo = $('#id_tipoactivo').val();
+                if (id_tipo > 0) {
+                    bloqueointerface();
+                    danioc();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {'action': 'listatipomantenimiento', 'id_tipo': id_tipo},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('.listadotiposman').append('<input class="tiposman" idcodtipo="' + data.lista[elemento][0] + '" type="checkbox"> ' + data.lista[elemento][1] + ' <br>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            danioc = function(){
+                $('#id_danioenc').empty();
+                $('#id_danioenc').val(null).trigger('change');
+                $('#id_danioenc').append('<option value="">-----</option>');
+                $('#select2-id_danioenc-container').attr('title', '------').text('------');
+                var id_tipo = $('#id_tipoactivo').val();
+                bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {'action': 'listatipomantenimientosgdanio', 'id_tipo': id_tipo},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    {#$('.listadodanio').append('<input class="tiposerr" idcodtipo="' + data.lista[elemento][0] + '" type="checkbox"> ' + data.lista[elemento][1] + ' <br>');#}
+                                    $('#id_danioenc').append('<option value="'+data.lista[elemento][0]+'">'+data.lista[elemento][1]+'</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+            };
+
+            $(document).ready(function() {
+                danioc();
+                if ($('#id_bsugiere').attr('checked')){
+                    $('#id_dsugiere').text('').attr('readonly',false);
+                }else{
+                    $('#id_dsugiere').text('').attr('readonly',true);
+                }
+            });
+
+            $('#id_bsugiere').click(function () {
+                if ($('#id_bsugiere').attr('checked')){
+                    $('#id_dsugiere').val('').attr('readonly',false);
+                }else{
+                    $('#id_dsugiere').val('').attr('readonly',true);
+                }
+            });
+            $( document ).ready(function() {
+                if( $('#id_bsugiere').attr('disabled')==='disabled') {
+                    if ($('#id_bsugiere').attr('checked')){
+                        $('#id_dsugiere').val('').attr('readonly',false);
+                    }else{
+                        $('#id_dsugiere').val('').attr('readonly',true);
+                    }
+                }
+            });
+
+            $('#fieldset_piezaparte > div.control').css('width', '73%');
+            $('#adicionar').appendTo($('#fieldset_piezaparte'));
+            $('#adicionar').css('margin-top','2px');
+            $('#adicionar').css('margin-left','2px');
+            $('#pyd').insertAfter("#fieldset_observacion");
+            $('#fieldset_danioenc').insertAfter('#cacha');
+            $('#fieldset_caracteristica').insertBefore("#tabla");
+            $('#fieldset_piezaparte').insertBefore("#fieldset_caracteristica");
+
+            $('#adicionar').click(function () {
+                $('#tabla tbody').append('<tr><td style="word-break: break-all;">'+$('#select2-id_piezaparte-container').attr('title')+'<input style="display: none" value="'+$('#select2-id_piezaparte-container').attr('title')+'" name="piezaparte[]">' +
+                    '</td><td style="word-break: break-all; background: white"><input class="validate[required]" type="text" required="true" name="catacteristica[]"></td>' +
+                    '<td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td></tr>');
+            });
+            $('#fieldset_caracteristica > div.control').css('width', '78%')
+            $('#fieldset_piezaparte, #fieldset_caracteristica, #tabla').appendTo('#pyd');
+
+            $(document).on('click', '.borrarp', function (event) {
+                event.preventDefault();
+                $(this).closest('tr').remove();
+            });
+            $('#fieldset_tipoactivo').change(function () {
+                $('#tabla tbody').empty();
+                $('#tabladanio tbody').empty();
+            });
+        });
+    </script>
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/af_activofijo{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editmantenimientov2'/>
+    <input type='hidden' name='id' value='{{ manpreventivos.id }}'/>
+{% endblock %}
+{% block formback %}/af_activofijo?action=mantenimientos{% endblock %}
+{% block formdestination %}/af_activofijo?action=mantenimientos&id={{ manpreventivos.id }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formadicional %}
+    <br>
+
+    <div class="limpl">
+        <input name="id_limpiar" style="display: none" id="id_limp" type="text">
+    </div>
+    <div class="limpd">
+        <input name="id_danio" style="display: none" id="id_dani" type="text">
+    </div>
+
+    <fieldset id="fieldset_horaeje" class="control-group nomargins" style="min-height:45px; float: left; width: 100%">
+        <div class="control-label label-text" style="display: table; height: 30px; float: left; text-align: right; width: 160px;">
+            <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                <label for="id_horeje" style="padding-right: 20px">TIEMPO DE EJECUCION DE MANTENIMIENTO</label>
+            </div>
+        </div>
+        <div class="listadohoreje well" style="float: left; width: 630px;">
+        </div>
+    </fieldset>
+
+    <fieldset id="fieldset_custodio" class="control-group nomargins" style="min-height:45px; float: left; width: 100%">
+        <div class="control-label label-text" style="display: table; height: 30px; float: left; text-align: right; width: 160px;">
+            <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                <label for="id_tipoman" style="padding-right: 20px">TAREAS DE LIMPIEZA</label>
+            </div>
+        </div>
+        <div class="listadotiposman well" style="float: left; width: 630px;">
+            {% for tareas in tareasmantenimiento %}
+                <input class="tiposman" idcodtipolimp="{{ tareas }}" idcodtipo="{{ tareas.id }}" type="checkbox" {% if tareas.id in tareasactivo  %} checked {% endif %}> {{ tareas.descripcion }} <br>
+            {% endfor %}
+        </div>
+    </fieldset>
+{#    <fieldset id="fieldset_custodio2" class="control-group nomargins" style="min-height:45px; float: left; width: 100%">#}
+{#        <div class="control-label label-text" style="display: table; height: 30px; float: left; text-align: right; width: 160px;">#}
+{#            <div style="display: table-cell; vertical-align: middle; line-height: 11px">#}
+{#                <label for="id_tipoman" style="padding-right: 20px">DAÑOS ENCONTRADOS</label>#}
+{#            </div>#}
+{#        </div>#}
+{#        <div class="listadodanio well" style="float: left; width: 630px;">#}
+{#            {% for tareas in daniomantenimiento %}#}
+{#                <input class="tiposerr" idcodtipodan="{{ tareas }}" idcodtipo="{{ tareas.id }}" type="checkbox" {% if tareas.id in danioactivo  %} checked {% endif %}> {{ tareas.descripcion }} <br>#}
+{#            {% endfor %}#}
+{#        </div>#}
+{#    </fieldset>#}
+
+    <div class="row-fluid">
+        <fieldset id="fieldset_activo" class="control-group nomargins" style="min-height:45px; float: left; width: 100%">
+            <div class="control-label label-text" style="display: table; height: 30px; float: left; text-align: right; width: 160px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 11px">
+                    <label for="id_cpu" style="padding-right: 20px">Activo</label>
+                </div>
+            </div>
+            <div class="control" style="float: left; width: 630px;">
+
+                <select id="id_cpu_select2" tabindex="-1" class="validate[required] select2-hidden-accessible" aria-hidden="true"><option>undefined</option></select>
+                <input name="cpu" id="id_cpu" value="0" hidden="hidden" class="select2hidden">
+
+                <p class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </p>
+            </div>
+        </fieldset>
+    </div>
+
+    <table class='table table-striped table-bordered' style="width: 100%" id="tabla" >
+        <thead>
+        <tr>
+            <th style="width: 20%;text-align: center">PIEZA Y PARTE</th>
+            <th style="width: 70%;text-align: center;">CARACTERISTICAS</th>
+            <th style="width: 10%;text-align: center">ACCIONES</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for lista in piezaparteactivo %}
+            <tr>
+                <td style="word-break: break-all;">{{ lista.piezaparte.descripcion }} <input style="display: none" value="{{ lista.piezaparte.descripcion }}" name="piezaparte[]"></td>
+                <td  style="word-break: break-all; background: white"><input class="validate[required]" type="text" required="true" name="catacteristica[]" value="{{ lista.descripcion }}"></td>
+                <td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <a class="btn btn-success" id="adicionar">+</a>
+    <div id="pyd" class="well" style="float: left; width: 100%;"></div>
+    {#        Para Daños#}
+        <div id="ds" class="well" style="float: left; width: 100%;">
+            <p style="text-align: left" id="cacha"><strong>DAÑOS SOLUCIONADOS DURANTE EL MANTENIMIENTO:</strong></p>
+            <a class="btn btn-success" id="adddanio">+</a>
+            <table class='table table-striped table-bordered' style="width: 100%" id="tabladanio" >
+            <thead>
+            <tr>
+                <th style="width: 20%;text-align: center">DAÑOS ENCONTRADOS</th>
+                <th style="width: 70%;text-align: center;">SOLUCION</th>
+                <th style="width: 10%;text-align: center">ACCIONES</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for danio in danioactivo %}
+                <tr>
+                    <td style="word-break: break-all;">{{danio.grupos.descripcion}}<input style="display: none" value="{{danio.grupos.descripcion}}" name="danio[]"></td>
+                    <td style="word-break: break-all; background: white"><select class="validate[required]" name="danioop[]"><option value="1" {% if danio.estadodanio == 1 %}selected{% endif %}>REPARACION PIEZA O PARTE</option><option value="2" {% if danio.estadodanio == 2 %}selected{% endif %}>CAMBIO PIEZA O PARTE</option></select></td>
+                    <td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+{% endblock %}

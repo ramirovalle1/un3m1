@@ -1,0 +1,708 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <style>
+        div.dataTables_filter {
+            padding-bottom: 10px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        $(function() {
+            $("#anioevidencia").select2();
+
+            busqueda = function(){
+                var term = $("#searchinput").val().toUpperCase().trim();
+                var tipobuse = $("#tipobusqueda").val();
+                if (term.length>0){
+                    location.href = "/librosinvestigacion?action=listacapitulos&s="+term+"&tipobus="+tipobuse;
+                }
+            };
+
+            $("#detallesolicitudmodal_cerrar").click(function(){
+                $("#detallesolicitudmodal").modal("hide");
+            });
+
+            $(".consultaestadocapitulo").click(function (){
+               estadocapitulo = $(this).attr('estado');
+               location.href = "/librosinvestigacion?action=listacapitulos&estadocapitulo="+estadocapitulo;
+            });
+
+            $("#search").click(function(){
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            var h =$(window).height() - 332;
+            var table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging":   false,
+                "ordering": false,
+                "info":     false,
+                "searching": false,
+                {#                "scrollY": h,#}
+                "order": [[ 2, 'asc' ]],
+                "columnDefs": [{ "visible": false,"targets": 1 }],
+                "drawCallback": function ( settings ) {
+                    var api = this.api();
+                    var rows = api.rows( {page:'current'} ).nodes();
+                    var last=null;
+                    api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                        if ( last !== group ) {
+                            $(rows).eq( i ).before(
+                                '<tr class="group"><td colspan="14" height="30" bgcolor="#f1f1f1">'+group+'</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+
+            $(".informacionsolicitud").click(function(){
+                var tipo = "4";
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/librosinvestigacion",
+                    data: {'action':'solicitudes', 'tipo': tipo},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detallesolicitudmodal_body").html(data.html);
+                            $("#detallesolicitudmodal").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                            $('.confirmacionmodal').bind('click.conectar_confirmacion', conectar_confirmacion);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                //return false;
+            });
+
+            $(".reporte_ficha_catalografica").click(function () {
+                var id = $(this).attr('id');
+                openwindow('POST' ,'/librosinvestigacion', {action:'reportefichacatalograficacapitulo', id: id}, '_blank');
+            });
+
+            $(".evidenciascapituloslibros").click(function () {
+                $("#itemspaneldescargaevidencia .paneltitledescargaevidencia").html($(this).attr('titulo'));
+                $("#anioevidencia").val(0).trigger('change');
+                $("#itemspaneldescargaevidencia").modal({backdrop:'static', width: '400'}).modal('show');
+            });
+
+            $("#itemspaneldescargaevidencia .btn-cerrar").click(function () {
+                $("#itemspaneldescargaevidencia").modal('hide');
+            });
+
+            $("#itemspaneldescargaevidencia .btn-procesar").click(function () {
+                if(datosCompletosReporte()){
+                    var anio = $("#anioevidencia").val();
+                    accion = "evidenciascapitulolibro";
+
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/librosinvestigacion",
+                        data: {"action": accion, "anio": anio},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                location.href = data.archivo;
+                                $("#itemspaneldescargaevidencia").modal('hide');
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            datosCompletosReporte = function (){
+                var validacion = true;
+
+                if($("#anioevidencia").val()=='0'){
+                    smoke.alert("Seleccione el año de publicación");
+                    return false;
+                }
+
+                return validacion;
+            };
+
+            var table = $('#example2').DataTable({
+                "sDom": 'T<"clear">lfrtip',
+                "ordering": false,
+                "scroller": true,
+                "scrollY": "50vh",
+                "paging": false,
+                "bInfo" : false
+            });
+
+            $(".seleccionarparticipantes").click(function() {
+                $("#itemspanelparticipante").modal({backdrop:'static', width: '850px'}).modal('show');
+                $("#nombresseleccionados").empty();
+
+                if($(this).attr('tipo') == 'consulta'){
+                    $("#btn-aplicar-filtro").show();
+                    $("#btn-descargar-listado").hide();
+                }else {
+                    $("#btn-aplicar-filtro").hide();
+                    $("#btn-descargar-listado").show();
+                }
+
+            });
+
+            $('#itemspanelparticipante').on('shown.bs.modal', function (e) {
+                $($.fn.dataTable.tables( true ) ).DataTable().columns.adjust().draw();
+            });
+
+            $("#itemspanelparticipante .aplicar").click(function () {
+                aplicarFiltro();
+            });
+
+            $("#itemspanelparticipante .descargar").click(function () {
+                descargarListado();
+            });
+
+            $("#itemspanelparticipante .cerrar").click(function () {
+                $('#itemspanelparticipante').modal('hide');
+            });
+
+            $("#itemspanelparticipante .cerrar2").click(function () {
+                $('#itemspanelparticipante').modal('hide');
+            });
+
+            aplicarFiltro = function (){
+                if(datosCompletosFiltro()){
+                    idparticipantes = ""
+
+                    $(".grupoparticipante").each(function() {
+                        idpart = $(this).attr('idpart');
+
+                        if(idparticipantes == "")
+                            idparticipantes = idpart;
+                        else
+                            idparticipantes = idparticipantes + "," + idpart;
+                    });
+                    $("#cparticipantes").val(idparticipantes);
+                    $('#itemspanelparticipante').modal('hide');
+
+                    location.href = "/librosinvestigacion?action=listacapitulos&idsp="+idparticipantes;
+                }
+            };
+
+            datosCompletosFiltro = function (){
+                var c1e = true;
+                var marcados = $('.grupoparticipante').length;
+
+                if(marcados == 0){
+                    smoke.alert("Agregue al menos un participante para aplicar el filtro");
+                    c1e = false;
+                    return false;
+                }
+
+                return c1e;
+            };
+
+            $(".selparticipante").click(function() {
+                idpart = $(this).attr('idpart');
+
+                if(!$("#grupoparticipante"+idpart).length){
+                    nparticipante = $(this).attr('nparticipante');
+                    nombre_persona = '<span class="grupoparticipante" id="grupoparticipante'+idpart+'" idpart="'+idpart+'"> <span class="label label-info">'+nparticipante+'</span><a href="javascript:;" class="borrarparticipante btn-danger btn-mini" idpart="'+idpart+'" title="Borrar"><i class="fa fa-remove"></i></a> </span>';
+                    $("#nombresseleccionados").append(nombre_persona);
+                    $(".borrarparticipante").unbind("click.borrarParticipante");
+                    $(".borrarparticipante").bind("click.borrarParticipante", borrarParticipante);
+
+                    var divSeleccionados = document.getElementById("nombresseleccionados");
+                    divSeleccionados.scrollTop = divSeleccionados.scrollHeight;
+                }
+            });
+
+            borrarParticipante = function() {
+                var id = $(this).attr("idpart");
+                $("#grupoparticipante"+id).remove();
+            };
+
+            descargarListado = function (){
+                if(datosCompletosFiltro()){
+                    idparticipantes = ""
+
+                    $(".grupoparticipante").each(function() {
+                        idpart = $(this).attr('idpart');
+
+                        if(idparticipantes == "")
+                            idparticipantes = idpart;
+                        else
+                            idparticipantes = idparticipantes + "," + idpart;
+                    });
+                    $("#cparticipantes").val(idparticipantes);
+                    $('#itemspanelparticipante').modal('hide');
+
+                    location.href = "/librosinvestigacion?action=reporte_capitulos_libro_excel_participante&idsp="+idparticipantes;
+                }
+            };
+
+            seleccionar = function (valor){
+                $("#tipobusqueda").val(valor);
+                $("#cparticipantes").val("");
+
+                if(valor == '3')
+                    $("#seleccionarparticipantes").show();
+                else
+                    $("#seleccionarparticipantes").hide();
+
+            };
+
+            {% if tipobus != 3 %}
+                $("#seleccionarparticipantes").hide();
+            {% endif %}
+
+            $(".aprobar").click(function() {
+                var id = $(this).attr('id');
+                var titulo = $(this).attr('titulo');
+                var url = "/librosinvestigacion";
+                var action = "aprobarcapitulolibro";
+                var urlDestino = "/librosinvestigacion?action=listacapitulos&estadoparticipante=2";
+                mensajeConfirmSwal("Aprobar Solicitud de Registro de Publicación", "¿Está seguro de aprobar la solicitud de registro de publicación con el título "+titulo+"?", true, url, action, id, urlDestino);
+            });
+            
+            $(".evidenciascapituloscodigo").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/librosinvestigacion",
+                    data: {'action': 'evidenciascapitulocodigo'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyevidenciascodigo").html(data.data);
+                            $(".paneltitleevidenciascodigo").html(data.title);
+                            $("#itemspanelevidenciascodigo").modal({backdrop:'static', width: '700px'}).modal('show');
+                        } else {
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelevidenciascodigo .guardar").click(function () {
+                envioformularioreg("/librosinvestigacion", "evidenciascapitulocodigo", false);
+                return false;
+            });
+
+            $("#itemspanelevidenciascodigo .cerrar").click(function () {
+                $('#itemspanelevidenciascodigo').modal('hide');
+            });
+
+            $("#itemspanelevidenciascodigo .cerrar2").click(function () {
+                $('#itemspanelevidenciascodigo').modal('hide');
+            });
+
+            envioformularioreg = function(url, action, destino){
+                if(action == 'evidenciascapitulocodigo'){
+                    $("#frmEvidenciaCapituloCodigo").validationEngine('attach',{ scroll: false });
+                    var valido = $("#frmEvidenciaCapituloCodigo").validationEngine('validate', { scroll: false });
+                }
+
+                if (valido){
+                    bloqueointerface();
+                    if(action == 'evidenciascapitulocodigo')
+                        var formdata = new FormData($("#frmEvidenciaCapituloCodigo")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action : action,
+                        url: url,
+                        data:  formdata,
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                location.href = data.archivo;
+                                $("#itemspanelevidenciascodigo").modal('hide');
+                            } else {
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                }
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_produccioncientifica{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <a href="/adm_produccioncientifica" class='btn btn-info tu' title="Artículos"><span class="fa fa-list"></span> Artículos</a>
+        <a href="/ponenciasinvestigacion" class='btn btn-info tu' title="Ponencias"><span class="fa fa-list"></span> Ponencias</a>
+        <a href="/librosinvestigacion" class='btn btn-info tu' title="Libros"><span class="fa fa-list"></span> Libros</a>
+        <a href="javascript:;" class='btn btn-default tu' title="Capítulos de Libros"><span class="fa fa-list"></span> Capítulos</a>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            <div class="span7">
+                <div class="btn-group ">
+                    <a class="btn dropdown-toggle btn-warning" data-toggle="dropdown" href="#"> Procesos <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="javascript:;" class="evidenciascapituloslibros" titulo="Descargar Evidencias de Capítulos"><i class="fa fa-download"></i> Descargar Evidencias por año</a></li>
+                        <li><a href="javascript:;" class="evidenciascapituloscodigo"><i class="fa fa-download"></i> Descargar Evidencias por código</a></li>
+                    </ul>
+                </div>
+
+                <div class="btn-group ">
+                    <a class="btn dropdown-toggle btn-success" data-toggle="dropdown" href="#"> Capítulos de Libros <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="/librosinvestigacion?action=addcapitulo"><span class="fa fa-plus "></span> Adicionar</a></li>
+
+{#                        <li><a href="/librosinvestigacion?action=excelcapitulolibros"><i class="fa fa-list "></i> Descargar Excel</a></li>#}
+                        <li><a href="/librosinvestigacion?action=reporte_capitulos_libro_excel"><i class="fa fa-list "></i> Listado General</a></li>
+                        <li><a href="javascript:;" class="seleccionarparticipantes" tipo="reporte"><i class="fa fa-list"></i> Listado por Participantes</a></li>
+
+                        <li><a href="javascript:;" class="informacionsolicitud"><i class="fa fa-list "></i> Ver Solicitudes</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="span5">
+                <table class="table table-bordered" style="padding: 0px; margin: 0px">
+                    <tr>
+                        <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadocapitulo tu" title="Mostrar todos los capítulos" estado="0">Total Capítulos: <span class="badge badge-info tu"><strong>{{ totalcapitulos }}</strong></span></a></td>
+                        <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadocapitulo tu" title="Mostrar capítulos aprobados" estado="1">Registros aprobados: <span class="badge badge-success tu"><strong>{{ totalaprobados }}</strong></span></a></td>
+                        <td style="margin: 2px; padding: 4px;"><a href="javascript:;" class="consultaestadocapitulo tu" title="Mostrar capítulos por aprobar" estado="2">Registros por aprobar: <span class="badge badge-warning tu"><strong>{{ totalporaprobar }}</strong></span></a></td>
+                    </tr>
+                </table>
+            </div>
+            <br>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class="span12" style="text-align: right">
+            <div class="span4">
+            </div>
+            <div class="span8">
+                <form class="form-search">
+                    <div class="btn-group" data-toggle="buttons">
+                        <label class="btn btn-default">Buscar Por</label>
+                        <label class="btn btn-{% if tipobus == 1 %}info{% else %}default{% endif %}">
+                            <input type="radio" name="options" id="option1" autocomplete="off" value="1" {% if tipobus == 1 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Capítulo</strong>
+                        </label>
+                        <label class="btn btn-{% if tipobus == 2 %}info{% else %}default{% endif %}">
+                            <input type="radio" name="options" id="option2" autocomplete="off" value="2" {% if tipobus == 2 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Libro</strong>
+                        </label>
+                        <label class="btn btn-{% if tipobus == 3 %}info{% else %}default{% endif %}">
+                            <input type="radio" name="options" id="option3" autocomplete="off" value="3" {% if tipobus == 3 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Participante</strong>
+                        </label>
+                        <label class="btn btn-{% if tipobus == 4 %}info{% else %}default{% endif %} tu" title="Año Publicación">
+                            <input type="radio" name="options" id="option4" autocomplete="off" value="4" {% if tipobus == 4 %}checked {% endif %} onclick="seleccionar(this.value)"> <strong>Año Pub.</strong>
+                        </label>
+                        <input type="hidden" name="tipobusqueda" id="tipobusqueda" value="{{ tipobus }}">
+                        <a href="javascript:;" id="seleccionarparticipantes" class="btn btn-warning tu seleccionarparticipantes" tipo="consulta" titulo="Seleccionar participantes" title="Seleccionar participantes"><i class="fa fa-users"></i> </a>
+                        <input type="hidden" name="cparticipantes" id="cparticipantes" value="">
+                    </div>
+
+                    <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                    <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search " ></span> Buscar</a>
+                    {% if search or ids %}
+                        <a href="librosinvestigacion?action=listacapitulos&tipobus=1" id='allresults' class='btn btn-info'><span class="fa fa-refresh " ></span> Todos</a>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0" >
+                <thead>
+                <tr>
+                    <th style="width: 50px; text-align: center">Código</th>
+                    <th style="width: 300px; text-align: center;">Capítulo</th>
+                    <th style="width: 300px; text-align: center;">Libro</th>
+                    <th style="width: 300px; text-align: center;">Autores y Coautores</th>
+                    <th style="width: 25px;text-align: center;">Proy.Inv</th>
+                    <th style="width: 25px;text-align: center;">Grup.Inv</th>
+                    <th style="width: 100px; text-align: center;">Publicación</th>
+                    <th style="width: 50px; text-align: center;">Área de Conocimiento</th>
+                    <th style="width: 70px; text-align: center;">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for capitulos in listacapitulos %}
+                    <tr>
+                        <td style="text-align: center">
+                            {{ capitulos.codisbn }}-{{ capitulos.id }}-CAPLIB<br>
+                            {% if capitulos.aprobado %}<span class="label label-success">APROBADO</span>{% else %}<span class="label label-warning">POR APROBAR</span>{% endif %}
+                            {% if capitulos.eliminadoxdoc %}
+                                <br>
+                                <span class="label label-important tu" title="Eliminado por el docente">ELIMINADO</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: justify;">{{ capitulos.titulocapitulo|upper }}</td>
+                        <td style="text-align: justify;">{{ capitulos.titulolibro|upper }}</td>
+                        <td>
+                            {% with listaparticipantes=capitulos|call:'participantes' %}
+                                {% for participes in listaparticipantes %}
+                                    <strong>
+                                        {% if participes.profesor %}
+                                            <span class="label label-info tu" data-original-title="Participante Docente">D</span>
+                                        {% elif participes.administrativo %}
+                                            <span class="label label-info tu" data-original-title="Participante Administrativo">A</span>
+                                        {% else %}
+                                            <span class="label label-info tu" data-original-title="Participante Estudiante">E</span>
+                                        {% endif %}
+                                        {{ participes.get_tipoparticipante_display }}:</strong> {{ participes.profesor|default_if_none:"" }} {{ participes.administrativo|default_if_none:"" }} {{ participes.inscripcion|default_if_none:"" }}
+                                    <br>
+                                {% empty %}
+                                    <a href='/librosinvestigacion?action=participantescapitulos&id={{ capitulos.id }}'><span class="label label-warning"> PARTICIPANTE(S) NO ASIGNADO(S)</span></a>
+                                {% endfor %}
+                            {% endwith %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if capitulos.tipoproyecto %}
+                                <span class="label label-success tu" title="{% if capitulos.proyectointerno %}{{ capitulos.proyectointerno.nombre }}{% else %}{{ capitulos.proyectoexterno.nombre }}{% endif %}">SI</span>
+                            {% else %}
+                                <span class="label label-inverse">NO</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if capitulos.pertenecegrupoinv %}
+                                <span class="label label-success tu" title="{{ capitulos.grupoinvestigacion.nombre }}">SI</span>
+                            {% else %}
+                                <span class="label label-inverse">NO</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;"> {{capitulos.fechapublicacion|date:"Y-m-d"}} </td>
+                        <td style="text-align: center;">{{ capitulos.areaconocimiento }}</td>
+                        <td style="text-align: center">
+                            <div class="btn-group" style="text-align: left">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span>
+                                </a>
+                                <ul class="dropdown-menu pull-right">
+                                    {% if not capitulos.eliminadoxdoc %}
+                                        <li><a href='/librosinvestigacion?action=editarcapitulo&id={{ capitulos.id|encrypt }}'><span class="fa fa-edit "></span> Editar</a></li>
+                                    {% endif %}
+                                    {% with numeroevidencias=capitulos|call:'numeroevidenciascapitulo' numeroparticipantes=capitulos|call:'numeroparticipantescapitulo' %}
+                                        <li><a href='/librosinvestigacion?action=evidenciascapitulo&id={{ capitulos.id|encrypt }}'><span class="fa fa-table "></span> Evidencia <label class="label tu">{{ numeroevidencias }}</label></a></li>
+                                        <li><a href='/librosinvestigacion?action=participantescapitulos&id={{ capitulos.id|encrypt }}'><span class="fa fa-group "></span> Participantes <label class="label tu">{{ numeroparticipantes }}</label></a></li>
+                                    {% endwith %}
+
+                                    <li><a href="javascript:;" class="reporte_ficha_catalografica" id="{{ capitulos.id|encrypt }}"><i class="fa fa-print"></i> Ficha Catalográfica</a></li>
+                                    {% if not capitulos.eliminadoxdoc %}
+                                        <li><a class="eliminacionmodal" href="javascript:;" nhref='/librosinvestigacion?action=deletecapitulo&idcapitulo={{ capitulos.id }}'><span class="fa fa-minus "></span> Eliminar <label class="label tu"></label></a></li>
+                                    {% endif %}
+
+                                    {% if not capitulos.aprobado and not capitulos.eliminadoxdoc %}
+                                        {% with totalevidencias=capitulos|call:"numeroevidenciascapitulo" totalparticipantes=capitulos|call:"numeroparticipantescapitulo" %}
+                                            {% if totalevidencias > 0 and totalparticipantes > 0 %}
+                                                {% if persona.es_coordinador_investigacion or persona.es_aprobador_produccion_cientifica %}
+                                                    <li style="height:1px; margin:9px 0; overflow:hidden; background-color: #e5e5e5 "></li>
+                                                    <li><a class="aprobar" id="{{ capitulos.id|encrypt }}" titulo="<b>{{ capitulos.titulocapitulo }}</b>" href="javascript:;"><i class="fa fa-check-square-o"></i> Aprobar Capítulo</a></li>
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endwith %}
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not listacapitulos %}
+                    <tr>
+                        <td colspan="11">
+                            NO HAY CAPÍTULOS DE LIBROS
+                        </td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 20 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page=1">1</a></li>
+                            <li><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}&tipobus={{ tipobus }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page={{ paging.ellipsis_derecha }}&tipobus={{ tipobus }}" class="active">...</a></li>
+                            <li><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page={{ paging.num_pages }}&tipobus={{ tipobus }}">{{ paging.num_pages }}</a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/librosinvestigacion?action=listacapitulos&{% if estadocapitulo %}estadocapitulo={{ estadocapitulo }}&{% endif %}{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}&tipobus={{ tipobus }}">{{ pagenumber }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="modal fade static" id="detallesolicitudmodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalle Solicitud Capítulos</h3>
+        </div>
+        <div class="modal-body" id="detallesolicitudmodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detallesolicitudmodal_cerrar" class="btn btn-info"> Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" data-keyboard="false" id="itemspaneldescargaevidencia" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitledescargaevidencia">Descargar Evidencias de Capítulos</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class=ow-fluid">
+                <form id="formDescargaEvidencia" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                    <table class="table table-bordered" id="descarga_evidencia" >
+                        <tbody>
+                        <tr>
+                            <td style="width: 30%;">Año Publicación:</td>
+                            <td style="width: 70%;">
+                                <select id="anioevidencia" name="anioevidencia" style="width: 95%">
+                                    <option value="0" selected>---------</option>
+                                    {% for anio in aniosevidencias %}
+                                        <option value="{{ anio }}">{{ anio }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-procesar btn-success"><i class="fa fa-download"></i> Descargar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelparticipante" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleparticipante">Seleccionar Participantes para filtro de búsqueda</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyparticipante">
+            <table style="width: 100%;" class='table table-bordered table-striped' id="example2">
+                <thead>
+                <tr>
+                    <th style="text-align: center; width: 3%;">#</th>
+                    <th style="text-align: center; width: 20%;">Cédula</th>
+                    <th style="text-align: center; width: 35%;">Apellidos</th>
+                    <th style="text-align: center; width: 35%;">Nombres</th>
+                    <th style="text-align: center; width: 7%">Sel</th>
+                </tr>
+                </thead>
+                <tbody id="detalle_participantes">
+                {% for participante in participantes %}
+                    <tr>
+                        <td style="width: 3%; text-align: right; font-weight: bold">{{ forloop.counter }}</td>
+                        <td style="width: 20%; text-align: justify;">{{ participante.cedula }}</td>
+                        <td style="width: 35%; text-align: justify;">{{ participante.apellido1 }} {{ participante.apellido2 }}</td>
+                        <td style="width: 35%; text-align: justify;">{{ participante.nombres }}</td>
+                        <td style="width: 7%; text-align: center;">
+                            <a href="javascript:;" idpart="{{ participante.id }}" nparticipante="{{ participante.apellido1 }} {{ participante.apellido2 }} {{ participante.nombres }}" class="btn btn-mini btn-success tu selparticipante" title="Agregar"><i class="fa fa-plus"></i> Agregar</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="padding-left: 5px; padding-top: 0px; padding-bottom: 0px; text-align: left">
+            <strong>Participantes seleccionados:</strong>
+        </div>
+        <div class="modal-footer" id="nombresseleccionados" style="text-align: left; padding: 5px; height: 70px; overflow-y:scroll;">
+
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" id="btn-aplicar-filtro" class="btn btn-success aplicar"> Aplicar Filtro</a>
+            <a href="javascript:;" id="btn-descargar-listado" class="btn btn-success descargar"> Descargar Listado</a>
+            <a href="javascript:;" id="btn-cerrar-filtro" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+    
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelevidenciascodigo" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleevidenciascodigo">Título del Modal</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyevidenciascodigo">
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success guardar"><i class="fa fa-download"></i> Descargar</a>
+            <a href="javascript:;" class="btn btn-info cerrar"><i class="fa fa-close"></i> Cerrar</a>
+        </div>
+    </div>
+
+{% endblock %}

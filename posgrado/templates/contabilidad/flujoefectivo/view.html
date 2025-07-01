@@ -1,0 +1,218 @@
+{% extends 'contabilidad/flujoefectivo/base.html' %}
+{% load tz %}
+{% load humanize %}
+{% load sga_extras %}
+{% block extraheading %}
+
+{% endblock %}
+{% block extra_js_end %}
+    <script>
+        $(document).ready(function () {
+            // Desmarcar todos los checkboxes con la clase .seleccionindividual
+            $('.seleccionindividual').prop('checked', false);
+            $('#id_seleccionmasivo').prop('checked', false);
+        });
+
+        let pk_seleccionados = []
+
+        $(function (e) {
+            $("select").select2({width: '100%'});
+            $('.seleccionindividual').change(function () {
+
+                pk_seleccionados = [];
+                $('.seleccionindividual:checked').each(function () {
+                    let pk = this.attributes.pk_seleccionados.value;
+                    if (this.checked && !pk_seleccionados.includes(pk)) {
+                        pk_seleccionados.push(pk);
+                    }
+                });
+
+            });
+
+        });
+
+        const loadForm = (id, text, action, footer = false) => {
+            bloqueointerface();
+            footer && $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result == 'ok') {
+                        $('#itemspanel .panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({
+                            backdrop: 'static',
+                            width: '90%'
+                        }).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbody").empty();
+                            for (instance in CKEDITOR.instances) {
+                                CKEDITOR.instances[instance].destroy();
+                            }
+                        });
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const aprobar_flujo_de_efectivo= (pk)=>{
+            Swal.fire({
+                html: `¿Está seguro de aprobar el flujo de efectivo mensual?`,
+                text: "Esta acción válida que el flujo de efectivo mensual está correctamente válidado y no podrá editarlo.",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.post(`{{ request.path }}`, {'action': 'aprobar_flujo_de_efectivo_mensual', 'id': pk}, function (data) {
+                        $.unblockUI();
+                        if (data.result == true) {
+                            location.href = "{{ request.path }}?action=viewflujodeefectivo&pk="+data.pk;
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json').fail(function () {
+                        $.unblockUI();
+                        mensajeDanger('Error de conexión, intentelo más tarde');
+                    });
+                     $.unblockUI();
+
+                }
+            });
+        }
+
+
+    </script>
+{% endblock %}
+
+{% load sga_extras %}
+{% block opciones-flujo-efectivo%}
+    <div class="col-md-6 col-lg-4 col-12 pe-lg-2">
+
+        <a href="javascript:void(0);"  onclick="loadForm('','Generar Flujo de efectivo','addflujoefectivo')"
+           class='btn btn-success bloqueo_pantalla'>
+            <span class="fa fa-plus"></span>
+            <t class="">Adicionar</t>
+        </a>
+    </div>
+    <div class="col-md-4 col-lg-4 col-12 pe-md-2 mt-4">
+    </div>
+{% endblock %}
+{% block filtros-flujo-efectivo %}
+    <form method="GET" id="id-filtro-balance-costo" class="form-row py-0">
+        <div class="col-md-6 col-lg-4 col-12 pe-lg-2">
+            <label for=""><i class="fa fa-search"></i> Criterio: </label>
+            <div class="input-group mb-2">
+                <input type="hidden" name="action" value="">
+                <input type="text" class="form-control" placeholder="Buscar por..."
+                       aria-label="Buscar"
+                       aria-describedby="button-addon2" name="s" value="">
+                <div class="input-group-append">
+                    <button class="btn btn-primary-old" type="submit" id="button-addon2"><i
+                            class="fa fa-search"></i></button>
+                    <a title="Ver todo" href="{{ request.path }}?action=viewflujodeefectivo" class="btn btn-default tr">
+                        <i class="fas fa-sync-alt"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+{% endblock %}
+{% block content-flujo-efectivo %}
+    <table class="table mb-0" style="position: relative!important;z-index: 1!important;">
+        <thead class="table-light">
+        <tr>
+            <th scope="col" class="border-0 text-center">#</th>
+            <th scope="col" class="border-0 text-center">Año</th>
+            <th scope="col" class="border-0 text-center">Mes</th>
+            <th scope="col" class="border-0 text-center">Fecha generación</th>
+            <th scope="col" class="border-0 text-center">Descripción</th>
+            <th scope="col" class="border-0 text-center">Estado</th>
+            <th scope="col" class="border-0 text-center">Superavit</th>
+            <th scope="col" class="border-0 text-center"><i class="fa fa-cogs"></i></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for eFlujoEfectivo in eFlujosEfectivos %}
+            <tr>
+                <td class="text-center">
+                    <input type="checkbox" class="seleccionindividual" pk_seleccionados="{{ eFlujoEfectivo.pk }}">
+                </td>
+
+                <td class="text-center">{{ eFlujoEfectivo.anio }}</td>
+                <td class="text-center">{{ eFlujoEfectivo.get_mes_display }}</td>
+                <td class="text-center">
+                {{ eFlujoEfectivo.fecha_creacion.day }} de {{ eFlujoEfectivo.fecha_creacion|nombremes }} del {{ eFlujoEfectivo.fecha_creacion.year }}  a las {{ eFlujoEfectivo.fecha_creacion.hour }}:{{ eFlujoEfectivo.fecha_creacion.minute }}
+                </td>
+                <td class="text-center">{{ eFlujoEfectivo.descripcion }} <br>
+                    {% if eFlujoEfectivo.existe_otro_flujo_de_efectivo_validado_en_el_mismo_mes_and_anio %}
+                        <span class="text-warning">Ya se encuentra un flujo de efectivo aprobado.</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ eFlujoEfectivo.get_estado_badge| safe}}</td>
+                <td class="text-center">$ {{ eFlujoEfectivo.superavit|intcomma }}</td>
+                <td class="align-middle">
+                    <div class="d-flex justify-content-center">
+                        <div class="d-flex">
+                            <div class="me-2" title="Gestionar balance de costo">
+                                <a class="btn-icon btn btn-ghost btn-sm rounded-circle "
+                                   href="{{ request.path }}?action=viewflujoefectivo_panel&pk={{ eFlujoEfectivo.pk }}">
+                                    <i class="fa fa-cogs"></i>&nbsp;
+                                </a>
+                            </div>
+                            <div class="me-2">
+                                <div class="dropdown dropstart">
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140"
+                                       aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </a>
+                                    <ul class="dropdown-menu" x-placement="right-start">
+
+                                        <li class="dropdown-item">
+                                            <a href="{{ request.path }}?action=viewflujoefectivo_panel&pk={{ eFlujoEfectivo.pk }}"> <span
+                                                    class="fa fa-edit dropdown-item-icon"></span> Gestionar</a>
+                                        </li>
+                                        {% if eFlujoEfectivo.estado_flujo_efectivo_generado %}
+                                            {% if not eFlujoEfectivo.existe_otro_flujo_de_efectivo_validado_en_el_mismo_mes_and_anio %}
+                                            <li class="dropdown-item">
+                                                <a href="Javascript:void(0);"  onclick="aprobar_flujo_de_efectivo('{{ eFlujoEfectivo.pk }}')"> <span class="fa fa-check-double dropdown-item-icon"></span> Aprobar flujo de efectivo</a>
+                                            </li>
+
+                                            {% endif %}
+                                             <li class="dropdown-item">
+                                                <a href="Javascript:void(0);"  onclick="eliminarajax('{{ eFlujoEfectivo.pk }}', 'Flujo de efectivo: {{ eFlujoEfectivo }}', 'eliminar_flujo_de_efectivo')"> <span class="fa fa-trash dropdown-item-icon"></span> Eliminar</a>
+                                            </li>
+                                            <li class="dropdown-item"><a href="?action=dowload_flujoefectivo__mensual&id={{eFlujoEfectivo.pk}}"> <span class="fa fa-download dropdown-item-icon"></span> Descargar Flujo de efectivo mensual</a></li>
+                                        {% endif %}
+
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5">No existen registros</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% load sga_extras %}
+<style>
+    .nav-pills .nav-link.active .nav-pills .show .nav-link> {
+        color: #fff;
+        background-color: #007bff;
+        padding: 16px;
+        font-size: 14px;
+    }
+
+    .nav-pills > li > a {
+        margin-top: 2px;
+        margin-bottom: 4px;
+        -webkit-border-radius: 5px;
+        -moz-border-radius: 5px;
+        border-radius: 5px;
+        color: #000000;
+        background-color: #EAECEE;
+        padding: 7px;
+        font-size: 14px;
+    }
+
+    .nav-tabs > li, .nav-pills > li {
+        float: initial;
+    !important;
+    }
+
+    .nav {
+        margin-bottom: 20px;
+    !important;
+        list-style: none;
+    }
+</style>
+
+<div class="row-fluid">
+    <div class="span4">
+
+        <div class='well'>
+            <h5><i class="fa fa-ticket"></i> <b>SOLICITUD</b> #{{ inscripcion.pk }}</h5>
+            <h5><i class="fa fa-user"></i> {{ inscripcion.postulante.persona }}</h5>
+        </div>
+
+        <ul class="nav nav-pills nav-justified">
+            {% for doc in listadorequisitosgenerales %}
+                <li class='{% if forloop.counter == 1 %}active{% endif %}'>
+                    <a class="tabs " href="#{{ doc.requisito.pk }}" data-toggle="tab">
+                        <b>{{ forloop.counter }})</b> {{ doc.requisito.nombre }}
+                    </a>
+                </li>
+            {% endfor %}
+            <li>
+                <a class="tabs " href="#aprobar" data-toggle="tab">
+                    <i class="fa fa-check-circle"></i> FINALIZAR VERIFICACIÓN DE REQUISITOS
+                </a>
+            </li>
+        </ul>
+    </div>
+    <div class='span8'>
+        <div class="profile-content">
+            <div class="tab-content">
+                {% for doc in inscripcion.requisitosgeneralescargados %}
+                    <div class="tab-pane {% if forloop.counter == 1 %}active{% endif %}" id="{{ doc.requisitogeneral.requisito.pk }}">
+                        <table class="table">
+                            <tbody>
+                            <tr>
+                                <td width="220px;">
+                                    <b>Estado: REQUISITO {{ doc.pk }}</b> <br>
+                                    <select class="form-control estadoindividual" id="est{{ doc.pk }}">
+                                            <option value="">--------------------------</option>
+                                            <option value="2"{% if doc.estado == 2 %}selected{% endif %}>
+                                            APROBADO
+                                            </option>
+                                            <option value="3"{% if doc.estado == 3 %}selected{% endif %}>
+                                            RECHAZADO
+                                            </option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <b>Observación:</b> <br>
+                                    <input type="text" class="form-control observacionindividual" id="obs{{ doc.pk }}"
+                                           value="{{ doc.observacion|default_if_none:"" }}">
+                                </td>
+                                <td style="text-align: center; width: 120px;"><br>
+                                    <a href="javascript:void(0);" onclick="guardarrevision('{{ doc.pk }}')"
+                                       class="btn btn-success btn-block"><i class="fa fa-send"></i> Guardar</a>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <iframe src="/media/{{ doc.archivo }}" align="center" height="420px" width="99%"></iframe>
+                    </div>
+                {% endfor %}
+
+                <div class="tab-pane" id="aprobar">
+                    <input type="hidden" value="{{ inscripcion.pk }}" name="id">
+                    <input type="hidden" value="validarequisitogeneral" name="action">
+                    <div class="alert alert-warning" role="alert">
+                        <strong>Nota:</strong> Todos los documentos deben ser aprobados para finalizar la verificación, en caso de mandar a corregir los archivos rechazar la verificación para reiniciar los tiempos de validación.
+                    </div>
+                    <table class="table well">
+                        <thead>
+                        <tr>
+                            <th style="text-align: center" colspan="2">
+                                <b><i class="fa fa-search"></i> Finalizar Verificación de Requisitos</b>
+                            </th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td>
+                                <b>Estado:</b> <br>
+                                <select name="estado" id="id_estado" class="form-control" required>
+                                    <option value="">--------------------------</option>
+                                    <option value="2" {% if inscripcion.estadogen == 2 %}selected{% endif %}>APROBADO</option>
+                                    <option value="3" {% if inscripcion.estadogen == 3 %}selected{% endif %}>RECHAZADO</option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                <b>Observación:</b> <br>
+                                <textarea name="observacion" id="id_observacion" cols="30" rows="4">
+                                {{ inscripcion.observaciongen|default_if_none:"" }}</textarea>
+                            </th>
+                        </tr>
+                        <tr>
+                            <th style="text-align: center">
+                                <button type="submit" id="submit"
+                                        class="btn btn-success">
+                                    <i class="fa fa-save"></i> Guardar
+                                </button>
+                                <a href="javascript:" class="btn btn-danger" data-dismiss="modal"><i
+                                        class="fa fa-window-close"></i>
+                                    Cancelar</a>
+                            </th>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    function guardarrevision(id) {
+        bloqueointerface();
+        var obs = $(`#obs${id}`).val();
+        var est = $(`#est${id}`).val();
+        if (est) {
+            if (est === '4') {
+                if (obs) {
+                    validarRequisito(id, est, obs)
+                } else {
+                    $.unblockUI();
+                    smoke.alert('Complete los datos')
+                }
+            } else {
+                validarRequisito(id, est, obs)
+            }
+        } else {
+            $.unblockUI();
+            smoke.alert('Complete los datos')
+        }
+    }
+
+    function validarRequisito(id, est, obs) {
+        $.ajax({
+            type: "POST",
+            url: "/adm_postulacion",
+            data: {'action': 'validarrequisitogeneral', 'id': id, 'est': est, 'obs': obs},
+            success: function (data) {
+                if (data.result === 'ok') {
+                    setTimeout($.unblockUI, 1);
+                    NotificationJG.success('VALIDACIÓN GUARDADA', 'Aviso!', 10000);
+                } else {
+                    setTimeout($.unblockUI, 1);
+                    smoke.alert(data.mensaje);
+                }
+            },
+            error: function () {
+                setTimeout($.unblockUI, 1);
+                smoke.alert("Error de conexión.");
+            },
+            dataType: "json"
+        });
+    }
+
+</script>

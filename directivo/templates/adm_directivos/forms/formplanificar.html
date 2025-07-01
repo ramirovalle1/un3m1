@@ -1,0 +1,184 @@
+{% extends 'ajaxformmodal.html' %}
+{% load sga_extras %}
+{% block extra_js %}
+    <script>
+        numDetalle = {{ numDetalle }}+1;
+        optionsHtml = '<option value=""></option>'
+        $(function(){
+            let bloque = $("#id_bloque")
+            let ubicacion = $("#id_ubicacion")
+            cargarSelectSecundario('cargarubicaciones', bloque, ubicacion)
+            {% if numDetalle > 0 %}
+                buscarPersona($(`.funcionarios`), 'distributivos')
+            {% endif%}
+            {% if audiencia.estado > 0 and not action == 'reprogramaraudiencia' %}
+                $("#id_fecha, #id_horainicio, #id_horafin").attr('readonly', true)
+                $("#fieldset_notificar").hide()
+            {% endif %}
+            {% for rol in roles %}
+                optionsHtml += `<option value="{{ rol.0 }}">{{ rol.1 }}</option>`
+            {% endfor %}
+        })
+        function crearFilaDetalle(numDetalle) {
+            return $('<tr>', { 'id': `tr_${numDetalle}`, 'data_id': numDetalle }).append(
+                $('<td>').append(
+                    $('<select>', {
+                        'class': 'form-control p-1 my-1 funcionarios select2',
+                        'id': `id_funcionario${numDetalle}`,
+                        'api':true,
+                        'name': 'funcionario',
+                        'required': true
+                    })
+                ),
+                $('<td>').append(
+                    $('<select>', {
+                        'class': 'form-control p-1 my-1 select2 roles',
+                        'name': 'rol',
+                        'required': true
+                    }).append(optionsHtml)),
+                $('<td>', { 'class': 'text-center' }).append(
+                    $('<a>', {
+                        'href': 'javascript:void(0)',
+                        'class': 'btn btn-danger btn-mini',
+                        'onclick': `eliminarFilaDetalle(${numDetalle})`
+                    }).append('<i class="fa fa-trash"></i>')
+                )
+            );
+        }
+
+        function agregarFilaDetalle() {
+            $('#id_tabla_registro tbody').append(crearFilaDetalle(numDetalle));
+            let funcionario = $(`#id_funcionario${numDetalle}`)
+            buscarPersona(funcionario)
+            $(".roles").select2({width: '100%',
+                                placeholder: 'Seleccione una opción...',
+                                minimumResultsForSearch: 15})
+            numDetalle += 1;
+        }
+
+        function eliminarFilaDetalle(id) {
+            $(`#tr_${id}`).remove();
+            numDetalle -= 1;
+        }
+
+        function funcionAntesDeGuardar(){
+            {#$("#id_fecha, #id_horainicio, #id_horafin").removeAttr('disabled')#}
+              lista_items1 = []
+                $('table#id_tabla_registro > tbody tr').each(function (index, elementTr) {
+                    let id_persona = $(elementTr).find('td > select.funcionarios').val()
+                    if (id_persona){
+                        lista_items1.push({
+                            'id_persona': id_persona,
+                            'rol': $(elementTr).find('td > select.roles').val()
+                        });
+                    }
+                });
+        }
+    </script>
+{% endblock %}
+{% block header_info %}
+    {% if audiencia.estado > 0 and not action == 'reprogramaraudiencia' %}
+        <div class="alert alert-warning d-flex align-items-center p-2" role="alert">
+            <svg class="bi flex-shrink-0 me-2" width="20" height="20" role="img" aria-label="Info:">
+                <use xlink:href="#info-fill"/>
+              </svg>
+            <div class="lh-15">
+                <p class="ps-2 fs-5">
+                   Esta audiencia ya fue notificada por lo tanto no podra moficiar los campos de fecha, hora de inicio y hora de fin.
+                </p>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+{% block extra_input %}
+    <div class="alert alert-primary d-flex align-items-center p-2 justify-content-start my-2" role="alert">
+        <svg class="bi flex-shrink-0 me-2" width="20" height="20" role="img" aria-label="Info:">
+            <use xlink:href="#info-fill"/>
+          </svg>
+        <div class="lh-15">
+            <p class="ps-2 fs-5">
+                Recuerde que si el participante no se encuentra registrado en ninguno de nuestros sistemas, puede registrarlo en el siguiente enlace.
+            </p>
+        </div>
+        <div class="text-center w-20">
+            <a href="javascript:void(0)" class="btn btn-primary-old btn-sm"
+                  onclick="formModalBase('','Adicionar persona externa','signup','','modal-md',true,'fa fa-user-plus')">
+                  <i class="fa fa-user-plus"></i>
+                  Registrar
+            </a>
+        </div>
+    </div>
+	<table class="table table_primary" id="id_tabla_registro">
+        <thead>
+            <tr>
+                <th class="w-70">Participante de audiencia</th>
+                <th class="w-30 text-center">Rol</th>
+                <th class="w-3 text-center">
+                    <a href="javascript:void(0)"
+                     onclick="agregarFilaDetalle()"
+                     class="btn btn-success btn-mini"><i class="bi bi-plus-lg"></i></a>
+                </th>
+            </tr>
+        </thead>
+        <tbody id="id_tbody">
+            {% for p in incidencia.personas_sancion_prodecedente %}
+                <tr >
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <img src="{{ p.persona.get_foto }}" alt="" class="rounded-circle avatar-sm me-1">
+                            <p class="mb-0 lh-15">
+                                {{ p.persona.nombre_completo_minus }}
+                            </p>
+                        </div>
+                    </td>
+                    <td class="text-center" >Servidor Público </td>
+                    <td>
+                    </td>
+                </tr>
+            {% endfor %}
+            {% if audiencia %}
+                 {% for p in responsables_audiencia %}
+                    <tr id="tr_{{ forloop.counter }}" data_id="{{ forloop.counter }}">
+                        <td>
+                            <select name="funcionario" id="id_funcionario" api="true" class="select2 funcionarios">
+                                <option value="{{ p.persona.id }}">{{ p.persona }}</option>
+                            </select>
+                        </td>
+                        <td class="align-middle text-center">
+                             <select name="rol" id="id_rol" class="select2 roles" disabled>
+                                {% for rol in roles %}
+                                    <option value="{{ rol.0 }}" {% if rol.0 == p.rol_firma %}selected{% endif %}>{{ rol.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="align-middle text-center">
+                            <a href="javascript:void(0)"  class="btn btn-danger btn-mini"
+                                onclick="eliminarFilaDetalle({{ forloop.counter }})"><i class="fa fa-trash"></i></a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                 {% for p in responsables_firma %}
+                    <tr id="tr_{{ forloop.counter }}" data_id="{{ forloop.counter }}">
+                        <td>
+                            <select name="funcionario" id="id_funcionario" api="true" class="select2 funcionarios">
+                                <option value="{{ p.persona.id }}">{{ p.persona }}</option>
+                            </select>
+                        </td>
+                        <td class="align-middle text-center">
+                             <select name="rol" id="id_rol" class="select2 roles" disabled>
+                                {% for rol in roles %}
+                                    <option value="{{ rol.0 }}" {% if rol.0 == p.rol_doc %}selected{% endif %}>{{ rol.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="align-middle text-center">
+{#                            <a href="javascript:void(0)"  class="btn btn-danger btn-mini"#}
+{#                                onclick="eliminarFilaDetalle({{ forloop.counter }})"><i class="fa fa-trash"></i></a>#}
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% endif %}
+        </tbody>
+    </table>
+{% endblock %}

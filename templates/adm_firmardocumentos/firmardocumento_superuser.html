@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/cabonads.css?0.3.3">
+    <link rel="stylesheet" href="/static/firmaelectronica/firmaelectronica.css">
+    <script src="/static/firmaelectronica/pdf.min.js"></script>
+    <script src="/static/firmaelectronica/pdf.worker.min.js"></script>
+    <script src="/static/firmaelectronica/konva.min.js"></script>
+    <script>
+    </script>
+{% endblock %}
+
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card" style="margin-left: -1px;!important;">
+                    <div class="card-body">
+                        <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="row" style="margin-left: -1px;!important;">
+                            </div>
+                            <div class="row mt-2" style="margin-left: -1px;!important;">
+                                <div class="col-lg-4">
+                                    <div class="row">
+                                        <input type="hidden" name="action" value="firmardocumento">
+                                        <textarea style="display: none;" name="txtFirmas"></textarea>
+                                        <div id="fieldset_archivo" class="col-lg-12" style="float: left;">
+                                            <label class="control-label pr-2" for="id_archivo"><b>Archivo<span style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                            <input type="file" name="pdf" class="form-control" required id="id_archivo" accept=".pdf">
+                                            <p class="help-text">Tamaño máximo permitido 4Mb, en formato .pdf</p>
+                                        </div>
+                                        <div id="fieldset_firma" class="col-lg-12" style="float: left;">
+                                            <label class="control-label pr-2" for="id_firma"><b>Firma Electrónica<span style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                            <input type="file" name="firma" class="form-control" required id="id_firma" accept=".p12,.pfx">
+                                            <p class="help-text">Formato permitido .p12 y .pfx </p>
+                                        </div>
+                                        <div id="fieldset_pass" class="col-lg-12" style="float: left;">
+                                            <label class="control-label pr-2" for="id_archivo"><b>Contraseña<span style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                            <input type="password" name="palabraclave" class="form-control" required id="id_palabraclave" placeholder="Contraseña">
+                                        </div>
+                                        <div id="fieldset_pass" class="col-lg-12" style="float: left;">
+                                            <label class="control-label pr-2" for="id_fecha"><b>Fecha<span style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                            <input type="date" name="fecha" class="form-control" required id="id_fecha" placeholder="">
+                                        </div>
+                                        <div id="fieldset_pass" class="col-lg-12" style="float: left;">
+                                            <label class="control-label pr-2" for="id_hora"><b>Hora<span style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                            <input type="time" name="hora" class="form-control" required id="id_hora" placeholder="">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-8">
+                                    <div class="d-flex justify-content-between text-center">
+                                        <div class="w-40">
+                                            <div class="input-group mb-1" style="width: 215px">
+                                                <a class="btn btn-default" type="button" id="go_previous">Anterior</a>
+                                                <input type="number" class="form-control" placeholder="Num. Pagina" value="1" id="current_page" style="text-align: center">
+                                                <a class="btn btn-default" type="button" id="go_next">Siguiente</a>
+                                            </div>
+                                        </div>
+                                        <div class="w-40">
+                                            <a href="javascript:void(0);" id="zoom_in" class="btn btn-default tl" title="Aumentar Tamaño"><i class="fa fa-plus"></i></a>
+                                            <a href="javascript:void(0);" id="zoom_out" class="btn btn-default tl" title="Disminuir Tamaño"><i class="fa fa-minus"></i></a>
+                                            <a href="javascript:void(0);" id="bntPegarFirma" class="btn btn-primary tl" title="Firmar en esta página"><i class="fa fa-pencil-alt"></i></a>
+                                            <a href="javascript:void(0);" id="bntQuitarFirma" class="btn btn-danger tl" title="Quitar firma de esta página"><i class="fa fa-times"></i></a>
+                                        </div>
+                                    </div>
+                                    <div id="cont">
+                                        <div id="canvas_container" style="width: 100%;">
+                                            <canvas id="pdf_renderer"></canvas>
+                                        </div>
+                                        <span class="file-name" id="nombrePdf"></span>
+                                        <span class="file-name" id="nombreFirma"></span>
+                                    </div>
+                                    <div class="row-fluid">
+                                        <br>
+                                        <div style="text-align: left;  width: 100%">
+                                            <a href="javascript:void(0)" class="text-danger"><b>Nota:</b> Para proteger a nuestros usuarios le recordamos que ninguna firma usada en nuestras palataformas quedará guardada.</a>
+                                            <div style="text-align: right">
+                                                <button type="button" class="btn btn-success" id="btnFirmar"><i class="fa fa-check-circle"></i> Firmar</button>
+                                                <input style="display: none;" id="btnFirmarSubmit" class="button is-primary" type="submit" value="Firmar">
+                                                <a href="{{ request.path }}?action=buzondocumental" class="btn btn-danger"><i class="fa fa-times-circle" aria-hidden="true"></i> Cancelar</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                        {#  CONTENNIDO DE FIRMA DIGITAL #}
+                        <script>
+                            $('#btnFirmar').click((event) => {
+                                if (pdfState.pdf) {
+                                    let numPages = [...Array(pdfState.pdf._pdfInfo.numPages).keys()];
+                                    let hojasFirmadas = [];
+                                    for (let i in numPages) {
+                                        let firma = imagesPages[`page-${parseInt(i) + 1}`];
+                                        if (firma && firma.img) {
+                                            hojasFirmadas.push(
+                                                {
+                                                    x: firma.percX * firma.canvaWidth,
+                                                    y: firma.canvaHeight - (firma.percY * firma.canvaHeight) - firma.height,
+                                                    width: firma.width,
+                                                    height: firma.height,
+                                                    numPage: parseInt(i)
+                                                }
+                                            );
+                                        }
+                                    }
+                                    $("textarea[name=txtFirmas]").val(JSON.stringify(hojasFirmadas));
+                                    $('#btnFirmarSubmit').click();
+                                }
+                            });
+                        </script>
+                        <script>
+                            var pdfView = document.getElementById("pdf_renderer");
+                            var pdfContext = pdfView.getContext('2d');
+                            var width = window.innerWidth;
+                            var height = window.innerHeight;
+                            var pdfState = {
+                                pdf: null,
+                                currentPage: 1,
+                                bytes: null,
+                                zoom: 1
+                            }
+                            let imagesPages = {};
+
+                            function
+                            drawImage(imageObj, pageNum) {
+                                if (!imageObj.src) {
+                                    return;
+                                }
+
+                                var stage = new Konva.Stage({
+                                    container: '#page-' + pageNum.toString(),
+                                    width: pdfView.width,
+                                    height: pdfView.height,
+                                });
+
+                                var layer = new Konva.Layer();
+
+                                var imageForPaste = new Konva.Image({
+                                    image: imageObj,
+                                    x: stage.width() / 2,
+                                    y: stage.height() / 2,
+                                    draggable: true,
+                                    name: 'imagenDrag-' + pageNum.toString()
+                                });
+
+                                // add cursor styling
+                                imageForPaste.on('mouseover', function () {
+                                    document.body.style.cursor = 'pointer';
+                                });
+
+                                imageForPaste.on('mouseout', function () {
+                                    document.body.style.cursor = 'default';
+                                });
+
+                                layer.add(imageForPaste);
+                                stage.add(layer);
+                                imagesPages[`page-${pageNum}`] = {
+                                    stage: stage,
+                                    img: imageForPaste,
+                                    width: imageForPaste.image().attributes[0].ownerElement.width,
+                                    height: imageForPaste.image().attributes[0].ownerElement.height,
+                                    canvaHeight: stage.attrs.height,
+                                    canvaWidth: stage.attrs.width,
+                                    x: stage.width() / 2,
+                                    y: stage.height() / 2,
+                                };
+
+                                imagesPages[`page-${pageNum}`].percX = imagesPages[`page-${pageNum}`].x / stage.width();
+                                imagesPages[`page-${pageNum}`].percY = imagesPages[`page-${pageNum}`].y / stage.height();
+
+                                imagesPages[`page-${pageNum}`].img.on('dragend', () => {
+                                    let w = imagesPages[`page-${pageNum}`].stage.width();
+                                    let h = imagesPages[`page-${pageNum}`].stage.height();
+
+                                    let x = imagesPages[`page-${pageNum}`].img.x();
+                                    let y = imagesPages[`page-${pageNum}`].img.y();
+
+                                    imagesPages[`page-${pageNum}`].percX = x / w;
+                                    imagesPages[`page-${pageNum}`].percY = y / h;
+
+                                    imagesPages[`page-${pageNum}`].x = x;
+                                    imagesPages[`page-${pageNum}`].y = y;
+                                });
+                                ajustarZoomImg();
+                            }
+                        </script>
+                        <script>
+                            document.addEventListener("DOMContentLoaded", () => {
+                                const $pdf = document.querySelector("[name='pdf']");
+                                const $nombrePdf = document.querySelector("#nombrePdf");
+                                const $firma = document.querySelector("[name='firma']");
+                                const $nombreFirma = document.querySelector("#nombreFirma");
+                                $pdf.onchange = (event) => {
+                                    if ($pdf.files.length <= 0) {
+                                        $nombrePdf.textContent = "";
+                                        return;
+                                    }
+                                    const archivo = $pdf.files[0];
+                                    $nombrePdf.textContent = archivo.name;
+                                    var file = event.target.files[0];
+                                    var fileReader = new FileReader();
+                                    fileReader.onload = function () {
+                                        var typedarray = new Uint8Array(this.result);
+                                        pdfjsLib.getDocument(typedarray).then((pdf) => {
+                                            pdfState.pdf = pdf;
+                                            pdfState.bytes = typedarray;
+                                            let numPages = [...Array(pdfState.pdf._pdfInfo.numPages).keys()];
+                                            imagesPages = {};
+                                            for (let i in numPages) {
+                                                $('#cont').append(
+                                                    `<div style="display: none;" class="containerFotos" id="page-${parseInt(i) + 1}"></div>`
+                                                );
+                                                imagesPages[`page-${parseInt(i) + 1}`] = null;
+                                            }
+                                            $(`#page-${pdfState.currentPage}`).removeAttr("style");
+                                            if (pdfState.pdf == null || pdfState.currentPage >= pdfState.pdf._pdfInfo.numPages) {
+                                                pdfState.currentPage = 1;
+                                            } else {
+                                                pdfState.currentPage = numPages.length;
+                                            }
+                                            document.getElementById("current_page").value = pdfState.currentPage;
+                                            render();
+                                            $('.containerFotos').attr("style", "display:none;");
+                                            $(`#page-${pdfState.currentPage}`).removeAttr("style");
+
+                                        });
+                                    }
+                                    fileReader.readAsArrayBuffer(file);
+                                };
+                                $firma.onchange = () => {
+                                    if ($firma.files.length <= 0) {
+                                        $nombreFirma.textContent = "";
+                                        return;
+                                    }
+                                    const archivo = $firma.files[0];
+                                    $nombreFirma.textContent = archivo.name;
+                                };
+                            });
+
+                            var imageFirmaPostition = new Image();
+
+                            document.addEventListener("DOMContentLoaded", async () => {
+                                const response = await fetch("/static/firmaelectronica/firma_position.jpg");
+                                const blob = await response.blob();
+                                const reader = new FileReader();
+                                reader.onload = function () {
+                                    imageFirmaPostition.src = this.result;
+                                };
+                                reader.readAsDataURL(blob);
+                            });
+
+                            document.getElementById('bntPegarFirma').addEventListener('click', (e) => {
+                                if (pdfState.pdf) {
+                                    let numPages = [...Array(pdfState.pdf._pdfInfo.numPages).keys()];
+                                    console.log(numPages)
+                                    for (let i in numPages) {
+                                        imagesPages[`page-${parseInt(i) + 1}`] = null;
+                                        $(`#page-${parseInt(i) + 1}`).html("");
+                                    }
+                                    drawImage(imageFirmaPostition, $('#current_page').val());
+                                }
+                            });
+
+                            $('#bntQuitarFirma').click((e) => {
+                                let numPages = [...Array(pdfState.pdf._pdfInfo.numPages).keys()];
+                                for (let i in numPages) {
+                                    imagesPages[`page-${parseInt(i) + 1}`] = null;
+                                    $(`#page-${parseInt(i) + 1}`).html("");
+                                }
+                            });
+
+                            function ajustarZoomImg() {
+                                if (pdfState.pdf) {
+                                    let i = pdfState.currentPage;
+                                    pdfState.pdf.getPage(pdfState.currentPage).then((page) => {
+                                        let canvaWidth = page._pageInfo.view[2];
+                                        let canvaHeight = page._pageInfo.view[3];
+                                        let firma = imagesPages[`page-${parseInt(i) + 1}`];
+                                        if (firma && firma.img) {
+                                            imagesPages[`page-${parseInt(i) + 1}`].canvaWidth = canvaWidth;
+                                            imagesPages[`page-${parseInt(i) + 1}`].canvaHeight = canvaHeight;
+                                            firma.stage.setAttr('width', canvaWidth * pdfState.zoom);
+                                            firma.stage.setAttr('height', canvaHeight * pdfState.zoom);
+                                            firma.img.setAttr('width', firma.width * pdfState.zoom);
+                                            firma.img.setAttr('height', firma.height * pdfState.zoom);
+                                            firma.img.setAttr('x', firma.stage.width() * firma.percX);
+                                            firma.img.setAttr('y', firma.stage.height() * firma.percY);
+                                        }
+                                    });
+                                }
+                            }
+
+                            function render() {
+                                pdfState.pdf.getPage(pdfState.currentPage).then((page) => {
+                                    var viewport = page.getViewport(pdfState.zoom);
+                                    pdfView.width = viewport.width;
+                                    pdfView.height = viewport.height;
+                                    while (pdfView.width > screen.width) {
+                                        pdfState.zoom -= 0.05;
+                                        viewport = page.getViewport(pdfState.zoom);
+                                        pdfView.width = viewport.width;
+                                        pdfView.height = viewport.height;
+                                        console.log("redimensionado --")
+                                    }
+                                    page.render({
+                                        canvasContext: pdfContext,
+                                        viewport: viewport
+                                    });
+                                    ajustarZoomImg();
+                                });
+                            }
+
+                            window.onresize = function () {
+                                render();
+                            };
+
+                            document.getElementById('go_previous')
+                                .addEventListener('click', (e) => {
+                                    if (pdfState.pdf == null
+                                        || pdfState.currentPage == 1) return;
+                                    pdfState.currentPage -= 1;
+                                    document.getElementById("current_page")
+                                        .value = pdfState.currentPage;
+                                    render();
+                                    $('.containerFotos').attr("style", "display:none;");
+                                    $(`#page-${pdfState.currentPage}`).removeAttr("style");
+                                });
+
+                            document.getElementById('go_next')
+                                .addEventListener('click', (e) => {
+                                    if (pdfState.pdf == null
+                                        || pdfState.currentPage >= pdfState.pdf._pdfInfo.numPages)
+                                        return;
+                                    pdfState.currentPage += 1;
+                                    document.getElementById("current_page")
+                                        .value = pdfState.currentPage;
+                                    render();
+                                    $('.containerFotos').attr("style", "display:none;");
+                                    $(`#page-${pdfState.currentPage}`).removeAttr("style");
+                                });
+
+                            document.getElementById('current_page')
+                                .addEventListener('input', (e) => {
+                                    var desiredPage = document.getElementById('current_page').valueAsNumber;
+                                    if (desiredPage >= 1 && desiredPage <= pdfState.pdf._pdfInfo.numPages) {
+                                        pdfState.currentPage = desiredPage;
+                                        document.getElementById("current_page").value = desiredPage;
+                                        render();
+                                        $('.containerFotos').attr("style", "display:none;");
+                                        $(`#page-${pdfState.currentPage}`).removeAttr("style");
+                                    }
+                                });
+
+                            document.getElementById('zoom_in')
+                                .addEventListener('click', (e) => {
+                                    if (pdfState.pdf == null || pdfState.zoom >= 1) return;
+                                    pdfState.zoom += 0.05;
+                                    render();
+                                });
+
+                            document.getElementById('zoom_out')
+                                .addEventListener('click', (e) => {
+                                    if (pdfState.pdf == null || pdfState.zoom <= 0) return;
+                                    pdfState.zoom -= 0.05;
+                                    render();
+                                });
+                        </script>
+                        {#  CONTENNIDO DE FIRMA DIGITAL #}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

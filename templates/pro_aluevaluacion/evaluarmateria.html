@@ -1,0 +1,138 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript">
+        var lista_items1 = [];
+        $(function() {
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $("#form").validationEngine({autoHidePrompt:true, autoHideDelay:1000 });
+
+            {% for preguntaencuesta in encuestaproceso.encuesta_preguntas %}
+                $('#idp_{{ preguntaencuesta.id }}').addClass("validate[required]");
+                {% if preguntaencuesta.obligatorio %}
+                    $('#idr_{{ preguntaencuesta.id }}').addClass("validate[required]");
+                {% endif %}
+            {% endfor %}
+
+            actualizar_lista = function(){
+                lista_items1 = [];
+                {% for preguntaencuesta in encuestaproceso.encuesta_preguntas %}
+                    var item = {
+                        id: {{ preguntaencuesta.id }},
+                        idop: $('#idp_{{ preguntaencuesta.id }}').val(),
+                        idrsp: $('#idr_{{ preguntaencuesta.id }}').val()
+                    };
+                    lista_items1.push(item);
+                {% endfor %}
+            };
+
+            $("#formbutton1").click(function(){
+                var valid = $("form").validationEngine('validate');
+                if (valid){
+                    bloqueointerface();
+                    $('.controls input').each(function(){
+                        if ($(this).attr('type')=='text'){
+                            $(this).val($(this).val().trim());
+                        }
+                        if ($(this).attr('type')!='file'){
+                            if ($(this).css('text-transform')=='uppercase'){
+                                if ($(this).attr('type')!='password'){
+                                    $(this).val($(this).val().toUpperCase());
+                                }
+                            }
+                        }
+                    });
+
+                    var formdata = new FormData($("#formulario1")[0]);
+                    try {
+                        actualizar_lista();
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                    } catch (err){
+                        console.log(err.message);
+                    }
+                    $.ajax({
+                        type: "POST",
+                        url: "/pro_aluevaluacion",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                location.href = "/pro_aluevaluacion";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                } else {
+                    setTimeout(function() {
+                        $('.help-text').each(function () {
+                            var field = $(this);
+                            if (field.attr('alert')) {
+                                field.html(field.attr('alert'));
+                            } else {
+                                field.html('');
+                            }
+                        });
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_aluevaluacion{% endblock %}
+{% block canvas %}
+    <form id="formulario1" class="form-search" style="margin-left: 2%; margin-right: 2%">
+        <input type='hidden' name='action' value='addencuesta'/>
+        <input type='hidden' name='ide' value='{{ encuestaproceso.id|encrypt }}'/>
+        <input type='hidden' name='idp' value='{{ profesormateria.id|encrypt }}'/>
+        <h3 style="text-align: center" >{{ encuestaproceso.titulo }}</h3>
+        <h5 style="text-align: center; margin-top: -5px" >{{ encuestaproceso.fechainicio|date:'d-m-Y'  }} a {{ encuestaproceso.fechafin|date:'d-m-Y'  }}</h5>
+        <h5>Profesor: <b style="font-weight: normal;">{{ profesormateria.profesor.persona.nombre_completo_inverso }}</b></h5>
+        <h5>Asignatura: <b style="font-weight: normal;">{{ profesormateria.materia.nombre_completo }}</b></h5><br/>
+        {% for preguntaencuesta in encuestaproceso.encuesta_preguntas %}
+            <div class='row-fluid'>
+                <fieldset id="fieldset_{{ preguntaencuesta.id }}" class="control-group nomargins" style="min-height:1%; float: left; width:100%" >
+                    <div class="control" style="height:1%; width:100%">
+                        <h5>{{ preguntaencuesta.nombre }} <span style="font-size: 17px; color: red;" class="tu" title="Obligatorio">*</span> <span class="help-text" style="font-weight: normal; font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></span></h5>
+                        <select id="idp_{{ preguntaencuesta.id }}" style="width: 100%">
+                            <option value="" selected disabled>SELECCIONE UNA OPCIÓN</option>
+                            {% for opcionpregunta in preguntaencuesta.pregunta_opcionpreguntas %}
+                                <option value="{{ opcionpregunta.id|encrypt }}">{{ opcionpregunta }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="control" style="height:1%; width:100%">
+                        <h5>"En una frase corta, presente una sugerencia para que el Docente mejore su desempeño en esta asignatura" {% if preguntaencuesta.obligatorio %}<span style="font-weight: normal; font-size: 17px; color: red;" class="tu" title="Obligatorio">*</span>{% endif %}  <span class="help-text" style="font-weight: normal; font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></span></h5>
+                        <textarea class="input-block-level" id="idr_{{ preguntaencuesta.id }}"></textarea>
+                    </div>
+                </fieldset>
+            </div>
+            <br/>
+        {% endfor %}
+        <div class="row-fluid" style="margin-bottom: 0">
+            <div style="text-align: center;">
+                <a href="javascript:;" class="btn btn-success btn-large btn-form" id="formbutton1">Guardar</a>
+                <a href="/pro_aluevaluacion" class="btn btn-danger btn-large bloqueo_pantalla">Cancelar</a>
+            </div>
+        </div>
+    </form>
+{% endblock %}
+

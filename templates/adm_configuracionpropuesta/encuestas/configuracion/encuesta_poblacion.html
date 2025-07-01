@@ -1,0 +1,335 @@
+{% extends "adm_configuracionpropuesta/encuestas/configuracion/base.html" %}
+
+{% block extra_heading %}
+
+    <script>
+        $(document).ready(function () {
+            // Desmarcar todos los checkboxes con la clase .seleccionindividual
+            $('.seleccionindividual').prop('checked', false);
+            $('#id_seleccionmasivo').prop('checked', false);
+
+        });
+
+        let pk_contratos = []
+
+        $(function (e) {
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("select").select2({width: '100%'});
+            $('#id_seleccionmasivo').click(function (e) {
+                if (this.checked) {
+                    $('.seleccionindividual:not([disabled])').prop('checked', true);
+                    $('.seleccionindividual:checked').each(function () {
+                        let pk = this.attributes.pk_contrato.value;
+                        if (this.checked && !pk_contratos.includes(pk)) {
+                            pk_contratos.push(pk);
+                        }
+                    });
+                } else {
+                    $('.seleccionindividual:not([disabled])').prop('checked', false);
+                    pk_contratos = [];
+                }
+
+            });
+            $('.seleccionindividual').change(function () {
+
+                pk_contratos = [];
+                $('.seleccionindividual:checked').each(function () {
+                    let pk = this.attributes.pk_contrato.value;
+                    if (this.checked && !pk_contratos.includes(pk)) {
+                        pk_contratos.push(pk);
+                    }
+                });
+
+            });
+
+        });
+
+        const exportar_poblacion = () => {
+            if (pk_contratos.length > 0) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {
+                        'action': 'exportar_poblacion',
+                        'idencuesta': {{ eEncuestaTitulacionPosgrado.pk }},
+                        'ids': pk_contratos,
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true || data.result === 'ok') {
+                            if (data.data) {
+                                $('#itemspanel .panelbody').html(data.data);
+                                $('#itemspanel .paneltitle').html('Importar Población');
+                                $("#itemspanel").modal({
+                                    backdrop: 'static',
+                                    width: '90%'
+                                }).modal('show').on('hidden.bs.modal', function (e) {
+                                    $(".panelbody").empty();
+                                });
+                            } else {
+                                location.reload();
+                            }
+                        } else {
+                            mensajeDanger(data.message + ' ' + data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeDanger("Error de conexión.");
+                    },
+                    complete: function () {
+                           $.unblockUI();
+                    },
+                    dataType: "json"
+                });
+
+            } else {
+                mensajeDanger('Debe seleccionar al menos 1 persona.')
+            }
+
+        }
+
+        const importar_poblacion = () => {
+            let formData = new FormData();
+            const fileInput = document.getElementById('file_input');
+            // Verificar si se ha seleccionado un archivo
+            if (fileInput.files.length === 0) {
+                mensajeDanger("Por favor, seleccione un archivo, antes de importar la población.");
+                return false;
+            }
+            formData.append('file', $('#file_input')[0].files[0]);
+            formData.append('action', 'importar_poblacion_graduacion_ceremonia');
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: `{{ request.path }}`,
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (data) {
+                    if (data.result === 'ok') {
+                        $('#programs_table tbody').html(data.html);
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    mensajeDanger("Error de conexión.");
+                },
+                complete: function () {
+                       $.unblockUI();
+                },
+                dataType: "json"
+            });
+        }
+
+        const guardar_poblacion_excel = () => {
+            let formData = new FormData();
+            const fileInput = document.getElementById('file_input');
+            // Verificar si se ha seleccionado un archivo
+            if (fileInput.files.length === 0) {
+                mensajeDanger("Por favor, seleccione un archivo, antes de importar la población.");
+                return false;
+            }
+            formData.append('file', $('#file_input')[0].files[0]);
+            formData.append('action', 'exportar_poblacion_graduacion_ceremonia_excel');
+            formData.append('idencuesta', {{eEncuestaTitulacionPosgrado.pk}});
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: `{{ request.path }}`,
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (data) {
+                    if (data.result === 'ok') {
+                        location.href= data.rt
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    mensajeDanger("Error de conexión.");
+                },
+                complete: function () {
+                       $.unblockUI();
+                },
+                dataType: "json"
+            });
+        }
+
+    </script>
+
+{% endblock %}
+
+{% block contenido_configuracion %}
+    <div class="modal fade static" id="itemspanelformmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div class="" style="padding: 5px 5px">
+                        <button style="float: right;" type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbodyformmodal">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalformmodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Stepper content -->
+    <div class="bs-stepper-content mt-5">
+        <!-- Content one -->
+        <div id="test-l-1" role="tabpanel" aria-labelledby="courseFormtrigger1">
+
+            <div data-panel="Datos de la Reunión">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row mt-0 mb-2">
+
+                        </div>
+                        <div class="container table-responsive">
+                                <div class="col-6 d-flex justify-content-start">
+                                <div class="btn-group ">
+                                    <a onclick="exportar_poblacion()"
+                                       href="javascript:;" class="btn btn-success btn-lg rounded-2 px-4 py-2 "
+                                       style="font-size: 14px;"><i
+                                            class="fa fa-plus" style="font-size: 12px"></i>Guardar Previsualizar población</a>
+                                </div>
+                                {% if not eEncuestaTitulacionPosgrado.periodo %}
+                                    <div class="btn-group ">
+                                        <a onclick="importar_poblacion()"
+                                           href="javascript:;" class="btn btn-primary btn-lg rounded-2 px-4 py-2 "
+                                           style="font-size: 14px;"><i class="fa fa-plus" style="font-size: 12px"></i>Previsualizar
+                                            población</a>
+
+
+                                    </div>
+                                    <div class="btn-group ">
+                                        <a onclick="guardar_poblacion_excel()"
+                                           href="javascript:;" class="btn btn-primary btn-lg rounded-2 px-4 py-2 "
+                                           style="font-size: 14px;"><i class="fa fa-plus" style="font-size: 12px"></i>Guardar
+                                            población directo del excel</a>
+
+
+                                    </div>
+                                {% endif %}
+
+                            </div>
+
+                            <div class="row ">
+                                {% if not eEncuestaTitulacionPosgrado.periodo %}
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <input type="file" id="file_input" class="form-control mb-3">
+                                             <span class="text-info">En el archivo excel debe existir la columna"<b class="tu" title="En minuscula">cedula</b>", no importa si existen más columnas ni el orden.</span>
+                                        </div>
+
+                                    </div>
+
+                                {% endif %}
+                                <table class='table table-bordered' id="programs_table">
+                                    <thead>
+                                    <tr>
+                                        <th class="text-center" style="width: 50px;;background-color: #f5f4f8">
+                                            <input
+                                                    type="checkbox" id="id_seleccionmasivo"></th>
+                                        <th class="text-center" style="width: 50px;;background-color: #f5f4f8">N.
+                                        </th>
+                                        <th class="text-center" style="width: 80px;background-color: #f5f4f8">Cod.
+                                            convocatoria
+                                        </th>
+                                        <th class="text-center" style="width: 500px;background-color: #f5f4f8">
+                                            Periodo
+                                        </th>
+                                        <th class="text-center" style="width: 500px;background-color: #f5f4f8">
+                                            Carrera
+                                        </th>
+                                        <th class="text-center" style="width: 500px;background-color: #f5f4f8">
+                                            Inscripción
+                                        </th>
+                                        <th class="text-center" style="width: 500px;background-color: #f5f4f8">
+                                            Cédula
+                                        </th>
+                                        <th class="text-center" style="width: 500px;background-color: #f5f4f8">
+                                            Graduado
+                                        </th>
+
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for eTemaTitulacionPosgradoMatricula in eEncuestaTitulacionPosgrado.get_temastitulacion_de_todas_las_convocatorias %}
+                                        <tr>
+                                            <td class="text-center">
+                                                <input type="checkbox"
+                                                       class="seleccionindividual {% if eTemaTitulacionPosgradoMatricula.tiene_encuesta_de_sede %}disabled {% endif %}"
+                                                       {% if eTemaTitulacionPosgradoMatricula.tiene_encuesta_de_sede %}disabled {% endif %}
+                                                       pk_contrato="{{ eTemaTitulacionPosgradoMatricula.pk }}">
+                                            </td>
+                                            <td class="text-center">
+                                                {{ forloop.counter }}
+
+                                            </td>
+                                            <td class="text-center">
+                                                {{ eTemaTitulacionPosgradoMatricula.convocatoria.id }}
+
+                                            </td>
+                                            <td class="text-center">
+                                                {{ eTemaTitulacionPosgradoMatricula.convocatoria.periodo }}
+                                            </td>
+                                            <td class="text-center">
+                                                {{ eTemaTitulacionPosgradoMatricula.convocatoria.carrera }}
+                                            </td>
+                                            <td class="text-center">
+                                                {{ eTemaTitulacionPosgradoMatricula.matricula.inscripcion }}
+                                            </td>
+                                            <td class="text-center">
+                                                {{ eTemaTitulacionPosgradoMatricula.matricula.inscripcion.persona.cedula }}
+                                            </td>
+                                            <td class="text-center">
+                                                {% if eTemaTitulacionPosgradoMatricula.matricula.inscripcion.graduado %}
+                                                    <span class="badge badge-success">Graduado </span>
+                                                {% else %}
+                                                    <span class="badge badge-warning">Egresado</span>
+                                                {% endif %}
+                                            </td>
+
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="4">
+                                                NO EXISTEN INSCRITOS
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+{% endblock %}

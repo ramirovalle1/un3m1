@@ -1,0 +1,266 @@
+{% extends 'faceid/base.html' %}
+{% block heading %}
+    <script type='text/javascript' src="/static/face-api/dist/face-api.js?v=1.0.0"></script>
+    <script type="application/javascript">
+
+        $(function () {
+            let timeout;
+            let hours = parseInt('{{ tiempo.hour }}');
+            let minutes = parseInt('{{ tiempo.minute }}');
+            let seconds = parseInt('{{ tiempo.second }}');
+            const reloadTime = () => {
+                seconds += 1;
+                if (seconds > 59){
+                    seconds = 0;
+                    minutes += 1;
+                    if (minutes > 59){
+                        minutes = 0;
+                        seconds = 0;
+                        if (seconds < 10){
+                            $(".seconds").html(`0${seconds}`);
+                        }
+                        else{
+                            $(".seconds").html(`${seconds}`);
+                        }
+                        if (minutes < 10){
+                            $(".minutes").html(`0${minutes}`);
+                        }
+                        else{
+                            $(".minutes").html(`${minutes}`);
+                        }
+                        $.ajax({
+                            type: "POST",
+                            url: "/face_id",
+                            data: {'action': 'updateTime'},
+                            success: function(data) {
+                                if (data.result=='ok') {
+                                    $(".hours").html(data.tiempo.hour);
+                                    $(".minutes").html(data.tiempo.minute);
+                                    $(".seconds").html(data.tiempo.second);
+                                }
+                            },
+                            error: function() {
+                                location.reload();
+                            },
+                            dataType: "json"
+                        });
+                    }else{
+                        if (seconds < 10){
+                            $(".seconds").html(`0${seconds}`);
+                        }
+                        else{
+                            $(".seconds").html(`${seconds}`);
+                        }
+                        if (minutes < 10){
+                            $(".minutes").html(`0${minutes}`);
+                        }
+                        else{
+                            $(".minutes").html(`${minutes}`);
+                        }
+                    }
+                }
+                else{
+                    if (seconds < 10){
+                        $(".seconds").html(`0${seconds}`);
+                    }
+                    else{
+                        $(".seconds").html(`${seconds}`);
+                    }
+                }
+                /**/
+                //$("#id_actualiza").html(moment().format('MMMM Do YYYY, h:mm:ss a'));
+                timeout = setTimeout(reloadTime, 1000);
+
+            }
+            reloadTime();
+        });
+    </script>
+    <style>
+        .displayed {
+            display: block;
+            margin-left: auto;
+            margin-right: auto
+        }
+        .container-video {margin: 0;
+            position: relative;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center; }
+    </style>
+
+{% endblock %}
+{% block canvas %}
+    <div class="row justify-content-center g-0 pt-4 min-vh-100">
+        <div class="col-lg-4 col-md-8 py-0 py-xl-0">
+            <div class="m-0">
+                <div class="row mx-3 mt-1">
+                    <div class="col-sm-12 text-center displayed">
+                        <div class="container-video" id="container-video">
+                            <video style="" id="video" width="100%" height="100%" autoplay muted></video>
+                        </div>
+                    </div>
+                    <div class="col-sm-12 text-center">
+                        <p class="text-danger" id="span-error-detections"></p>
+                    </div>
+                </div>
+                <div class="d-grid gap-2 col-8 mx-auto m-3">
+                    <a class="btn btn-warning btn-lg" id="btnEntrenar" href="javascript:;"><i class="fa fa-gears"></i>  Entrenar</a>
+                </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    </div>
+    <script type="application/javascript">
+        const video = document.getElementById("video");
+        const btnEntrenar = document.getElementById("btnEntrenar");
+        const span_error_detections = document.getElementById("span-error-detections");
+        const radioButtons = document.querySelectorAll('input[name="options-marcada"]');
+        let arrObjImages = [];
+        let canCaptureImage = false;
+        let canSendAjax = true;
+        let isTrained = false;
+        let contSend = 0;
+
+        //const contenedorCanvas = document.getElementById("contenedorCanvas");
+        const startVideo = () => {
+            navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
+            navigator.getUserMedia(
+                { video: {}},
+                stream => video.srcObject = stream,
+                err => console.log(err)
+            )
+        }
+
+        Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/static/face-api/weights/'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('/static/face-api/weights/'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('/static/face-api/weights/'),
+            faceapi.nets.faceExpressionNet.loadFromUri('/static/face-api/weights/'),
+            faceapi.nets.ageGenderNet.loadFromUri('/static/face-api/weights/'),
+        ]).then(
+            startVideo
+        );
+        btnEntrenar.addEventListener('click', () => {
+            console.log("arrObjImages:", arrObjImages);
+            canCaptureImage = true;
+            canSendAjax = true;
+        });
+
+        video.addEventListener('play', () =>{
+            let { left, top } = video.getBoundingClientRect();
+            let width= video.clientWidth;
+            let height = video.clientHeight;
+            const dims = {width: "100%", height: "100%"};
+            const canvas = faceapi.createCanvasFromMedia(video, dims);
+            canvas.style.left = `${left}px`;
+            canvas.style.top = `${top}px`;
+            canvas.style.position = 'absolute';
+            canvas.width = width;
+            canvas.height = height;
+            document.body.appendChild(canvas);
+            const displaySize = {width: video.clientWidth, height: video.clientHeight};
+            faceapi.matchDimensions(canvas, displaySize);
+            let intervalEntrenar = setInterval(async () =>{
+                if (canCaptureImage){
+                    // const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions();
+                    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+                    if (detections.length > 0){
+                        if (detections.length > 1){
+                            span_error_detections.innerHTML=`Error, se encontro mas de una rostro (número de rotros ${detections.length})`;
+                        }else{
+                            span_error_detections.innerHTML=``;
+                            if (arrObjImages.length < 30){
+                                await extractFaceFromBox(video, detections);
+                            }else{
+                                console.log(arrObjImages);
+                                if (canSendAjax && !isTrained && contSend < 1){
+                                    canSendAjax = false;
+                                    contSend += 1;
+                                    const formData = new FormData();
+                                    formData.append('images', JSON.stringify(arrObjImages));
+                                    formData.append('action', 'entrenar');
+                                    $.ajax({
+                                        type: "POST",
+                                        url: "/face_id",
+                                        data: formData,
+                                        success: function(data) {
+                                            $.unblockUI();
+
+                                            if (data.result == 'ok') {
+                                                isTrained = true;
+                                                clearInterval(intervalEntrenar);
+                                                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                                                NotificationJG.success(data.mensaje);
+                                            } else {
+                                                NotificationJG.error(data.mensaje);
+                                                isTrained = false;
+                                            }
+                                            canSendAjax = true;
+                                        },
+
+                                        error: function(jqXHR, textStatus, errorThrown) {
+                                            canSendAjax = true;
+                                            isTrained = false;
+                                            $.unblockUI();
+                                            var msg = '';
+                                            if (jqXHR.status === 0) {
+                                                msg='Not connect: Verify Network.';
+                                            } else if (jqXHR.status == 404) {
+                                                msg='Requested page not found [404]';
+                                            } else if (jqXHR.status == 500) {
+                                                msg='Internal Server Error [500].';
+                                            } else if (textStatus === 'parsererror') {
+                                                msg='Requested JSON parse failed.';
+                                            } else if (textStatus === 'timeout') {
+                                                msg='Time out error.';
+                                            } else if (textStatus === 'abort') {
+                                                msg='Ajax request aborted.';
+                                            } else {
+                                                msg='Uncaught Error: ' + jqXHR.responseText;
+                                            }
+                                            //smoke.alert("Error al enviar los datos: " + msg);
+                                            NotificationJG.error("Error al enviar los datos: " + msg);
+                                        },
+                                        dataType: "json",
+                                        cache: false,
+                                        contentType: false,
+                                        processData: false
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    const resizedDetections =  faceapi.resizeResults(detections, displaySize);
+                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+                    // faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+                    // faceapi.draw.drawFaceExpressions(canvas, resizedDetections);
+                }
+            }, 100)
+
+        })
+
+        const extractFaceFromBox = async (video, detections) => {
+            detections.forEach( async (detection) => {
+                console.log("detection: ", detection);
+                const box = await detection['_box'];
+                console.log("box: ", box);
+                const imageDims = await detection['_imageDims'];
+                console.log("imageDims: ", imageDims);
+                const regionsToExtract = [
+                    // new faceapi.Rect( box._x+100, box._y+100, box._width+100, box._height+100)
+                    new faceapi.Rect(box._x-100, box._y-100, imageDims._width, imageDims._height)
+                ]
+                const faceImages = await faceapi.extractFaces(video, regionsToExtract);
+                faceImages.forEach(image =>{
+                    const img = image.toDataURL();
+                    arrObjImages.push(image.toDataURL());
+                });
+            });
+        }
+    </script>
+{% endblock %}

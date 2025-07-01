@@ -1,0 +1,425 @@
+{% extends "adm_archivosdepartamentales/basegd.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link href="/static/dropzone/dist/min/dropzone.min.css" rel="stylesheet"/>
+    <script src="/static/dropzone/dist/min/dropzone.min.js"></script>
+    <script src="/static/django_select2/es.js"></script>
+    <script src="/static/jquery-ui.js"></script>
+    <script type="text/javascript">
+
+        function formFolder(id, text, action) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: '{{ request.path }}',
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result) {
+                        $('.panelFolder').html(data.data);
+                        $('#modalFolder .titleFolder').html(text);
+                        $("#modalFolder").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeWarning(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeWarning("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        Dropzone.autoDiscover = false;
+
+        $(function () {
+            Dropzone.prototype.defaultOptions.dictDefaultMessage = "Arrastra los archivos aquí para subirlos";
+            Dropzone.prototype.defaultOptions.dictFallbackMessage = "Su navegador no admite la carga de archivos de arrastrar y soltar.";
+            Dropzone.prototype.defaultOptions.dictFallbackText = "Utilice el formulario alternativo a continuación para cargar sus archivos como en los viejos tiempos.";
+            Dropzone.prototype.defaultOptions.dictFileTooBig = "El archivo es demasiado grande. Tamaño de archivo máximo: {{ filesize }}MiB.";
+            Dropzone.prototype.defaultOptions.dictInvalidFileType = "No puedes subir archivos de este tipo.";
+            Dropzone.prototype.defaultOptions.dictResponseError = "Intentelo más tarde";
+            Dropzone.prototype.defaultOptions.dictCancelUpload = "Subida Cancelada";
+            Dropzone.prototype.defaultOptions.dictCancelUploadConfirmation = "¿Estás segura de que deseas cancelar esta carga?";
+            Dropzone.prototype.defaultOptions.dictRemoveFile = "Remover archivo";
+            Dropzone.prototype.defaultOptions.dictMaxFilesExceeded = "No puedes subir más archivos.";
+            const filesDropzone = new Dropzone("#files-upload", {
+                url: '{{ request.path }}',
+                timeout: 0,
+                clickable: true,
+                enqueueForUpload: true,
+                autoProcessQueue: true,
+                parallelUploads: 1,
+                {#maxFiles: 500,#}
+                uploadMultiple: true,
+                maxFilesize: 2000,
+                {#maxFilesize: '{{ filesize }}',#}
+                {#acceptedFiles: "application/pdf"#}
+                init: function (e) {
+                    {#$('#btn_upload').on("click", function () {#}
+                    {#    myDropzone.processQueue(); // Tell Dropzone to process all queued files.#}
+                    {# });#}
+                    {##}
+                    {#// Event to send your custom data to your server#}
+                    {#this.on("sending", function (file, xhr, data) {#}
+                    {##}
+                    {#    // First param is the variable name used server side#}
+                    {#    // Second param is the value, you can add what you what#}
+                    {#    // Here I added an input value#}
+                    {#    data.append("your_variable", $('#your_input').val());#}
+                    {# });#}
+                    this.on("uploadprogress", function (file, progress) {
+                        $('#cargaarchivo').css({'width': `${progress}%`})
+                        $('#porcargaarchivo').html(`<b>${progress}%</b> - ${file.name}`)
+                    });
+                }
+
+            });
+            filesDropzone.on("complete", function (file) {
+                $('#btnReload').removeAttr('hidden')
+                $('#cargaarchivo').css({'width': 0})
+            });
+            filesDropzone.on("error", function (file, message) {
+                var msgerror_ = message
+                if (typeof message === 'object') {
+                    msgerror_ = message.message
+                }
+                mensajeDanger(`${file.name} - ${msgerror_}`);
+                this.removeFile(file);
+            });
+            filesDropzone.on("drop", function (event) {
+                console.log(filesDropzone.files);
+            });
+            filesDropzone.on("sending", function (file) {
+                console.log(file)
+                console.log(file.fullPath)
+                $("#tmp-path").html('<input type="hidden" name="path" value="' + file.fullPath + '" />')
+            });
+            filesDropzone.on("success", function (file, responseText) {
+                {#file.previewTemplate.appendChild(document.createTextNode(responseText.message));#}
+            });
+        });
+
+        $(function () {
+
+            $(".folder").droppable({
+                revert: 'invalid',
+                cursor: 'move',
+                snapMode: "inner",
+                drop: function (event, ui) {
+                    var foldername_ = $(this).attr('data-name');
+                    var folderid_ = $(this).attr('data-id');
+                    var mover_ = false;
+                    var actiondrop_ = '';
+                    var textodrop_ = '';
+                    var filename_ = '';
+                    var fileid_ = '';
+                    if (ui.draggable.attr("data-type") === 'file') {
+                        filename_ = ui.draggable.attr("data-name");
+                        fileid_ = ui.draggable.attr('data-id');
+                        textodrop_ = `<div style="text-align: left; font-size:15px"><b style="font-size:20px">¿Deseas cambiar la ubicación de este archivo?</b><br><b>Archivo:</b> ${filename_}<br><b>Ubicación Actual:</b> {{ filtro.nombre  }}<br><b>Nueva Ubicación:</b> ${foldername_}</div>`
+                        actiondrop_ = 'changefilefolder';
+                        mover_ = true;
+                    } else if (ui.draggable.attr("data-type") === 'folder') {
+                        filename_ = ui.draggable.attr("data-name");
+                        fileid_ = ui.draggable.attr('data-id');
+                        textodrop_ = `<div style="text-align: left; font-size:15px"><b style="font-size:20px">¿Deseas cambiar la ubicación de está carpeta?</b><br><b>Carpeta:</b> ${filename_}<br><b>Ubicación Actual:</b> {{ filtro.nombre  }}<br><b>Nueva Ubicación:</b> ${foldername_}</div>`
+                        actiondrop_ = 'changefolderfolder';
+                        mover_ = true;
+                    }
+                    if (mover_) {
+                        Swal.fire({
+                            html: textodrop_,
+                            type: 'info',
+                            showCancelButton: true,
+                            allowOutsideClick: false,
+                            confirmButtonText: 'Continuar',
+                            cancelButtonText: 'Cancelar'
+                        }).then((result) => {
+                            if (result.value) {
+                                bloqueointerface();
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '{{ reques.path }}',
+                                    async: false,
+                                    data: {
+                                        csrfmiddlewaretoken: '{{ csrf_token }}',
+                                        action: actiondrop_,
+                                        idfolder: folderid_,
+                                        idfile: fileid_,
+                                    },
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        bloqueointerface();
+                                    }
+                                }).done(function (data) {
+                                    setTimeout($.unblockUI, 1);
+                                    if (data.error === false) {
+                                        location.reload();
+                                    }
+                                }).fail(function (jqXHR, textStatus, errorThrown) {
+                                    setTimeout($.unblockUI, 1);
+                                    NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                                }).always(function () {
+                                });
+                            } else {
+                            }
+                        })
+                    }
+                }
+            });
+
+            $(".filefolder").draggable({
+                zIndex: '50',
+                connectToSortable: '.folder',
+                appendTo: '.folder',
+                revert: true,
+            });
+
+            $(".folder").draggable({
+                zIndex: '50',
+                connectToSortable: '.folder',
+                appendTo: '.folder',
+                revert: true,
+            });
+        });
+
+    </script>
+    <style>
+        .iconofile {
+            margin-left: -3%;
+        }
+
+        @media screen and (min-width: 720px) {
+            .iconofile {
+                margin-left: -2%;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block atras %}{% if filtro.parent == 0 %}{{ request.path }}?action=compartidas{% else %}{{ request.path }}?action=folderscompartidas&idp={{ filtro.carpetaref.parent|encrypt }}&idf={{ filtro.carpetaref.id|encrypt }}&idc={{ compartido.id|encrypt }}{% endif %}{% endblock %}
+
+{% block content %}
+
+    <div class="modal fade static" id="modalFolder" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-folder"></i> <b class="titleFolder">FORMULARIO MODAL</b></h4>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row-fluid panelFolder">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-2 mt-1">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <a href="{{ request.path }}?action=compartidas" style="color: black"><b><i class="fa fa-hdd"></i> {{ title }}</b></a>
+                <svg style="overflow: visible; width: 13.384px; height: 10.217px; left: 4px; top: 6px; transform: matrix(1, 0, 0, 1, 0, 0) rotate(-90deg); fill: rgba(35, 129, 219, 1);" viewBox="502 281.329 18.217 10.384">
+                    <path d="M 502 282.4254760742188 C 502.0830078125 282.1046447753906 502.2172241210938 281.8173522949219 502.4864501953125 281.6033935546875 C 502.9396362304688 281.2431945800781 503.5977172851562 281.2347106933594 504.0513305664062 281.5958557128906 C 504.13916015625 281.6658325195312 504.2218627929688 281.7431030273438 504.3013305664062 281.8226318359375 C 506.51611328125 284.0364685058594 508.7302856445312 286.2509460449219 510.9437866210938 288.4661254882812 C 510.9937744140625 288.5162048339844 511.0343017578125 288.5757446289062 511.157470703125 288.6674194335938 C 511.1923828125 288.6049499511719 511.2152709960938 288.5304565429688 511.263916015625 288.481689453125 C 513.4972534179688 286.2444458007812 515.7333984375 284.010009765625 517.9675903320312 281.7735595703125 C 518.362060546875 281.378662109375 518.8184204101562 281.2262878417969 519.3607788085938 281.3994750976562 C 520.1549072265625 281.6530456542969 520.478515625 282.6720886230469 519.978759765625 283.3398132324219 C 519.9220581054688 283.4155578613281 519.8599243164062 283.4882507324219 519.7930908203125 283.5551147460938 C 517.2188720703125 286.1308898925781 514.644287109375 288.7063293457031 512.0682983398438 291.2802124023438 C 511.5978393554688 291.7502136230469 511.0006713867188 291.8434143066406 510.4639282226562 291.5272827148438 C 510.3331909179688 291.4503173828125 510.2169189453125 291.3427124023438 510.1085205078125 291.2344970703125 C 507.607421875 288.7366943359375 505.1097412109375 286.2353515625 502.6067504882812 283.7393493652344 C 502.3292846679688 283.462646484375 502.0819091796875 283.1770629882812 502 282.7813415527344 L 502 282.4254760742188 Z">
+                    </path>
+                </svg>
+                {% for rt in filtro.ruta_carpeta %}
+                    {% if not rt.2 %}
+                        <a href="{{ request.path }}?action=folderscompartidas&idp={{ 1|encrypt }}&idf={{ rt.0|encrypt }}&idc={{ compartido.id|encrypt }}"
+                           class="btn {% if filtro.id == rt.0 %}btn-gris{% else %}btn-default{% endif %}">
+                            <i class="fa fa-folder text-warning"></i> {{ rt.1 }}
+                        </a>
+                    {% else %}
+                        <a href="?action=folderscompartidas&idp={{ rt.3|encrypt }}&idf={{ rt.0|encrypt }}&idc={{ compartido.id|encrypt }}" data-fid="{{ rt.0 }}"
+                           class="btn {% if filtro.id == rt.0 %}btn-gris{% else %}btn-default{% endif %}">
+                            <i class="fa fa-folder text-warning"></i> {{ rt.1 }}
+                        </a>
+                    {% endif %}
+                    {% if not forloop.last %}
+                        <svg style="overflow: visible; width: 13.384px; height: 10.217px; left: 4px; top: 6px; transform: matrix(1, 0, 0, 1, 0, 0) rotate(-90deg); fill: rgba(35, 129, 219, 1);" viewBox="502 281.329 18.217 10.384">
+                            <path d="M 502 282.4254760742188 C 502.0830078125 282.1046447753906 502.2172241210938 281.8173522949219 502.4864501953125 281.6033935546875 C 502.9396362304688 281.2431945800781 503.5977172851562 281.2347106933594 504.0513305664062 281.5958557128906 C 504.13916015625 281.6658325195312 504.2218627929688 281.7431030273438 504.3013305664062 281.8226318359375 C 506.51611328125 284.0364685058594 508.7302856445312 286.2509460449219 510.9437866210938 288.4661254882812 C 510.9937744140625 288.5162048339844 511.0343017578125 288.5757446289062 511.157470703125 288.6674194335938 C 511.1923828125 288.6049499511719 511.2152709960938 288.5304565429688 511.263916015625 288.481689453125 C 513.4972534179688 286.2444458007812 515.7333984375 284.010009765625 517.9675903320312 281.7735595703125 C 518.362060546875 281.378662109375 518.8184204101562 281.2262878417969 519.3607788085938 281.3994750976562 C 520.1549072265625 281.6530456542969 520.478515625 282.6720886230469 519.978759765625 283.3398132324219 C 519.9220581054688 283.4155578613281 519.8599243164062 283.4882507324219 519.7930908203125 283.5551147460938 C 517.2188720703125 286.1308898925781 514.644287109375 288.7063293457031 512.0682983398438 291.2802124023438 C 511.5978393554688 291.7502136230469 511.0006713867188 291.8434143066406 510.4639282226562 291.5272827148438 C 510.3331909179688 291.4503173828125 510.2169189453125 291.3427124023438 510.1085205078125 291.2344970703125 C 507.607421875 288.7366943359375 505.1097412109375 286.2353515625 502.6067504882812 283.7393493652344 C 502.3292846679688 283.462646484375 502.0819091796875 283.1770629882812 502 282.7813415527344 L 502 282.4254760742188 Z">
+                            </path>
+                        </svg>
+                    {% endif %}
+                {% endfor %}
+            </h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 pb-2">
+            {% if compartido.rol == 3 or compartido.rol == 1  %}
+                <div class="btn-group">
+                <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fa fa-plus text-success"></i> Nuevo
+                </button>
+                <div class="dropdown-menu" style="font-size: 16px">
+                    <a class="btn btn-default dropdown-item" href="javascript:void(0);" onclick="formFolder('{{ filtro.id|encrypt }}','Crear Carpeta','addfolder')"><i class="fa fa-folder-plus"></i>&nbsp;Crear Carpeta</a>
+                    {% if can_add_files %}
+                        <a class="btn btn-default dropdown-item" href="javascript:void(0);" onclick="$('#files-upload').trigger('click')"><i class="fa fa-upload"></i>&nbsp;Subir Archivos</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            <a href="javascript:void(0)" onclick="formModal('{{ filtro.id|encrypt }}','Ver Información', 'infofolder', true)" class="btn btn-default btn-rounded tb" title="Usuarios Compartidos"><i class="fa fa-users"></i> (<b>{{ filtro.personascompartidas|length }}</b>)</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <h5 class="text-black">Carpetas <b>({{ cantfolders }})</b></h5>
+        </div>
+        {% for l in listado_folders %}
+            <div class="folder col-xl-3 col-lg-3 col-12" data-id="{{ l.id|encrypt }}" data-name="{{ l.nombre }}" data-type="folder">
+                <div class="card h-70">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between">
+                            {% if l.enuso %}
+                                <img src="/static/images/iconrepositorio/folderfile.png" class="img-fluid" width="30px">
+                            {% else %}
+                                <img src="/static/images/iconrepositorio/folderempty.png" class="img-fluid" width="30px">
+                            {% endif %}
+                            <h6 class="mb-0" style="padding-left: 11px;">
+                                <a href="{{ request.path }}?action=folderscompartidas&idp={{ l.next|encrypt }}&idf={{ l.id|encrypt }}&idc={{ compartido.id|encrypt }}" class="text-inherit tb" title="{{ l.nombre }}">{{ l.nombre|truncatechars:30 }}</a>
+                            </h6>
+                            <div class="d-flex align-items-center">
+
+                                    <div class="dropdown dropstart">
+                                        <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                           data-bs-toggle="dropdown" data-offset="-140"
+                                           aria-haspopup="true" aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v"></i>
+                                        </a>
+                                        <div class="dropdown-menu">
+                                            <a class="dropdown-item" href="{{ request.path }}?action=folderscompartidas&idp={{ l.next|encrypt }}&idf={{ l.id|encrypt }}&idc={{ compartido.id|encrypt }}">
+                                                <i class="fa fa-folder dropdown-item-icon"></i> Ver
+                                            </a>
+                                            {% if compartido.rol == 3 or compartido.rol == 1  %}
+                                                {% if not l.enuso and user == l.usuario_creacion %}
+                                                    <a class="dropdown-item" href="javascript:void(0)" onclick="formFolder('{{ l.id|encrypt }}','Editar Carpeta','editfolder')">
+                                                        <i class="fa fa-edit dropdown-item-icon"></i> Cambiar nombre
+                                                    </a>
+                                                    <a class="dropdown-item" href="javascript:void(0);" onclick="eliminarajax('{{ l.id|encrypt }}', `{{ l.nombre }} se eliminará definitivamente después de los 30 días.`, 'deletefolder', '{{ request.path }}', '¿Mover a la papelera?')">
+                                                        <i class="fa fa-trash dropdown-item-icon"></i> Eliminar
+                                                    </a>
+                                                {% endif %}
+{#                                                <a class="dropdown-item" href="#">#}
+{#                                                    <i class="fa fa-download dropdown-item-icon"></i> Descargar#}
+{#                                                </a>#}
+                                            {% endif %}
+                                            <a class="dropdown-item" href="javascript:void(0)" onclick="formModal('{{ l.id|encrypt }}','Ver Información', 'infofolder', true)">
+                                                <i class="fa fa-info-circle dropdown-item-icon"></i> Información
+                                            </a>
+                                        </div>
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white p-2" style="font-size: 11px">
+                        <div class="d-flex justify-content-between text-center">
+                            <div class="w-50">
+                                &nbsp; <b><i class="fa fa-file-pdf-o text-error"></i> {{ l.total_archivos }}</b> Archivos
+                            </div>
+                            <div class="border-start w-50">
+                                &nbsp; <b><i class="fa fa-folder text-warning"></i> {{ l.cant_carpetas }}</b> Carpetas
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        {% if compartido.rol == 3 or compartido.rol == 1  %}
+            <div class="col-xl-3 col-lg-3 col-12">
+                <a href="javascript:void(0);" onclick="formFolder('{{ filtro.id|encrypt }}','Crear Carpeta','addfolder')">
+                    <div class="card border border-2 shadow-none card-dashed-hover" style="height: 100%;">
+                        <div class="card-body d-flex flex-column justify-content-center text-center">
+                            <i class="fa fa-folder-plus text-secondary mb-3 fs-2" aria-hidden="true"></i>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <h5 class="text-black">Archivos <b>({{ cantfiles }})</b></h5>
+        </div>
+
+        {% for l in listado_files %}
+            {% if l.archivo %}
+                <div class="filefolder col-xl-4 col-lg-4 col-12 mb-4 ui-widget-content" data-id="{{ l.id|encrypt }}" data-name="{{ l.nombre }}" data-type="file">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <img src="/static/images/iconrepositorio/icon_pdf.svg" class="img-fluid iconofile" width="30px">
+                                <a data-fancybox="iframe{{ l.id }}" data-caption="{{ l.carpeta.nombre }}: {{ l.nombre }}" data-width="2048" data-height="1365"  class="tb" title="{{ l.nombre }}" href="{{ l.archivo.url }}">
+                                    <h6 class="mb-0" style="text-align: left; font-size: 11px; margin-left: 0%">{{ l.nombre|truncatechars:20 }}</h6>
+                                </a>
+                                <div class="d-flex align-items-center" style="margin-left: 18px;">
+                                    {% if l.typefile == '.pdf' or l.typefile == '.jpg' or l.typefile == '.png' or l.typefile == '.jpeg'  %}
+                                        <a data-fancybox="iframev{{ l.id }}" data-caption="{{ l.carpeta.nombre }}: {{ l.nombre }}" data-width="2048" data-height="1365"  href="{{ l.archivo.url }}" class="tb" title="Ver"><img src="/static/images/iconrepositorio/icon_ver.svg" width="15px"></a>&nbsp;
+                                    {% else %}
+                                        <a style="color: #849fb9" href="{{ l.archivo.url }}" target="_blank" class="tb" title="Descargar"><i class="fa fa-download" style="width: 15px"></i></a>&nbsp;
+                                    {% endif %}
+                                    {% if compartido.rol == 3 or compartido.rol == 1  %}
+{#                                        <a href="javascript:void(0);" class="tb" title="Compartir"><img src="/static/images/iconrepositorio/icon_compartir.svg" width="15px"></a>&nbsp;#}
+                                        {% if user == l.usuario_creacion or compartido.rol == 3 %}
+                                            <a onclick="eliminarajax('{{ l.id|encrypt }}', `{{ l.nombre }} se eliminará definitivamente después de los 30 días.`, 'deletefile', '{{ request.path }}', '¿Mover a la papelera?')" href="javascript:void(0);" class="tb" title="Eliminar"><img src="/static/images/iconrepositorio/icon_eliminar.svg" width="15px"></a>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <img src="/static/images/iconrepositorio/icon_calendario.svg" class="img-fluid iconofile" width="30px">
+                                <div class="py-3" style="margin-left: {% if l.isnew %}0%{% else %}-5%{% endif %};">
+                                    <h6 class="mb-0">Creado:</h6>
+                                    <h6 class="text-muted mb-0" style="font-size: 9px">{{ l.fecha_creacion|date:'Y-m-d' }}</h6>
+                                </div>{% if l.isnew %}<label class="label label-warning" style="font-size: 12px; padding: 3px 5px;">Nuevo</label>{% else %}&nbsp;&nbsp;{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+
+{#        {% if can_add_files %}#}
+        {% if compartido.rol == 3 or compartido.rol == 1  %}
+            <div class="col-lg-12">
+                <a href="javascript:void(0)" onclick="location.reload()" hidden id="btnReload" class="btn btn-default bloqueo_pantalla" style="margin-bottom: 12px"><i class="fa fa-spinner"></i> Refrescar</a>
+                <div id="dropzone">
+                    <div class="progress" style="margin-bottom: 12px">
+                        <div id="cargaarchivo" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 0%"><span id="porcargaarchivo"></span></div>
+                    </div>
+
+                    {#                        <button type="button" class="btn btn-primary btn-block" id="btn_upload" style="margin-bottom: 15px"><i class="fa fa-upload"></i> Subir</button>#}
+                    <form action="{{ request.path }}" class="dropzone needsclick border border-2 shadow-none card-dashed-hover" id="files-upload">
+                        {% csrf_token %}
+                        <span id="tmp-path"></span>
+                        <input type="hidden" name="action" value="uploadfile">
+                        <input type="hidden" name="folder" value="{{ filtro.id|encrypt }}">
+                        <div class="dz-message needsclick">
+                            <i class="fa fa-upload text-secondary mb-3 fs-2" aria-hidden="true"></i><br>
+                            Suelta los archivos <b>aquí</b> para subirlos inmediatamente a <b>{{ filtro.nombre }}</b><br/>
+                            <i class="fa fa-info-circle text-muted"></i> Permitido solo archivos <b>.pdf <i class="fa fa-file-pdf text-error"></i></b> <br>
+                            <i class="fa fa-info-circle text-muted"></i> Tamaño maximo permitido de archivos <b>{{ filesize }}mb</b>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+{#        {% endif %}#}
+
+    </div>
+
+{% endblock %}

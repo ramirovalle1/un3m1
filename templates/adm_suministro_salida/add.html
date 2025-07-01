@@ -1,0 +1,232 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        var lista_items1 = [];
+        $(function(){
+            $("#id_departamento, #id_responsable, #id_numerodocumento, #id_descripcion").addClass("validate[required]");
+            $("#id_fechaoperacion").datepicker({format:"dd-mm-yyyy"}).on("changeDate", function(ev){ $(this).datepicker("hide"); });
+
+            $("#id_departamento").change(function(){
+                var id = $(this).val();
+                $("#id_responsable").html('').append('<option selected="selected" value="">---------</option>');
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_suministro_salida",
+                        data: {"action": "buscarresponsable", "id": id},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                for (x=0; x < data.lista.length; x++){
+                                    elemento = data.lista[x];
+                                    $("#id_responsable").append('<option value="'+elemento[0]+'">'+elemento[1]+'</option>');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#itemsadicionar").click(function() {
+                $("#id_codigoprod").val("").attr("idp","");
+                $("#id_descripcionprod").val("");
+                $("#id_cantidadprod").val("0.0000");
+                $("#id_valorprod").val("0.00");
+                $("#id_costoprod").val("0.00");
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                $("#itemspanel").modal({backdrop:"static", width: "700px"}).modal("show");
+            });
+
+            actualizar_lista = function(){
+                lista_items1 = [];
+                var valor = 0;
+                $(".eliminaritem").each(function(){
+                    var item = {
+                        id: $(this).attr("idp"),
+                        cantidad: $(this).attr("cantidad"),
+                    };
+                    valor += parseFloat($(this).attr("valor"));
+                    lista_items1.push(item);
+                });
+                $("#totalitems").html(valor.toFixed(2));
+            };
+
+            eliminarItem = function() {
+                var id = $(this).attr("idp");
+                $("#fila_"+id).remove();
+                if ($('.eliminaritem').length == 0){
+                    $("#itemsbody").html('<tr><td colspan="10">NO EXISTEN PRODUCTOS EN LA SALIDA</td></tr>');
+                }
+                actualizar_lista();
+            };
+
+            $("#itemspanel_adicionar, #itemspanel_adicionarcerrar ").click(function() {
+                var codigo = $("#id_codigoprod").val();
+                var inventarioid = $("#id_codigoprod").attr('idp');
+                var descripcion = $("#id_descripcionprod").val().toUpperCase();
+                var cantidad = parseFloat($("#id_cantidadprod").val());
+                $("#incompleto, #incompletovalores, #alertasalida").hide();
+                if (codigo > 0 && cantidad > 0) {
+                    if ($('.eliminaritem').length == 0){
+                        $("#itemsbody").empty();
+                    }
+                    if ($("#fila_" + inventarioid).length) {
+                        $("#alertasalida").show();
+                        return false;
+                    }
+                    $("#itemsbody").append("<tr id='fila_"+inventarioid+"' >" +
+                            "<td style='text-transform: uppercase'>"+codigo+"</td>" +
+                            "<td>"+descripcion+"</td>" +
+                            "<td style='text-align: right'>"+cantidad.toFixed(4)+"</td>" +
+                            "<td style='text-align: center'><a href='javascript:;' class='btn btn-tini btn-danger eliminaritem tu' title='Eliminar'  idp='"+inventarioid+"' cantidad='"+cantidad+"' ><i class='fa fa-remove'></i></a></td>" +
+                            "</tr>");
+                    tooltips();
+                    $(".eliminaritem").unbind("click.eliminarItem");
+                    $(".eliminaritem").bind("click.eliminarItem", eliminarItem);
+                    $("#id_codigoprod").val("").attr("idp","");
+                    $("#id_descripcionprod").attr("disabled", false).val("");
+                    $("#id_cantidadprod").val("0.0000");
+                    actualizar_lista();
+                    if ($(this).attr('id') == 'itemspanel_adicionarcerrar'){
+                        $("#itemspanel").modal("hide");
+                    }
+                } else {
+                    $("#incompleto").show();
+                }
+            });
+
+            $("#itemspanel_cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+            });
+
+            $("#id_cantidadprod").blur(function(){
+                numerico($(this), 0, 1000000, 4);
+            });
+
+            actualizarvalorprod = function() {
+                var costo = parseFloat($("#id_costoprod").val());
+                var cantidad = parseFloat($("#id_cantidadprod").val());
+                var valor = costo * cantidad;
+                $("#id_valorprod").val(valor.toFixed(2));
+            };
+
+            $("#id_cantidadprod").blur(actualizarvalorprod);
+
+            buscar_producto = function(query, process) {
+                $.ajax({
+                    type: "GET",
+                    url: "/reportes",
+                    data: {"action": "data", "model": "Producto", "p": 1, "q": query, "s": 10},
+                    success: function(data) {
+                        if (data.result=='ok'){
+                            $("#id_codigoprod").get(0).results = data.results;
+                            listing = [];
+                            for (var i in data.results) {
+                                var dato = data.results[i];
+                                listing.push(dato.name);
+                            }
+                            process(listing);
+                        } else {
+                            $("#id_descripcionprod").val("");
+                            $("#id_codigoprod").attr({"codigo": ""});
+                            process([query]);
+                        }
+                    },
+                    error: function() {
+                    },
+                    dataType: "json"
+                });
+            };
+
+            updater_producto = function(item) {
+                var results = $("#id_codigoprod").get(0).results;
+                for (var i in results) {
+                    var datos = results[i];
+                    if (item==datos.name) {
+                        $("#id_codigoprod").val(datos.alias[0]).attr({"idp": datos.id, "codigo": datos.alias[0]});
+                        $("#id_descripcionprod").val(datos.alias[1]);
+                        return datos.alias[0];
+                    }
+                }
+                return item;
+            };
+
+            $("#id_codigoprod").typeahead({source: buscar_producto, updater: updater_producto}).blur(function(){ $(this).val($(this).attr("codigo")); });
+
+        });
+    </script>
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block atras %}/adm_suministro_salida{% endblock %}
+{% block formaction %}/adm_suministro_salida{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/adm_suministro_salida{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <table class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th style="width: 200px">C&oacute;digo</th>
+                <th>Descripci&oacute;n</th>
+                <th style="width: 100px; text-align: center">Cantidad</th>
+                <th style="width: 40px; text-align: center"> </th>
+            </tr>
+            </thead>
+            <tbody id="itemsbody" class="datatable">
+            <tr>
+                <td colspan="10">NO EXISTEN PRODUCTOS EN LA SALIDA</td>
+            </tr>
+            </tbody>
+            <tfoot>
+            <tr>
+                <td colspan="4"><a href="javascript:;" id="itemsadicionar" class="btn btn-info btn-mini"><i class="fa fa-plus"></i> Adicionar</a></td>
+            </tr>
+            </tfoot>
+        </table>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Producto para Salida</h3>
+        </div>
+        <div class="modal-body" id="itemspanel_body">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovalores" style="display: none;">
+                Revise los valores en la cantidad o costos no pueden ser ceros
+            </div>
+            <div class="alert alert-danger" id="alertasalida" style="display: none;">
+                Este producto ya se encuentra en la lista
+            </div>
+            <div id="form2">
+                {% for field in form2 %}
+                    <fieldset class="control-group">
+                        <label class="control-label-modal" for="id_{{ field.name }}">{{ field.label }}</label>
+                        <div class="controls-modal">
+                            {{ field }}
+                            <p class="help-text">{{ field.help_text }} </p>
+                        </div>
+                    </fieldset>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionar"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-success" id="itemspanel_adicionarcerrar"><i class="fa fa-plus"></i> Adicionar y Cerrar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='add'/>
+{% endblock %}
+{% block formback %}/adm_suministro_salida{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

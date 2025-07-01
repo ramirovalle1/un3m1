@@ -1,0 +1,563 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function () {
+            {% if not permite_modificar %}
+                $('.controls').children().attr({'disabled': 'disabled'});
+                $('.controls input, .calificacion').attr({'disabled': 'disabled'});
+            {% endif %}
+
+            $("#fieldset_competenciastec").insertBefore("#tecnicocb")
+            $("#fieldset_competenciascon").insertBefore("#competenciacb")
+            $("#fieldset_productos").insertBefore("#addtablepro")
+
+            $(":file").filestyle({"input": false});
+
+            $("#id_observacionenvia{% if not podevaluaciondetrecord %}, #id_archivo{% endif %}").addClass("validate[required]");
+            $(".calificacion").blur(function () {
+                var tmax = parseInt($(this).attr("tmax"));
+                var tmin = parseInt($(this).attr("tmin"));
+                numerico($(this), tmin, tmax, 2);
+                var puntaje = 0;
+                $(".calificacion").each(function () {
+                    var operador = $(this).attr("operador");
+                    if (parseInt(operador) == 1) {
+                        puntaje = puntaje + parseFloat($(this).val())
+                    } else {
+                        if (parseInt(operador) == 2) {
+                            puntaje = puntaje - parseFloat($(this).val())
+                        }
+                    }
+
+                });
+                $("#total").val(puntaje.toFixed(2))
+            });
+
+            $("#id_productos_select2").val(0).trigger("change");
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_productos_select2").select2({
+                width: '750px',
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/pod_periodo?action=buscarproductos&q=" + params.term + "&dep="+{{ podevaluaciondet.departamento.id }};
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_productos_select2").attr({"value": (evt.params.data.id), 'valuename': (evt.params.data.name)});
+            });
+
+
+            $('#addtablepro').click(function () {
+                var idprod = $('#id_productos_select2').val()
+                var nameprod = $('#id_productos_select2').attr('valuename');
+                if (idprod === ''){
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        type: 'warning',
+                        title: 'Debe seleccionar un producto',
+                        showConfirmButton: false,
+                        timer: 6000
+                    })
+                }else{
+                    con = 1;
+                    $("#tablapro #cont").each(function(){
+                        con+=1;
+                    });
+                    if (con < 11) {
+                        $('#tablapro tbody').append('<tr>'+
+                            '<td style="word-break: break-all; background: white; font-size: 8px">' +
+                            '<input class="validate[required]" type="hidden" required name="producto[]" value="'+ idprod +'">'+ nameprod +'</td>' +
+                            '<td style="word-break: break-all; background: white"><input class="validate[required]" type="text" required name="producto[]"></td>' +
+                            '<td style="word-break: break-all; background: white"><input id="cont" class="validate[required]" type="text" required name="producto[]"></td>' +
+                            '<td style="word-break: break-all; background: white; text-align: center">'+
+                                '<select class="validate[required]" required name="producto[]">'+
+                                    '<option value="1">APLICA</option>'+
+                                    '<option value="2">NO APLICA</option>'+
+                                '</select>'+
+                            '</td>' +
+                            '</td>' +
+                            '<td style="word-break: break-all; text-align: center"><a class="btn btn-danger btn-mini borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td></tr>'
+                        );
+                    }
+                }
+            });
+
+            $('#addtablecomcon').click(function () {
+                con = 0;
+                niveldata = '';
+                var estado = $( "#competenciacb option:selected" ).val()
+                var tec = $('#id_competenciascon').val();
+                $("#tablacomcon #contad").each(function(){
+                    con+=1;
+                });
+                if (con < 3) {
+                    $.ajax({
+                        type: "GET",
+                        url: "/pod_periodo",
+                        data: {'action': 'aggcompetenciatec', 'estado': estado, 'tec': tec},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                if (data.nivel == '1'){
+                                    niveldata = "ALTO"
+                                }else if(data.nivel == '2'){
+                                    niveldata = "MEDIO"
+                                }else{
+                                    niveldata = "BAJO"
+                                }
+                                $('#tablacomcon tbody').append('<tr>'+
+                                    '<td style="word-break: break-all; background: white">' +
+                                    '<input style="display: none" class="validate[required]" type="text" required="true" name="compconid[]" readonly value="'+tec+'">' +
+                                    '<input style="display: none"  class="validate[required]" id="contad" type="text" required="true" name="nivelcon[]" readonly value="'+niveldata+'">' +
+                                     data.ct+
+                                    '</td>' +
+                                    '<td style="word-break: break-all; background: white; text-align: center">' + niveldata +'</td>'+
+                                    '<td style="word-break: break-all; background: white">'+data.co+'</td>'+
+                                    '<td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td></tr>'
+                                );
+
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#addtablecomtec').click(function () {
+                con = 0;
+                niveldata = '';
+                var estado = $( "#tecnicocb option:selected" ).val()
+                var tec = $('#id_competenciastec').val();
+                $("#tablacomtec #cont").each(function(){
+                    con+=1;
+                });
+                if (con < 3) {
+                    $.ajax({
+                        type: "GET",
+                        url: "/pod_periodo",
+                        data: {'action': 'aggcompetenciatec', 'estado': estado, 'tec': tec},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                if (data.nivel == '1'){
+                                    niveldata = "ALTO"
+                                }else if(data.nivel == '2'){
+                                    niveldata = "MEDIO"
+                                }else{
+                                    niveldata = "BAJO"
+                                }
+                                $('#tablacomtec tbody').append('<tr>'+
+                                    '<td style="word-break: break-all; background: white">' +
+                                    '<input style="display: none" class="validate[required]" type="text" required="true" name="comptecid[]" readonly value="'+tec+'">' +
+                                    '<input style="display: none" class="validate[required]" id="cont" type="text" required="true" name="niveltec[]" readonly value="'+niveldata+'">' +
+                                     data.ct +
+                                    '</td>' +
+                                    '<td style="word-break: break-all; background: white; text-align: center">'+ niveldata +
+                                    '<td style="word-break: break-all; background: white">'+ data.co +
+                                    '<td style="word-break: break-all; text-align: center"><a class="btn btn-danger borrarp" id="eliminarpieza"><i class="fa fa-trash"></i></a></td></tr>'
+                                );
+
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $(document).on('click', '.borrarp', function (event) {
+                event.preventDefault();
+                $(this).closest('tr').remove();
+            });
+
+            $("#id_competenciastec_select2").val(0).trigger("change");
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_competenciastec_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/pod_periodo?action=buscarcompetenciastec&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_competenciastec").attr({"value": (evt.params.data.id)});
+            });
+
+            $("#id_competenciascon_select2").val(0).trigger("change");
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_competenciascon_select2").select2({
+                placeholder: "-------------------------------------------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/pod_periodo?action=buscarcompetenciascon&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_competenciascon").attr({"value": (evt.params.data.id)});
+            });
+
+            $("#cerrarpanel").click(function () {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            $("#ver_com").click(function () {
+                var ancho = 1500;
+                var alto = 800;
+                var tipo = $(this).attr("tipo");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pod_periodo",
+                    data: {'action': 'ver_com', 'tipo': tipo},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            if (tipo == 'tecnico') {
+                                $(".paneltitle").html("COMPETENCIAS TECNICAS");
+                            } else {
+                                $(".paneltitle").html("COMPENTENCIAS CONDUCTUALES");
+                            }
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#ver_com2").click(function () {
+                var ancho = 1500;
+                var alto = 800;
+                var tipo = $(this).attr("tipo");
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pod_periodo",
+                    data: {'action': 'ver_com', 'tipo': tipo},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            if (tipo == 'tecnico') {
+                                $(".paneltitle").html("COMPETENCIAS TECNICAS");
+                            } else {
+                                $(".paneltitle").html("COMPENTENCIAS CONDUCTUALES");
+                            }
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pod_periodo?action=planificar&id={{ podevaluaciondet.podperiodo.id }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/pod_periodo{% endblock %}
+{% block formdestination %}/pod_periodo?action=planificar&id={{ podevaluaciondet.podperiodo.id }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='agregar_record'/>
+    <input type='hidden' name='id' value='{{ podevaluaciondet.id }}'/>
+    <input type='hidden' name='tipo' value='{{ tipo }}'/>
+    <table class='table' align="center" style="background: #f2f2f2">
+        <tr>
+            <td>
+                <table class='table table-bordered'>
+                    <tr>
+                        <td width="120"><strong>Apellidos y Nombres:</strong></td>
+                        <td>{{ podevaluaciondet.evaluado }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Departamento:</strong></td>
+                        <td>{{ podevaluaciondet.departamento }}</td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+{#    <a class="btn btn-info" id="ver_productos"><i class="fa fa-eye"></i></a>#}
+    <table class='table table-bordered' id="tablapro">
+        <thead>
+        <tr>
+            <th colspan="5">
+                <label><b><i class="fa fa-book"></i> Productos/Servicios:</b></label>
+                <select class="form-control" style="width: 250px"
+                        id="id_productos_select2"
+                        data-placeholder="Seleccione Productos">
+                    <option value=""></option>
+                </select>
+                 <a class="btn btn-success btn-mini" id="addtablepro"><i class="fa fa-plus-circle"></i></a>
+            </th>
+        </tr>
+        <tr>
+            <th style="width: 20%;text-align: left">PRODUCTO O SERVICIO QUE INSUME</th>
+            <th style="width: 25%;text-align: center;">PRODUCTO INTERMEDIO</th>
+            <th style="width: 30%;text-align: center;">CONOCIMIENTO ESPECIFICO</th>
+            <th style="width: 15%;text-align: center;">¿Aplica?</th>
+            <th style="width: 5%;text-align: center;"></th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <table class='table table-bordered' id="tablamispuesto">
+        <thead>
+        <tr>
+            <th style="width: 100%;text-align: center"><i class="fa fa-commenting"></i> MISIÓN DEL PUESTO: Descripción breve de la razón de ser del
+                puesto que desempeña:
+            </th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>
+                <textarea name="misionpuesto" id="" cols="30" rows="2" required class="validate[required]" ></textarea>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+    <table class='table table-bordered' id="tablarelaciones">
+        <thead>
+        <tr>
+            <th colspan="2" style="text-align: center"><i class="fa fa-globe"></i> RELACIONES INTERNAS Y EXTERNAS: (Describe puestos, unidades,
+                instituciones o clientes)
+            </th>
+        </tr>
+        <tr>
+            <th style="width: 50%;text-align: center">INTERNO</th>
+            <th style="width: 50%;text-align: center">EXTERNO</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="interno[]"></td>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="externo[]"></td>
+        </tr>
+        <tr>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="interno[]"></td>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="externo[]"></td>
+        </tr>
+        <tr>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="interno[]"></td>
+            <td style="word-break: break-all; background: white;"><input class="validate[required]" type="text" name="externo[]"></td>
+        </tr>
+        </tbody>
+    </table>
+    <fieldset name="tecnico" id="tecnicocb" style="width: 20%; padding: 0%; margin: 0%">
+        <select>
+            <option value="1">ALTO</option>
+            <option value="2">MEDIO</option>
+            <option value="3">BAJO</option>
+        </select>
+    </fieldset>
+    <table class='table table-bordered' id="tablacomtec">
+        <thead>
+        <tr>
+            <th style="width: 20%;text-align: center">COMPETENCIA TECNICA</th>
+            <th style="width: 20%;text-align: center;">NIVEL</th>
+            <th style="width: 45%;text-align: center;">COMPORTAMIENTO OBSERVABLE</th>
+            <th style="width: 10%;text-align: center;">
+                <a class="btn btn-success btn-mini" id="addtablecomtec"><i class="fa fa-plus-circle"></i></a>
+                <a class="btn btn-info btn-mini" id="ver_com" tipo="tecnico" href="javascript:;"><i class="fa fa-eye"></i></a>
+            </th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <fieldset class="control-group nomargins" name="tecnico" id="competenciacb" style="width: 20%;">
+        <select>
+            <option value="1">ALTO</option>
+            <option value="2">MEDIO</option>
+            <option value="3">BAJO</option>
+        </select>
+    </fieldset>
+    <table class='table table-bordered' id="tablacomcon">
+        <thead>
+        <tr>
+            <th style="width: 20%;text-align: center">COMPETENCIA CONDUCTUALES</th>
+            <th style="width: 20%;text-align: center;">NIVEL</th>
+            <th style="width: 45%;text-align: center;">COMPORTAMIENTO OBSERVABLE</th>
+            <th style="width: 10%;text-align: center;">
+                <a class="btn btn-success btn-mini" id="addtablecomcon"><i class="fa fa-plus-circle"></i></a>
+                <a class="btn btn-info btn-mini" id="ver_com2" tipo="conductual" href="javascript:;"><i class="fa fa-eye"></i></a>
+            </th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        {% for field in form2 %}
+            {% if field.field.widget.attrs.separator %}
+                <div style="width: 100%; height: 1px; float: left;"></div>
+            {% endif %}
+            <fieldset class="control-group nomargins" style="float: left; width:
+                    {% if field.field.widget.attrs.formwidth %}{{ field.field.widget.attrs.formwidth }}{% else %}100%{% endif %}">
+                <label class="control-label" for="id_{{ field.name }}">{{ field.label }}</label>
+                <div class="controls">
+                    {{ field }}
+                    <p class="help-text" alert="{{ field.help_text }}">{{ field.help_text }} </p>
+                </div>
+            </fieldset>
+        {% endfor %}
+    </div>
+{% endblock %}
+{% block formadicional %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitle"></h3></td>
+                    <td><a href="javascript:;" id="cerrarpanel" class="btn btn-danger btn-mini pull-right"><i
+                            class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+    </div>
+{% endblock %}
+{% block formback %}/pod_periodo?action=planificar&id={{ podevaluaciondet.podperiodo.id }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

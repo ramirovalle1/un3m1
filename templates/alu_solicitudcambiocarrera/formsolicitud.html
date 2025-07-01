@@ -1,0 +1,479 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <style>
+        form input, form select, form textarea {
+            text-transform: initial;
+        !important;
+        }
+
+        input[type="file"] {
+            width: none; !important;
+        }
+    </style>
+    <script src="https://kit.fontawesome.com/a96c5b6f8d.js" crossorigin="anonymous"></script>
+    <link href="/static/cajasforms.css?4.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript">
+        var numImplemento = 1;
+        $(function () {
+            $('#tbrequisitos').on("click", "tbody tr td .deleteInfoImplemento", function () {
+                $(this).parents('tr').remove();
+            })
+            $(":file").filestyle({"input": false});
+
+            $('.filepdf').on('change', function () {
+                var rutaimg = $(this).val();
+                var extension = rutaimg.substring(rutaimg.length - 3, rutaimg.length);
+                if (extension.toLowerCase() === 'pdf') {
+                    $('.filepdf').fadeIn("fast").attr('src', URL.createObjectURL(event.target.files[0]));
+                } else {
+                    $(this).val(null);
+                    $(this).filestyle('clear');
+                    smoke.alert('Seleccione un archivo formato .pdf');
+                }
+            });
+            $('.nivel').select2({
+                    width:'100%',
+                    placeholder:'Seleccione el Nivel de la asignatura',
+            })
+            $('#carrerasfilter').select2({
+                theme: "classic",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados (Recuerda ingresar tu puntaje para buscar poder buscar una carrera)";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear : true,
+                debug: true,
+                ajax: {
+                    delay: 250,
+                    type: 'POST',
+                    url: '/alu_solicitudcambiocarrera',
+                    data: function (params) {
+                        return {
+                            term: params.term,
+                            'action': 'buscarcarrera',
+                            'periodo': {{ apertura.pk }},
+                            'puntaje': $('#puntajeobtenido').val()
+                        };
+                    },
+                    processResults: function (data) {
+                        return {
+                            results: data
+                        };
+
+                    },
+                },
+                placeholder: 'BUSCAR UNA CARRERA',
+                minimumInputLength: 1,
+            }).on('select2:select', function (e) {
+                bloqueointerface();
+                $.get(window.location.pathname, {'action':'tablahomologacion', 'id': $(this).val(), 'puntajeobtenido':$("#puntajeobtenido").val()},
+                function(data) {
+                    $.unblockUI();
+                    if (data.result === true ) {
+                        if (data.existe === true){
+                            Swal.fire(
+                              'A continuación, se le presentara un simulador!',
+                              'El cual lo podrá encontrar al final de la sección!',
+                              'info'
+                            )
+                        }
+                        $('#contenidomalla').html(data.data);
+                        $('.homologar').css('display','initial')
+                    }
+                    else{
+                        NotificationJG.error(data.mensaje)
+                    }
+                }, 'json');
+            });
+            {% if not inscripcion.puntajesenescyt %}
+                $('#puntajeobtenido').on('keypress', function (e){
+                    if (e.which !== 8 && e.which !== 0 && (e.which < 48 || e.which > 57)) {
+                        return false;
+                    }
+                }).on('keyup', function (e){
+                        if ($('#carrerasfilter').val() !== null){
+                                NotificationJG.error('Haz cambiado tu puntaje, vuelve a elegir una carrera por favor');
+                            }
+                        $('#carrerasfilter').find('option:selected').remove().end().empty().val(null).trigger('change');
+                        if ($('#puntajeobtenido').val() <= 0) {
+                            NotificationJG.error('Debes ingresar su puntaje para poder buscar');
+                        }
+                })
+            {% endif %}
+        });
+
+        function btnAddarchivo(id, nombre_input) {
+            var tabla= '#tbrequisitos' + id
+            $(tabla+' tbody').append($('<tr>', {'id': numImplemento}).append(
+            $('<td>').append('<b>Seleccione el Nivel:</b>').append($('<select>',{
+                'class': 'nivel',
+                'name': `nivel_${nombre_input}[]`,
+                'style': 'width:100%',
+                'id': `nivel${numImplemento}`,
+                'attr':'required'
+            }).append('<option value="">---------</option>')
+            {% for nivel in nivelesdemallas %}
+                 .append($('<option>',{
+                    value: '{{ nivel.id }}',
+                    text: '{{ nivel }}'
+                })){% endfor %}).append('<b>Nombre de Asignatura:</b>').append($('<input>', {
+                'class': 'descripcion',
+                'type':'text',
+                'name': `desc_${nombre_input}[]`,
+                'style': 'width:100%',
+                'id': `desc${numImplemento}`,
+                'placeholder': 'Ejem. Matemáticas',
+                'attr':'required',
+            })).append($('<input>', {
+                'class': 'filepdf',
+                'type':'file',
+                'accept':".pdf",
+                'name': `doc_${nombre_input}[]`,
+                'style': 'width:100%',
+                'id': `fam${numImplemento}`,
+
+            })),
+            $('<td style="text-align: center; width: 10px">', {}).append($('<button>', {
+                'type': 'button',
+                'required': 'true',
+                'onclick': `deleteInfo(${numImplemento})`,
+                'class': 'btn btn-danger btn-mini deleteInfoImplemento',
+                'html': '<i class="fa fa-times"></i>'
+            }))));
+            numImplemento += 1;
+}
+
+        function btnAddarchivo1(id, nombre_input) {
+            var tabla= '#tbrequisitos' + id
+            $(tabla+' tbody').append($('<tr>', {'id': numImplemento}).append(
+            $('<td>').append('<b>Nombre del Documento:</b>').append($('<input>', {
+                'class': 'descripcion',
+                'type':'text',
+                'name': `desc_${nombre_input}[]`,
+                'style': 'width:100%',
+                'id': `desc${numImplemento}`,
+                'placeholder': 'Describir un alias',
+                'attr':'required',
+            })).append($('<input>', {
+                'class': 'filepdf',
+                'type':'file',
+                'accept':".pdf",
+                'name': `doc_${nombre_input}[]`,
+                'style': 'width:100%',
+                'id': `fam${numImplemento}`,
+
+            })),
+            $('<td style="text-align: center; width: 10px">', {}).append($('<button>', {
+                'type': 'button',
+                'required': 'true',
+                'onclick': `deleteInfo(${numImplemento})`,
+                'class': 'btn btn-danger btn-mini deleteInfoImplemento',
+                'html': '<i class="fa fa-times"></i>'
+            }))));
+            numImplemento += 1;
+}
+
+        function deleteInfo(id) {
+            numImplemento -= 1;
+            $(`#${id}`).closest('tr').remove();
+        }
+    </script>
+    <style>
+        .nav-pills > .active > a, .nav-pills > .active > a:hover {
+            color: #fff;
+            background-color: #1C3247 ;
+        !important;
+        }
+
+        .nav-tabs > li > a, .nav-pills > li > a {
+            padding-right: 57px;
+        !important;
+        }
+
+
+    </style>
+    <script type="text/javascript" src="/static/js/bootstrap-filestyle.min.js?v=1.0.1"></script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}/alu_solicitudcambiocarrera{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="waitpanelmensaje" style="display: none;">
+        <div class="modal-body">
+            <div class="row-fluid">
+                <div class="span3">
+                    <img src="/static/images/undraw/mailsuccess.png">
+                </div>
+                <div class="span9" style="text-align: justify;"><br>
+                    <p id="textpanelmensaje"></p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a id="returnpanelmensaje" class="btn btn-primary text-left bloqueo_pantalla">
+                <i class="fa fa-check-circle"></i> Aceptar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalcarrerascambio" style="display: none;">
+                <div class="modal-header" style="background-color: #1C3247 ; !important; color: white;">
+                    <h3><i class="fa fa-sort-numeric-asc"></i> <i class="fa fa-book"></i> Listado de Carreras
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="opacity: 2 !important;">
+                        <span aria-hidden="true"><i class="fa fa-times" style="color: white"></i></span>
+                    </button></h3>
+
+                </div>
+                <div class="modal-body">
+                    <div class="row-fluid">
+                        <div class="span9" style="text-align: justify;"><br>
+
+                            {% for carrera in  apertura.carreras_periodo %}
+                                {% if carrera.puntajerequerido > 0 %}
+                                <p><h5> <b>{{ carrera.carrera.nombre_completo_inscripcion }} </b>{% if carrera.cupo_disponible <= 0 %}<span class="label label-important">Cupo agotado</span>{% endif %} </h5>
+                                    <b>Puentaje requerido: </b>{{ carrera.puntajerequerido }} <br>
+                                    <b>Cupo disponible: </b>{% if carrera.cupo_disponible <= 0 %}0{% else %}{{ carrera.cupo_disponible  }}{% endif %}   <br>
+                                {% endif %}
+                                {% if carrera.homologacion_malla %}
+                                    <span class="label label-success">CARRERA A FIN</span></p>
+                                {% endif %}
+{#                                {% for homologacion in homologaciones %}#}
+{#                                    {% if carrera.carrera.malla == homologacion.malladestino %}#}
+{#                                        {% if homologacion.todas_asignaturasdestino %}}#}
+{#                                                <span class="label label-success">CARRERA A FIN</span></p>#}
+{#                                        {% endif %}#}
+{#                                    {% endif %}#}
+{#                                {% endfor %}#}
+                            {% endfor %}
+                        </div>
+                        <div class="span3">
+                            <img src="/static/images/undraw/maestro.png">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a data-dismiss="modal" class="btn btn-primary text-left">
+                        <i class="fa fa-check-circle"></i> Aceptar</a>
+                </div>
+            </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4><i class="fa fa-check-circle text-success"></i> {{ apertura.motivo }}</h4>
+{#            <h4><i class="fa fa-book"></i> Registro de solicitud para cambio de carrera</h4>#}
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span12'>
+            {% if not apertura %}
+                <center>
+                    <b style="font-size:25px;">
+                        <div>
+                            <figure class="text-center">
+                                <img class="img-fluid"
+                                     src="data:image/svg+xml;base64,PHN2ZyBpZD0iY29sb3IiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDI0IDI0IiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDI0IDI0IiB3aWR0aD0iNTEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxnIGZpbGw9IiM5ZTllOWUiPjxwYXRoIGQ9Im0yMi4yNSAxOS4yNWgtM2MtLjQxNCAwLS43NS0uMzM2LS43NS0uNzVzLjMzNi0uNzUuNzUtLjc1aDNjLjQxNCAwIC43NS4zMzYuNzUuNzVzLS4zMzYuNzUtLjc1Ljc1eiIvPjxwYXRoIGQ9Im0xNi4yNSAxOS4yNWgtM2MtLjQxNCAwLS43NS0uMzM2LS43NS0uNzVzLjMzNi0uNzUuNzUtLjc1aDNjLjQxNCAwIC43NS4zMzYuNzUuNzVzLS4zMzYuNzUtLjc1Ljc1eiIvPjxwYXRoIGQ9Im0xMC4yNSAxOS4yNWgtM2MtLjQxNCAwLS43NS0uMzM2LS43NS0uNzVzLjMzNi0uNzUuNzUtLjc1aDNjLjQxNCAwIC43NS4zMzYuNzUuNzVzLS4zMzYuNzUtLjc1Ljc1eiIvPjxwYXRoIGQ9Im00LjI1IDE5LjI1aC0zYy0uNDE0IDAtLjc1LS4zMzYtLjc1LS43NXMuMzM2LS43NS43NS0uNzVoM2MuNDE0IDAgLjc1LjMzNi43NS43NXMtLjMzNi43NS0uNzUuNzV6Ii8+PC9nPjxwYXRoIGQ9Im05LjI1IDE0LjI1Yy0uMjU2IDAtLjUxMi0uMDk4LS43MDctLjI5My0uMzkxLS4zOTEtLjM5MS0xLjAyMyAwLTEuNDE0bDUuNS01LjVjLjM5MS0uMzkxIDEuMDIzLS4zOTEgMS40MTQgMHMuMzkxIDEuMDIzIDAgMS40MTRsLTUuNSA1LjVjLS4xOTUuMTk1LS40NTEuMjkzLS43MDcuMjkzeiIgZmlsbD0iI2Y0NDMzNiIvPjxwYXRoIGQ9Im0xNC43NSAxNC4yNWMtLjI1NiAwLS41MTItLjA5OC0uNzA3LS4yOTNsLTUuNS01LjVjLS4zOTEtLjM5MS0uMzkxLTEuMDIzIDAtMS40MTRzMS4wMjMtLjM5MSAxLjQxNCAwbDUuNSA1LjVjLjM5MS4zOTEuMzkxIDEuMDIzIDAgMS40MTQtLjE5NS4xOTUtLjQ1MS4yOTMtLjcwNy4yOTN6IiBmaWxsPSIjZjQ0MzM2Ii8+PC9zdmc+"
+                                     width="200px" alt="Sin conexión"/>
+                            </figure>
+                        </div>
+                        <p class="text-center">
+                            PAGINA NO DISPONIBLE, POR FALTA DE PROCESOS DE CAMBIO DE CARRERA.
+                        </p>
+                    </b>
+                </center>
+            {% else %}
+                <ul class="nav nav-pills nav-justified thumbnail setup-panel">
+                    <li class="active" id="paso1">
+                        <a href="#step-1">
+                            <h4 class="list-group-item-heading"><i class="fa fa-user-plus"></i> Recepcion de solicitudes</h4>
+                            <p>Estudiante</p>
+                            <p class="list-group-item-text">
+                                <i class="fa fa-calendar"></i> {{ apertura.fechainiciorecepciondocumentos|date:"d-m-Y" }}
+                                - {{ apertura.fechacierrerecepciondocumentos|date:"d-m-Y" }}
+                            </p>
+                        </a>
+                    </li>
+                    <li class="disabled" id="paso2">
+                        <a href="#step-2">
+                            <h4 class="list-group-item-heading"><i class="fa fa-search"></i> Verificación de
+                                requisitos</h4>
+                            <p>Departamento de Admision</p>
+                            <p class="list-group-item-text">
+                                {% if apertura.esta_en_fechas %}
+                                    {% if solicitud.fecha_revision_admision %}
+                                        <i class="fa fa-calendar"></i>
+                                        {{ solicitud.fecha_revision_admision|date:"d-m-Y" }}
+                                    {% endif %}
+
+                                {% else %}
+                                    <i class="fa fa-times"></i> Proceso Cerrado
+                                {% endif %}
+                            </p>
+                        </a>
+                    </li>
+                    <li class="disabled" id="paso3">
+                        <a href="#step-3">
+                            <h4 class="list-group-item-heading"><i class="fa fa-check"></i> Validación del decano de la
+                                facultad</h4>
+                            <p>Decano(a) de Facultad</p>
+                            <p class="list-group-item-text">
+                                {% if apertura.esta_en_fechas and filtro.esta_en_fecha_revision_decano %}
+                                    {% if solicitud.fecha_revision_decano %}
+                                        <i class="fa fa-calendar"></i>
+                                        {{ solicitud.fecha_revision_decano|date:"d-m-Y" }}
+                                    {% endif %}
+
+                                {% else %}
+                                    <i class="fa fa-times"></i> Proceso Cerrado
+                                {% endif %}
+                            </p>
+                        </a>
+                    </li>
+                    <li class="disabled" id="paso4">
+                        <a href="#step-4">
+                            <h4 class="list-group-item-heading"><i class="fa fa-check"></i> Validación del director de
+                                carrera</h4>
+                            <p>Director(a) de Carrera</p>
+                            <p class="list-group-item-text">
+                                {% if apertura.esta_en_fechas %}
+                                    {% if solicitud.fecha_revision_director %}
+                                        <i class="fa fa-calendar"></i>
+                                        {{ solicitud.fecha_revision_director|date:"d-m-Y" }}
+                                    {% endif %}
+
+                                {% else %}
+                                    <i class="fa fa-times"></i> Proceso Cerrado
+                                {% endif %}
+                            </p>
+                        </a>
+                    </li>
+                    <li class="disabled" id="paso5">
+                        <a href="#step-5">
+                            <h4 class="list-group-item-heading"><i class="fa fa-certificate"></i> Fin del Proceso
+                            </h4>
+                            <p class="list-group-item-text">Aqui termina el proceso.</p>
+                        </a>
+                    </li>
+                </ul>
+                {% for cor in apertura.coordinaciones %}
+                    <label class="label label-warning">{{ cor.nombre }}</label>
+                {% endfor %}<br><br>
+                <div class="row setup-content" id="step-1">
+                    <div class="col-xs-12">
+                        <div class='row-fluid well'>
+                            <form id="form" autocomplete="off" method="POST" style="width: 100%; margin-bottom: 0" enctype="multipart/form-data" action="/alu_solicitudcambiocarrera">
+                                {% csrf_token %}
+                                {% if not inscripcion.puntajesenescyt %}
+                                    <b>Ingrese su puntaje obtenido: </b><br>
+                                    <input type="text" name="puntajeobtenido" id="puntajeobtenido" value="0" style="width: 45%"/>
+                                     <a href="https://certificados.senescyt.gob.ec/#/login" target="_blank" class="btn btn-success"><i
+                                            class="fa fa-eye"></i> Ver Comprobante</a>
+                                    <b style="color: red"><br> Nota: Recuerda que debes ingresar el mismo puntaje del comprobante del cupo obtenido
+                                    a través del Examen Ser Bachiller o Examen de Acceso a la Educación Superior
+                                    (EAES)</b><br><br>
+                                {% endif %}
+                                <b>Selecione la carrera a cambiarse: </b><br>
+                                <select name="carreras" id="carrerasfilter" class="select2 form-control carrerasfilter" style="width: 45%">
+                                </select>
+                                <a data-toggle="modal" data-target="#modalcarrerascambio" class="btn btn-success"><i
+                                        class="fa fa-eye"></i> Ver Carreras</a>
+                                <br><br>
+                                <input type="hidden" name="id" value="{{ apertura.id }}"/>
+                                <input type="hidden" name="action" value="{{ action }}"/>
+                                <div class='row-fluid'>
+                                    <div class='span12'>
+                                    <b style="color: red">
+                                        Nota: Los documentos se tienen que subir en formato (.pdf) y su tamaño menor a 2Mb.</b>
+                                        <table class='table table-striped table-bordered'>
+                                            <thead>
+                                            <tr>
+                                                <th style="text-align: left; width: 3%">Formato</th>
+                                                <th style="text-align: left; width: 40%">Requisito</th>
+                                                <th style="text-align: left; width: 6%">Seleccionar</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% for req in apertura.requisitos_sinexternos %}
+                                                <tr>
+                                                    <td style="text-align: left; width: 3%">
+                                                    {% if req.archivo %}
+                                                        <a href="/media/{{ req.archivo }}" target="_blank"
+                                                           class="btn btn-primary"><i class="fa fa-download"></i>
+                                                            Descargar</a>
+                                                    {% endif %}
+                                                    </td>
+                                                    <td style="text-align: left; width: 40%">{{ req.nombre }}{% if req.opcional %}<b> ( Opcional )</b>{% endif %} <br>
+                                                        <b class="text-primary">{{ req.leyenda|default_if_none:'' }}</b>
+                                                    </td>
+                                                    <td style="text-align: left; width: 20%">
+                                                        {% if req.multiple %}
+                                                            <table id="tbrequisitos{{ req.id }}" class="table table-bordered" style="border-top: 3px solid #efd41b">
+
+                                                                <tbody>
+
+                                                                </tbody>
+                                                                <tfoot>
+                                                                    <tr>
+                                                                        <th></th>
+                                                                        <th style="text-align: center; width: 10px">
+                                                                            {% if req.essilabo %}
+                                                                                 <a onclick="btnAddarchivo('{{ req.id }}','{{ req.nombre_input }}')"
+                                                                                   class="btn btn-primary btn-mini tooltips"
+                                                                                   data-placement="top"
+                                                                                   data-original-title="Agregar">
+                                                                                    <i class="fa fa-plus-circle"></i></a><br>
+                                                                            {% else %}
+                                                                             <a onclick="btnAddarchivo1('{{ req.id }}','{{ req.nombre_input }}')"
+                                                                                   class="btn btn-primary btn-mini tooltips"
+                                                                                   data-placement="top"
+                                                                                   data-original-title="Agregar">
+                                                                                    <i class="fa fa-plus-circle"></i></a><br>
+                                                                            {% endif %}
+                                                                        </th>
+                                                                    </tr>
+                                                                </tfoot>
+                                                            </table>
+                                                        {% else %}
+                                                             <input type="file" accept=".pdf" class="filepdf" style="width: 100px !important;"
+                                                               name="doc_{{ req.nombre_input }}"><br>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% empty %}
+                                                <tr>
+                                                    <td colspan="2">NO EXISTEN REGISTROS</td>
+                                                </tr>
+                                            {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="row-fluid">
+                                    <div style="text-align: right; float: left; width: 100%">
+                                        {% if not tercera %}
+                                            <button type="submit" id="submit"
+                                                    class="btn btn-success">
+                                                <i class="fa fa-check-circle"></i> Guardar
+                                            </button>
+                                        {% endif %}
+                                        <a href="/alu_solicitudcambiocarrera" class="btn btn-danger"
+                                           data-dismiss="modal">
+                                            <i class="fa fa-window-close"></i> Cancelar</a>
+
+                                        <a class="btn btn-primary btn-lg activate-step-2" disabled>
+                                            Siguiente
+                                        </a>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div id="contenidomalla"></div>
+{% endblock %}

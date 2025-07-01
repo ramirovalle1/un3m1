@@ -1,0 +1,175 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <script type="text/javascript">
+        function eliminarajax2(pk, nombre, accion, url = '{{ request.path }}', titulo = 'Estás por eliminar los linemientos del periodo:') {
+            Swal.fire({
+                html: `<b>${titulo}</b> ${nombre}`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        if (data.result == 'ok') {
+                            location.reload();
+                        } else {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.error(data.mensaje, 'Advertencia!', 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            })
+        }
+
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 20});
+
+            $(".tl").tooltip({position: "center up"});
+
+            $("#importar_btn").click(function () {
+                {#var onombre = $("#periodo_list").options();#}
+                var onombre = document.getElementById('periodo_list').options[document.getElementById('periodo_list').selectedIndex].text;
+                var pk = $("#periodo_list").val();
+                Swal.fire({
+                    html: '<b>¿Estás seguro de importar los lineamientos del periodo: </b>' + onombre + '?',
+                    text: "Esta acción es irreversible",
+                    type: 'info',
+                    showCancelButton: true,
+                    showConfirmButton: true,
+                    allowOutsideClick: false,
+                    buttonsStyling: false,
+                    confirmButtonText: 'Si',
+                    cancelButtonText: 'No',
+                }).then((result) => {
+                    if (result.value) {
+                        $.ajax({
+                            type: 'POST',
+                            url: '{{ reques.path }}',
+                            async: false,
+                            data: {
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                action: 'importarlineamiento',
+                                id: {{ periodo.id }},
+                                idper: pk,
+                            },
+                            dataType: "json",
+                            beforeSend: function () {
+                            }
+                        }).done(function (data) {
+                            {#setTimeout($.unblockUI, 1);#}
+                            if (data.result == 'ok') {
+                                NotificationJG.success(data.mensaje, 'Importado!', 10000);
+                                location.reload();
+                            } else {
+                                NotificationJG.warning(data.mensaje, 'Advertencia!', 10000);
+                            }
+                        }).fail(function (jqXHR, textStatus, errorThrown) {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                        }).always(function () {
+                        });
+                    }
+                })
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_periodos{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            {{ periodo }}
+        </div>
+    </div>
+{#    {% if periodo.fin > hoy %}#}
+        <div class='row-fluid'>
+            <div class="span7">
+                <a href="/adm_periodos?action=addlineamiento&id={{ periodo.id }}"
+                   class='btn btn-success bloqueo_pantalla'><span class="fa fa-plus "></span> Adicionar</a>
+                <a href="/adm_periodos?action=listadounidades&id={{ periodo.id }}"
+                   class='btn btn-default bloqueo_pantalla'><span class="fa fa-list "></span> Unidades</a>
+                <a href="/adm_periodos?action=listadocomponentes&id={{ periodo.id }}"
+                   class='btn btn-default bloqueo_pantalla'><span class="fa fa-list "></span> Componentes</a>
+            </div>
+            <div class="span5" {% if listado %}style="text-align: right; float: left"{% endif %}>
+                {% if not listado %}
+                    <select name="clase" id="periodo_list" style="width: 80%">
+                        <option value="">Periodo a importar...</option>
+                        {% for tc in periodosimportar %}
+                            <option value="{{ tc.id }}">{{ tc }}</option>
+                        {% endfor %}
+                    </select>
+                    <a id="importar_btn" class='btn btn-default'><span class="fa fa-cloud-upload"></span> Importar</a>
+                {% else %}
+                    <a class='btn btn-danger' title="Eliminar lineamientos"
+                       onclick="eliminarajax2('{{ periodo.id }}', '{{ periodo }}', 'eliminarlineamientos')"><span
+                            class="fa fa-trash"></span> Eliminar todo</a>
+                {% endif %}
+            </div>
+        </div>
+{#    {% endif %}#}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <table class='table table-striped table-bordered'>
+                <thead>
+                <tr>
+                    <th>TIPO PROFESOR</th>
+                    <th style="width: 250px;">TIPO RECURSO</th>
+                    <th style="width: 250px;">Cantidad</th>
+                    <th style="width: 80px"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for lista in listado %}
+                    <tr>
+                        <td>{{ lista.tipoprofesor.nombre }}{% if lista.nivelacion %}<br>
+                        <span class="badge badge-info">Nivelación</span>{% endif %}</td>
+                        <td>{{ lista.get_tiporecurso_display }}</td>
+                        <td>{{ lista.cantidad }} - {{ lista.get_aplicapara_display }}</td>
+                        <td style="text-align: center">
+                            {% if periodo.fin > hoy %}
+                                {#                            <a href="/adm_periodos?action=edittopealumnos&id={{ lista.id }}" class="btn btn-info btn-mini tu" title="Editar"><i class="fa fa-edit"></i></a>#}
+                                <a href="javascript:;" nhref="/adm_periodos?action=dellineamiento&id={{ lista.id }}"
+                                   class="btn btn-danger eliminacionmodal btn-mini tu" title="Eliminar"><i
+                                        class="fa fa-remove"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">SIN REGISTROS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

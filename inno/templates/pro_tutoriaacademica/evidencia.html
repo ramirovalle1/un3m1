@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+
+    <style>
+        #app {padding-left: 1.5rem !important;padding-right: 1.5rem !important}
+        .table_striped thead th:nth-child(2), .table_striped thead td:nth-child(2) {text-align: left !important;padding-left: 15px}
+        .table_primary thead th:first-child, .table_primary thead td:first-child {width: 20px;background-color: #1c3247}
+        .table_warning thead th:first-child, .table_warning thead td:first-child {width: 20px;background-color: #fe9900}
+
+        .btn-success {background-color: #15ca9a !important}
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                width:'90%',
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+            $(".btn-cerrar-rubrica").click(function(){
+                $('#itemspanel_rubrica').modal('hide');
+            });
+
+        });
+
+        function formModal(id, text, action, footer = false, extra = null) {
+            bloqueointerface();
+            $('#itemspanel .modal-footer').hide();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'extra': extra,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result === 'ok') {
+                        if (data.data) {
+                            footer && $('#itemspanel .modal-footer').show();
+                            $('#itemspanel .panelbody').html(data.data);
+                            $('#itemspanel .paneltitle').html(text.toUpperCase());
+                            $("#itemspanel").modal({
+                                backdrop: 'static',
+                                width: '90%'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $('#itemspanel .panelbody').empty();
+                                $('#itemspanel .modal-footer').show();
+                            });
+                        } else {
+                            location.reload();
+                        }
+                    } else {
+                        mensajeDanger(data.message + ' ' + data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        const ver_detalle = (urls) => {
+
+            $("#itemspaneldetalle").modal({backdrop: 'static', width: '90%'}).modal('show');
+            let count = 1
+            for (var i in urls) {
+                let id = '';
+                let match = []
+                let url = urls[i];
+
+                $('#enlace' + count).val(url)
+
+                if (url.includes('drive')) {
+                    match = url.match(/\/file\/d\/([^/]+)/);
+                    url = "https://drive.google.com/uc?id="
+                    id = match && match[1];
+                } else {
+                    if (url.includes('youtube')) {
+                        match = url.match(/[?&]v=([^&]+)/);
+                        url = "https://www.youtube.com/embed/"
+                        id =  match && match[1];
+                    }
+                }
+
+                url = url + id
+                let frame = $('#id_frame' + count)[0];
+
+                frame.src = url;
+                frame.style = 'display: block';
+
+                frame.onload = function (e) {
+                     console.log('Se cargó correctamente');
+                };
+
+                count = count + 1;
+            }
+
+
+        }
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle ps-0">
+                <h3 class="py-1">{{ title }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="mb-4">
+            <br>
+            <div class="row">
+                <div class="col-12">
+                    <h3 class="fw-bolder" style="font-size: 19px;"><i class="fa fa-link text-blue fs-3"></i>&nbsp;&nbsp; Evidencia de ejecución</h3>
+                </div>
+            </div>
+            <div class="mb-4">
+                <div class="table-responsive">
+                <table class='table table_primary table_striped' id="example">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;text-align: center;"></th>
+                            <th>DÍA</th>
+                            <th>FECHA</th>
+                            <th>TURNO</th>
+                            <th>SOLICITUDES</th>
+                            <th>URL</th>
+                            <th style="width: 80px;text-align: center;">ACCIONES</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            {% for v in values %}
+                                <tr>
+                                    <th colspan="7">SEMANA {{ v.semana }}</th>
+                                </tr>
+                                {% for d in v.data %}
+                                        <tr {% if d.1 == now.date %} style="background-color: #F0F0F0" {% endif %}>
+                                            <td></td>
+                                            <td>{{ d.0|diaenletra_fecha|upper }}</td>
+                                            <td>{{ d.0.day }} DE {{ d.0|nombremes|upper }}, {{ d.0.year }}</td>
+                                            <td style="text-align: left;"><i class="fa fa-clock-o"></i> | {{ d.1.turno.comienza|time:"h:i a" }} - {{ d.1.turno.termina|time:"h:i a" }}</td>
+                                            <td style="text-align: center;">{{ d.1.solicitudes }}</td>
+                                            <td style="text-align:center;">{{ d.1.url }}</td>
+                                            <td style="text-align: center;">
+                                                <div class="btn-group">
+                                                    {% if d.0 <= now.date %}
+                                                        {% if not d.1.claseactividadevidencia_set.first %}
+                                                                <a onclick="formModal('{{ d.1.pk }}', 'AGREGAR ENLACE', 'addenlaceactividad', false, '{{ d.0|date:"Y-m-d" }}')" href="javascript:;" class="btn btn-success py-2 me-1 rounded-1"><i class="fa fa-upload" style="font-size: 9px;"></i></a>
+                                                                <a href="javascript:;" class="btn btn-danger py-2 me-1 rounded-1"><i class="fa fa-minus" style="font-size: 9px;"></i></a>
+                                                            {% else %}
+                                                                {% with evidencia=d.1.claseactividadevidencia_set.first|args:d.0|call:"get_registro_actividad"  %}
+                                                                    {% if evidencia %}
+                                                                        <a onclick="ver_detalle(['{{ evidencia.enlace1 }}', '{{ evidencia.enlace2 }}', '{{ evidencia.enlace3 }}'])" href="javascript:;" class="btn btn-warning py-2 me-1 rounded-1"><i class="fa fa-eye" style="font-size: 9px;"></i></a>
+                                                                        {% else %}
+{#                                                                        <a href="javascript:;" class="btn btn-warning py-2 me-1 rounded-1"><i class="fa fa-eye-slash" style="font-size: 9px;"></i></a>#}
+                                                                        <a onclick="formModal('{{ d.1.pk }}', 'AGREGAR ENLACE', 'addenlaceactividad', false, '{{ d.0|date:"Y-m-d" }}')" href="javascript:;" class="btn btn-success py-2 me-1 rounded-1"><i class="fa fa-upload" style="font-size: 9px;"></i></a>
+                                                                        <a href="javascript:;" class="btn btn-danger py-2 me-1 rounded-1"><i class="fa fa-minus" style="font-size: 9px;"></i></a>
+                                                                    {% endif %}
+                                                                {% endwith %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header border-0 bg-sga pb-2">
+                    <h4 class="ps-1 py-0 paneltitle text-light"></h4>
+                    <button type="button" class="btn btn-close btn-cian-secondary rounded-circle p-3 my-0" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody"></div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0 pe-2">
+                    <a href="javascript:;" class="btn btn-aprobarcerrar btn-success py-2 me-1"><i class="fa fa-save"></i> Guardar</a>
+                    <a href="javascript:;" class="btn btn-danger py-2" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspaneldetalle" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header border-0 bg-sga pb-2">
+                    <h4 class="ps-1 py-0 paneltitle text-light"></h4>
+                    <button type="button" class="btn btn-close btn-cian-secondary rounded-circle p-3 my-0" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                            <div>
+                                <b>Enlace 1 <span class="text-danger">*</span> <br></b>
+                                <input type="text" name="enlace1" id="enlace1"> <br><br>
+                            </div>
+                            <iframe style="display:none" id="id_frame1" onerror="alert('Error')" width="560" height="315" src="" frameborder="0" allowfullscreen></iframe>
+                            <br><br>
+                            <div>
+                                <b>Enlace 2 <span class="text-danger">*</span> <br></b>
+                                <input type="text" name="enlace2" id="enlace2"> <br><br>
+                            </div>
+                            <iframe style="display:none" id="id_frame2" onerror="alert('Error')" width="560" height="315" src="" frameborder="0" allowfullscreen></iframe>
+                            <br><br>
+                            <div>
+                                <b>Enlace 3 <span class="text-danger">*</span> <br></b>
+                                <input type="text" name="enlace3" id="enlace3"> <br><br>
+                            </div>
+                            <iframe style="display:none" id="id_frame3" onerror="alert('Error')" width="560" height="315" src="" frameborder="0" allowfullscreen></iframe>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0 pe-2">
+                    <a href="javascript:;" class="btn btn-aprobarcerrar btn-success py-2 me-1"><i class="fa fa-save"></i> Guardar</a>
+                    <a href="javascript:;" class="btn btn-danger py-2" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

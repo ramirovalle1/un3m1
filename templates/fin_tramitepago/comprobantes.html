@@ -1,0 +1,327 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block atras %}/fin_tramitepago?action=documentos&id={{ doc.tramitepago.id }}{% endblock %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        $(function() {
+
+            $(".verificar").click(function () {
+                var elemento = $(this);
+                var doc = elemento.attr('ida');
+                var ruta= elemento.attr('idr');
+                var estado = "false";
+                if(elemento.is(":checked")){
+                    estado = "true"
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_tramitepago",
+                    data: {"action": "verificar_doc", "id": doc, "ruta": ruta, "estado": estado},
+                    success: function(data) {
+                        if (data.result=='ok'){
+
+                        } else {
+                            if(elemento.is(":checked")){
+                                elemento.prop('checked', false);
+                            }else{
+                                elemento.prop('checked', true);
+                            }
+                        }
+                        $.unblockUI();
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        if(elemento.is(":checked")){
+                            elemento.prop('checked', false);
+                        }else{
+                            elemento.prop('checked', true);
+                        }
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#id_codigo_select2").val(0).trigger("change");
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+            $("#id_codigo_select2").change(function(){
+                $("#id_valorretenido").val('0.00');
+                var id = $(this).val();
+                var doc = $("#itemspanel_adicionar").attr('ida');
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/fin_tramitepago",
+                        data: {"action": "calcula_retencion", "id": id, "doc": doc},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                var total = data.valor;
+                                $("#id_valorretenido").val(total.toFixed(2));
+                            } else {
+                                $("#id_valorretenido").val('0.00');
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#id_codigo").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#id_codigo_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=CodigoRetencion&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_codigo").attr({"value":(evt.params.data.id)});
+            });
+
+            $(".revisiones").click(function() {
+                var id = $(this).attr("iddoc");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_tramitepago",
+                    data: {'action':'detalle_revisiones', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalleactivomodal_body").html(data.html);
+                            $("#detalleactivomodal").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $(".detalle_retenciones").click(function() {
+                var id = $(this).attr("iddoc");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_tramitepago",
+                    data: {'action':'detalle_retenciones', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalleactivomodal_body").html(data.html);
+                            $("#detalleactivomodal").modal({"backdrop":"static", "width": "1000px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $(".obser").click(function () {
+                var id = $(this).attr('ida');
+                var idr = $(this).attr('idr');
+                var texto = $(this).attr('vo');
+                $("#observacion").val(texto);
+                $("#adicionarobs").attr({'ida': id});
+                $("#adicionarobs").attr({'idr': idr});
+                $("#itemspanelobs").modal('show');
+            });
+
+            $("#adicionarobs").click(function () {
+                $("#itemspanelobs").modal('hide');
+                bloqueointerface();
+                var elemento = $(this);
+                var id = elemento.attr("ida");
+                var idr = elemento.attr("idr");
+                var texto = $("#observacion").val();
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_tramitepago",
+                    data: {"action": "actualizaobservacion", "id": id, "idr": idr, "valobser": texto},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#obs_"+id).attr({'vo': texto});
+                        } else {
+                            smoke.alert(data.mensaje, function(e){
+                                $("#itemspanelobs").modal('show');
+                            }, {
+                                ok: "ok",
+                                classname: "custom-class"
+                            });
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.", function(e){
+                            $("#itemspanelobs").modal('show');
+                        }, {
+                            ok: "ok",
+                            classname: "custom-class"
+                        });
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#detalleactivomodal_aceptar").click(function () {
+                $("#detalleactivomodal").modal("hide");
+            });
+
+            $("#cerrarobs").click(function(){
+                $("#itemspanelobs").modal('hide');
+            });
+
+            $(".retenciones").click(function () {
+                $("#id_codigo_select2").val(0).trigger("change");
+                $("#id_total").val(0);
+                var id = $(this).attr('idc');
+                $("#itemspanel_adicionar").attr({'ida': id});
+                $("#itemspanel").modal({backdrop:'static', width: '800'}).modal('show');
+            });
+
+            $("#itemspanel_cerrar").click(function () {
+                $("#itemspanel").modal('hide');
+            });
+
+            $("#itemspanel_adicionar").click(function () {
+                $("#itemspanel").modal('hide');
+                bloqueointerface();
+                var elemento = $(this);
+                var id = elemento.attr("ida");
+                var codigo = parseInt($("#id_codigo").val());
+                var valor = parseFloat($("#id_valorretenido").val());
+                $.ajax({
+                    type: "POST",
+                    url: "/fin_tramitepago",
+                    data: {"action": "addretencion", "id": id, "cod": codigo, "valor": valor},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            smoke.alert("Se adicionó Retención al Documento");
+                        } else {
+                            smoke.alert(data.mensaje, function(e){
+                                $("#itemspanel").modal({backdrop:'static', width: '800'}).modal('show');
+                            }, {
+                                ok: "ok",
+                                classname: "custom-class"
+                            });
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.", function(e){
+                            $("#itemspanel").modal({backdrop:'static', width: '800'}).modal('show');
+                        }, {
+                            ok: "ok",
+                            classname: "custom-class"
+                        });
+                    },
+                    dataType: "json"
+                });
+            });
+
+            tipo_formulario($("#form2"));
+
+            $(".select2hidden").hide();
+        });
+    </script>
+    }
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class="span12">
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span6">
+            <a href="/fin_tramitepago?action=addretencion&id={{ doc.id }}" class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+             <table class='table table-bordered table-striped'>
+                <thead>
+                <tr>
+                    <th style="width: 70px">Número</th>
+                    <th style="width: 70px">Fecha</th>
+                    <th>Beneficiario</th>
+                    <th style="width: 200px">Concepto</th>
+                    <th style="width: 40px">Total</th>
+                </tr>
+                </thead>
+                {% for rec in comprobantes %}
+                    <tr>
+                        <td>{{ rec.numero }} </td>
+                        <td>{{ rec.fecha|date:"Y-m-d" }} </td>
+                        <td>{{ rec.beneficiario }} </td>
+                        <td>{{ rec.concepto }} </td>
+                        <td style="text-align: right">$ {{ rec.totalpagar|floatformat:2 }} </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="15">NO EXISTEN COMPROBANTES</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+{% endblock %}

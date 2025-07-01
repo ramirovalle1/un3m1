@@ -1,0 +1,516 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script type="text/javascript">
+        function formModal(id, text, action, footer = true) {
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminarconfirmacion(pk) {
+            smoke.confirm("¿Está seguro que desea eliminar este registro?", function (e) {
+                if (e) {
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: 'del',
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        smoke.alert('Error en el servidor');
+                    }).always(function () {
+                    });
+                }
+            }, {
+                ok: "SI, DESEO CONTINUAR",
+                cancel: "NO,CANCELAR",
+                classname: "custom-class",
+                reverseButtons: true
+            });
+
+        }
+
+        $(function () {
+            $(".select2hidden").each(function () {
+                var id = $(this).attr("id");
+                $("#" + id + "_select2").html('<option>' + $(this).attr("descripcion") + '</option>').trigger('change');
+            });
+        });
+
+        function aprobarmasivo(idevento) {
+            smoke.confirm("¿Está seguro que desea aprobar todo?, Esta acción no se puede revertir", function (e) {
+                if (e) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "GET",
+                        url: "/adm_padronelectoral",
+                        data: {'action': 'justificarmasivo', 'id': idevento},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $('#recalcularmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                                var indice = 0;
+                                var cantidad = parseInt(data.cantidad);
+                                var inscritos = data.inscritos;
+                                console.log(data)
+                                recalculo(inscritos, indice, (cantidad - 1));
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al obtener los datos");
+                        },
+                        dataType: "json"
+                    });
+                }
+            }, {
+                ok: "Si, aprobar",
+                cancel: "No, cancelar",
+                classname: "custom-class",
+                reverseButtons: true
+            });
+        }
+
+        function fallorecalculo() {
+            $.unblockUI();
+            $("#recalcularmodal").modal("hide");
+            smoke.alert("Intentelo más tarde");
+        }
+
+        function terminarecalculo() {
+            $("#recalcularmodal").modal("hide");
+            location.reload();
+        }
+
+        var intentos = 0;
+
+        function recalculo(lista, elemento, cantidad) {
+            console.log(lista)
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad + 1)) * elemento + '%';
+            if (elemento > cantidad) {
+                terminarecalculo();
+            } else {
+                $("#recalcularmodalprogresshint").html(inscrito.inscripcion__persona__apellido1 + ' ' + inscrito.inscripcion__persona__apellido2 + ' ' + inscrito.inscripcion__persona__nombres);
+                $("#progressbar").css({'width': cp});
+                $("#progressbar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_padronelectoral",
+                    data: {"action": "justificacionalumno", "id": inscrito.id},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            intentos = 0;
+                            recalculo(lista, elemento + 1, cantidad);
+                        } else {
+                            intentos += 1;
+                            if (intentos >= 1) {
+                                fallorecalculo();
+                            } else {
+                                recalculo(lista, elemento, cantidad);
+                            }
+                        }
+                    },
+                    error: function () {
+                        intentos += 1;
+                        if (intentos >= 1) {
+                            fallorecalculo();
+                        } else {
+                            recalculo(lista, elemento, cantidad);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=personas&id={{ cab.pk }}{% endblock %}
+{% block canvas %}
+
+    <div class="modal static" id="recalcularmodal" style="display: none;">
+        <div class="modal-header">
+            <h3>Aprobación Masiva <i class="fa fa-check-square"></i></h3>
+        </div>
+        <div class="modal-body">
+            <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                 class="progress progress-success progress-striped active">
+                <div class="bar" style="font-weight: bold; width: 0;" id="progressbar" aria-valuenow="25"></div>
+            </div>
+            <div id="recalcularmodalprogresshint">
+            </div>
+            <div class="alert alert-danger" role="alert">
+                <strong>Esta acción no se puede revertir!</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static  modal-lg" id="itemspanel" style="display: none;">
+        <div class="modal-header modal-lg">
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body">
+            <form id="form2" class="form-horizontal form-modal" autocomplete="off" method="post"
+                  enctype="multipart/form-data" action="{{ request.path }}">
+                {% csrf_token %}
+                <div class="row-fluid panelbody">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="footermodal">
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                    class="fa fa-window-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class="span12">
+            <div class="span12">
+                <form method="GET" action="{{ request.path }}">
+                    <input type="hidden" name="action" value="verjustificativosgeneral">
+                    <input type="hidden" name="id" value="{{ cab.id }}">
+                    <div class="btn-group" data-toggle="buttons">
+                        <label class="btn btn-default">
+                            <input type="radio" name="options" id="option1" autocomplete="off" value="1"
+                                   {% if options == 1 %}checked {% endif %} onclick="seleccionar(this.value)"><strong> Presencial</strong>
+                        </label>
+                        <label class="btn btn-default">
+                            <input type="radio" name="options" id="option2" autocomplete="off" value="2"
+                                   {% if options == 2 %}checked {% endif %} onclick="seleccionar(this.value)"><strong> Virtual</strong>
+                        </label>
+                    </div>
+                    <select name="tipo" id="tipo" class="form-control" style="width: 15%">
+                        <option value="">------------------------</option>
+                        {% for tp in tipo_persona_padron %}
+                            <option value="{{ tp.0 }}" {% if tipo == tp.0 %}selected{% endif %}>{{ tp.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="estado" id="estado" class="form-control" style="width: 15%">
+                        <option value="">------------------------</option>
+                        {% for tp in estado_justificacion %}
+                            <option value="{{ tp.0 }}" {% if estado == tp.0 %}selected{% endif %}>{{ tp.1 }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="tiposolicitud" id="tiposolicitud" class="form-control" style="width: 25%">
+                        <option value="">------------------------</option>
+                        <option value="1" {% if tiposolicitud == 1 %}selected{% endif %}>Impedimento físico o enfermedad</option>
+                        <option value="2" {% if tiposolicitud == 2 %}selected{% endif %}>Fué detenido el día de las elecciones</option>
+                        <option value="3" {% if tiposolicitud == 3 %}selected{% endif %}>Fallecio un familiar hasta de 4to grado de consanguinidad</option>
+                        <option value="4" {% if tiposolicitud == 4 %}selected{% endif %}>Cuenta con licencia y no pudo presentarse al sufragio</option>
+                        <option value="5" {% if tiposolicitud == 5 %}selected{% endif %}>Cuenta con un justificativo distinto a las causales anteriores</option>
+                        <option value="6" {% if tiposolicitud == 6 %}selected{% endif %}>Subir, Copia de cédula o copia de papeleta de votaciòn o certificado emitido por UPC de vivienda</option>
+                    </select>
+                    <input class='searchinput' type='text' name='search' value='{{ search }}' autocomplete="off"
+                           placeholder="Apellidos o Cédula"/>
+                    <button class="btn btn-success"><i class="fa fa-search"></i></button>
+                    {% if url_vars %}
+                        <a href="{{ request.path }}?action=verjustificativosgeneral&id={{ cab.id }}" id='allresults'
+                           class='btn btn-default'><span
+                                class="fa fa-refresh "></span></a>
+                    {% endif %}
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class='span12'>
+            <a class="btn btn-success" href="javascript:void(0);"
+               onclick="aprobarmasivo('{{ cab.id }}')">
+                <i class="fa fa-check-square"></i> Aprobar Masivo
+            </a>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class='span12'>
+            <span class="label label-info" style="margin-bottom: 12px">Total Registros {{ listadocount }}</span>
+            <table class='table table-bordered table-striped'>
+                <thead>
+                <tr>
+                    <th class="column-title" style="text-align: center"><span>Fecha Creación</span></th>
+                    <th class="column-title" style="text-align: center">Cédula</th>
+                    <th class="column-title" style="text-align: center">Nombres</th>
+                    <th class="column-title" style="text-align: center">Tipo</th>
+                    <th class="column-title" style="text-align: center"><span class="nobr">Lugar</span></th>
+                    <th class="column-title" style="text-align: center"><span>Documentos</span></th>
+                    <th class="column-title" style="text-align: center"><span>Observación</span></th>
+                    <th class="column-title" style="text-align: center"><span>Estados</span></th>
+                    <th class="column-title" style="text-align: center">Acciónes</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in listado %}
+                    <tr>
+                        <td style="text-align: center;">{{ p.fecha_creacion|date:"Y-m-d" }} {{ p.fecha_creacion|time:'h:i a' }}</td>
+                        <td style="text-align: center">
+                            {{ p.inscripcion.persona.cedula }}
+                        </td>
+                        <td style="text-align: center">
+                            {{ p.inscripcion.persona }}<br>
+                            <b>Año Nacimiento: {{ p.inscripcion.persona.nacimiento|date:'Y' }}</b>
+                        </td>
+                        <td style="text-align: center; width: 15%">
+                           <b>{{ p.inscripcion.get_tipo }}</b>
+                            {% if p.inscripcion.tipo == 1 %}
+                                <br>
+                                {% if p.inscripcion.modalidad_persona %}
+                                    <span class="label label-info">VIRTUAL</span><br>
+                                {% else %}
+                                    <span class="label label-success">PRESENCIAL</span><br>
+                                {% endif %}
+                                {% if p.inscripcion.matricula or p.inscripcion.inscripcion %}
+                                    <div style="text-align: center">
+                                        {{ p.inscripcion.inscripcion.carrera }}<br>
+                                        <label class="label label-darkgreen">{{ p.inscripcion.inscripcion.coordinacion.alias }}</label> &nbsp;<label class="label label-warning">{{ p.inscripcion.matricula.nivelmalla }}</label>
+                                    </div>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center; width: 10%">
+                            {% if p.inscripcion.cab.utiliza_sede %}
+                                {% if p.inscripcion.lugarsede %}
+                                    {{ p.inscripcion.lugarsede.canton.nombre }}, {{ p.inscripcion.lugarsede.canton.provincia.nombre }}
+                                {% else %}
+                                    <label class="label label-default"><i class="fa fa-times"></i> SIN SEDE</label>
+                                {% endif %}
+                            {% else %}
+                                {{ p.inscripcion.lugar }}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center; width: 15%">
+                            {% if p.certificado_medico %}
+                                <b>Certificado médico de centro de salud publica o IESS:</b>
+                                {% if not p.tf_certificado_medico == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu" title="Impedimento físico o enfermedad"
+                                       href="/media/{{ p.certificado_medico }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Impedimento físico o enfermedad"
+                                       href="/media/{{ p.certificado_medico }}"><img style="margin-top: 2px;"
+                                                                                     src="/static/images/pdf.png"/>
+                                    </a>
+                                {% endif %}
+                            {% endif %}
+                            {% if p.certificado_upc %}
+                                <b>Certificado de UPC de haber sido detenido:</b>
+                                {% if not p.tf_certificado_upc == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu"
+                                       title="Fué detenido el día de las elecciones"
+                                       href="/media/{{ p.certificado_upc }}">
+                                        <img style="margin-top: 2px; width: 25px"
+                                             src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Fué detenido el día de las elecciones"
+                                       href="/media/{{ p.certificado_upc }}">
+                                        <img style="margin-top: 2px;"
+                                             src="/static/images/pdf.png"/>
+                                    </a>
+                                {% endif %}
+                            {% endif %}
+                            {% if p.certificado_defuncion %}
+                                <b> Certificado de defunción:</b>
+                                {% if not p.tf_certificado_defuncion == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu"
+                                       title="Fallecio un familiar hasta de 4to grado de consanguinidad"
+                                       href="/media/{{ p.certificado_defuncion }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Fallecio un familiar hasta de 4to grado de consanguinidad"
+                                       href="/media/{{ p.certificado_defuncion }}"><img style="margin-top: 2px;"
+                                                                                        src="/static/images/pdf.png"/></a>
+                                {% endif %}
+                            {% endif %}
+                            {% if p.certificado_licencia %}
+                                <b> Cuenta con licencia y no pudo presentarse al sufragio:</b>
+                                {% if not p.tf_certificado_licencia == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu"
+                                       title="Cuenta con licencia y no pudo presentarse al sufragio"
+                                       href="/media/{{ p.certificado_licencia }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Cuenta con licencia y no pudo presentarse al sufragio"
+                                       href="/media/{{ p.certificado_licencia }}"><img style="margin-top: 2px;"
+                                                                                       src="/static/images/pdf.png"/></a>
+                                {% endif %}
+                            {% endif %}
+                            {% if p.certificado_alterno %}
+                                <b> Cuenta con un justificativo distinto a las causales anteriores:</b>
+                                {% if not p.tf_certificado_alterno == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu"
+                                       title="Cuenta con un justificativo distinto a las causales anteriores"
+                                       href="/media/{{ p.certificado_alterno }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Cuenta con un justificativo distinto a las causales anteriores"
+                                       href="/media/{{ p.certificado_alterno }}"><img style="margin-top: 2px;"
+                                                                                      src="/static/images/pdf.png"/></a>
+                                {% endif %}
+                            {% endif %}
+                            {% if p.documento_validador %}
+                                <b> Copia de cédula o copia de papeleta de votaciòn o certificado emitido por UPC de
+                                    vivienda:</b>
+                                {% if not p.tf_documento_validador == '.pdf' %}
+                                    <a data-fancybox="image" class="btn tu"
+                                       title="Subir, Copia de cédula o copia de papeleta de votaciòn o certificado emitido por UPC de vivienda"
+                                       href="/media/{{ p.documento_validador }}"><img
+                                            style="margin-top: 2px; width: 25px"
+                                            src="/static/images/image.png"/></a>
+                                {% else %}
+                                    <a data-fancybox data-type="iframe" class="btn tu"
+                                       title="Subir, Copia de cédula o copia de papeleta de votaciòn o certificado emitido por UPC de vivienda"
+                                       href="/media/{{ p.documento_validador }}"><img style="margin-top: 2px;"
+                                                                                      src="/static/images/pdf.png"/></a>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center; width: 15%">
+                            {{ p.observacion }}
+                        </td>
+                        <td style="text-align: center">
+                            {% if p.estados_justificacion == 0 %}
+                                <span class="label label-info">{{ p.get_estado }}</span>
+                            {% elif p.estados_justificacion == 1 %}
+                                <span class="label label-important">{{ p.get_estado }}</span>
+                            {% elif p.estados_justificacion == 2 %}
+                                <span class="label label-success">{{ p.get_estado }}</span>
+                            {% elif p.estados_justificacion == 3 %}
+                                <span class="label label-warning">{{ p.get_estado }}</span>
+                            {% endif %}
+                            {% if p.get_lastobser %}
+                                <br><b>Atendido por:</b> {{ p.get_lastobser.usuario_creacion }}<br>
+                                <b>Fecha Hora:</b> {{ p.get_lastobser.fecha_creacion|date:"Y-m-d" }}
+                                {{ p.get_lastobser.fecha_creacion|time:'H:i' }}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if p.estados_justificacion != 2 and p.estados_justificacion != 3 %}
+                                <a onclick="formModal('{{ p.pk }}','Añadir Observación','addobservacion')"
+                                   class="btn btn-success btn-mini tb"
+                                   href="javascript:void(0);" title="Verificar">
+                                    <i class='fa fa-thumbs-up'></i></a>
+                            {% endif %}
+                            <a onclick="formModal('{{ p.pk }}','Ver Observaciones','verobservaciones', false)"
+                               class="btn btn-primary btn-mini tb" title="Ver Observaciones"
+                               href="javascript:void(0);">
+                                <i class='fa fa-list-ul'></i></a>
+                            {% if p.estados_justificacion == 2 %}
+                                <a class="btn btn-warning btn-mini tl" title="Generar Certificado" target="_blank"
+                                   href="?action=certificadojustificado&id={{ p.pk|encrypt }}"><i class="fa fa-certificate"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7">NO EXISTEN REGISTROS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class="span12">
+            {% if paging.num_pages > 10 %}
+                <div class='pagination'>
+                    <ul>
+                        {% if paging.primera_pagina %}
+                            <li>
+                                <a href="{{ request.path }}?page=1{{ url_vars }}">1</a>
+                            </li>
+                            <li>
+                                <a href="{{ request.path }}?page={{ paging.ellipsis_izquierda }}{{ url_vars }}"
+                                   class="active">...</a></li>
+                        {% endif %}
+                        {% for pagenumber in paging.paginas %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                    href="{{ request.path }}?page={{ pagenumber }}{{ url_vars }}">{{ pagenumber }}</a>
+                            </li>
+                        {% endfor %}
+                        {% if paging.ultima_pagina %}
+                            <li>
+                                <a href="{{ request.path }}?page={{ paging.ellipsis_derecha }}{{ url_vars }}"
+                                   class="active">...</a></li>
+                            <li>
+                                <a href="{{ request.path }}?page=
+                                        {{ paging.num_pages }}{{ url_vars }}">{{ paging.num_pages }}</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <div class='pagination'>
+                    <ul>
+                        {% for pagenumber in paging.page_range %}
+                            <li {%  if pagenumber == page.number %}class='active'{% endif %}><a
+                                    href="{{ request.path }}?page={{ pagenumber }}{{ url_vars }}">{{ pagenumber }}</a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+
+{% endblock %}

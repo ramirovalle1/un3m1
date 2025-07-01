@@ -1,0 +1,173 @@
+{% load sga_extras %}
+<script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+<link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+<script type="text/javascript">
+    var lista_items1 = [];
+    $(function(){
+
+        $('.seleccionada').click(function () {
+            contador();
+        });
+
+        contador = function () {
+            var contando=0;
+            $('input[name=practicaseleccionadas]:checked').each(function(){
+                contando+=1;
+            });
+            $('#contador').html(contando)
+        };
+
+        contador();
+
+        actualizar_lista = function () {
+            lista_items1 = [];
+            $('input[name=practicaseleccionadas]:checked').each(function(){
+                var idp = $(this).attr('idp');
+                var idt = $('#tipo_'+idp).val();
+                var elemento={
+                    idp: idp,
+                    idt: idt
+                };
+                lista_items1.push(elemento);
+            });
+        };
+
+        $('.visitamodal_run').click(function (){
+            bloqueointerface();
+            var dia = $(this).attr('dia');
+            var mes = $(this).attr('mes');
+            var anio = $(this).attr('anio');
+            var tipo = $('#tipo').val();
+            actualizar_lista();
+            if (lista_items1.length == 0){
+                smoke.alert("Selecciones al menos una practica a visitar.");
+                return false;
+            }
+            $.ajax({
+                type: "POST",
+                url: "/pro_laboratoriocronograma",
+                data: {'action': 'addguardarvisitasupervisor', 'dia': dia, 'mes': mes, 'anio': anio, 'tipo': tipo, "lista_items1": JSON.stringify(lista_items1)},
+                success: function(data) {
+                    if (data.result == 'ok') {
+                        $('#visitamodal').modal('hide');
+                        location.reload();
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                    smoke.alert("Error al enviar los datos.");
+                },
+                dataType: "json"
+            });
+        });
+
+        $(".filterable tr:has(td)").each(function(){
+            var t = $(this).text().toLowerCase();
+            $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+        });
+
+        $("#FilterTextBox").keyup(function(){
+            var s = $(this).val().toLowerCase().split(" ");
+            $(".filterable tr:hidden").show();
+            $.each(s, function(){
+                $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+            });
+            $(".filterable3 tr:hidden").show();
+        });
+
+        $('#cerrarvisitamodal').click(function (){
+            $('#visitamodal').modal('hide');
+        });
+
+    });
+</script>
+<style>
+    .estilotabla {
+        border-collapse: collapse;
+        border-bottom: 1px solid #ddd;
+    }
+    .estilocabdeta {
+        display: block;
+    }
+    th,td {
+        box-sizing: border-box;
+    }
+    tbody {
+        height: 350px;
+        overflow-y: scroll
+    }
+</style>
+<table class='table table-striped table-bordered filterable estilotabla' cellpadding="0" cellspacing="0">
+    <thead class="estilocabdeta">
+    <tr>
+        <th style="width: 2%;text-align: center">
+            <span class="label label-warning tu" id="contador" data-original-title="Seleccionadas">0</span>
+        </th>
+        <th style="width: 25%; text-align: center">Estudiante</th>
+        <th style="width: 30%; text-align: center">Detalles</th>
+        <th style="width: 25%; text-align: center">Institución</th>
+        <th style="width: 18%; text-align: center">Tipo visita</th>
+    </tr>
+    <tr>
+        <th colspan="5"><input type="search" style="text-transform: uppercase; margin-bottom: 0px" class="input-block-level" placeholder="TEXTO A BUSCAR..." id="FilterTextBox" name="FilterTextBox"></th>
+    </tr>
+    </thead>
+    <tbody class="estilocabdeta">
+    {% for practica in supervisorpracticas %}
+        <tr>
+            <td style="text-align: center; width:2%;"><label><input type='checkbox' name='practicaseleccionadas' class="seleccionada" idp="{{ practica.id|encrypt }}" /></label></td>
+            <td style="width: 26%">
+                {{ practica.inscripcion.persona }}<br>
+                <b>{{ practica.inscripcion.carrera }}</b>
+                <br/><span class="label label-success tu" data-original-title="Evidencias Aprobadas">{{ practica.evidenciasaprobadas }} / {{ practica.totalevidencias }}</span>
+                <span class="label label-{% if practica.estadosolicitud == 1 %}warning{% elif practica.estadosolicitud == 2 %}success{% elif practica.estadosolicitud == 3 or practica.estadosolicitud == 5%}important{% elif practica.estadosolicitud == 4 %}info{% endif %} tu" data-original-title="{{ practica.get_estadosolicitud_display|title }}">{{ practica.get_estadosolicitud_display }}</span>
+                <span class="label label-info tu" data-original-title="Visitas realizadas">{{ practica.total_visita_realizada }}</span>
+            </td>
+            <td style="width: 30%;">
+                <b>F.Desde:</b> {{ practica.fechadesde|date:"d-m-Y" }}
+                <b>F.Hasta:</b> {{ practica.fechahasta|date:"d-m-Y" }}<br/>
+                {% if practica.tutorunemi %}
+                    <strong>Tutor Acad:</strong> {{ practica.tutorunemi|default_if_none:""|upper }}<br>
+                {% endif %}
+                {% if practica.observacion %}
+                    <b>Obs:</b> {{ practica.observacion }}<br>
+                {% endif %}
+                {% if practica.itinerariomalla %}
+                    <b>Itinerario:</b> {{ practica.itinerariomalla.nombreitinerario }}<br>
+                {% endif %}
+                {% if practica.oferta %}
+                    <b>Oferta:</b> <span class="label label-info">Si</span>
+                {% endif %}
+            </td>
+            <td style="width: 25%;">
+                {% if practica.institucion %}
+                    {{ practica.institucion|upper }}
+                {% else %}
+                    {% if not practica.empresaempleadora %}
+                        <span class="label label-default" >{{ practica.otraempresaempleadora|upper }}</span>
+                    {% else %}
+                        {{ practica.empresaempleadora.nombre|upper }}
+                    {% endif %}
+                {% endif %}<br>
+                {% if practica.departamento %}
+                    <strong>Dep:</strong> {{ practica.departamento|default_if_none:""|upper }}<br>
+                {% endif %}
+            </td>
+            <td style="width: 18%; text-align: center">
+                <div  style="padding-top: 10px">
+                    <form class="form-search">
+                        <select class="tipos" id='tipo_{{ practica.id|encrypt }}' style="width: 100%">
+                            {% for tipo in ESTADO_TIPO_VISITA %}
+                                <option value="{{ tipo.0|encrypt }}" {% if forloop.first %}selected{% endif %}>{{ tipo.1 }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </div>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/eventostyle.css">
+    <link rel="stylesheet" href="/static/eventoframework.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+
+    <link rel="stylesheet" href="/static/dropify/css/dropify.min.css">
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript" src='/static/dropify/js/dropify.min.js?v=1.0.0'></script>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.25"></script>
+    <link href="/static/widget_ppp.css" rel="stylesheet"/>
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+
+
+    <script type="text/javascript">
+        $(function () {
+            $("#id_indicador, #id_modalidad, #id_jornada").select2({minimumResultsForSearch: 3});
+
+            busqueda_asis = function () {
+                var indicador = $("#id_indicador").val();
+                var modalidad = $("#id_modalidad").val();
+                var jornada = $("#id_jornada").val();
+                var fecha = $("#id_fecha").val();
+                if (fecha && !isNaN(new Date(fecha).getTime())) {
+                location.href = "/estadisticas?action=matriculadosasistencia&indicador=" + indicador + "&modalidad=" + modalidad + "&jornada=" + jornada + "&fecha=" + fecha;
+                } else { mensajeWarning('Seleccione una fecha para iniciar la búsqueda..'); }
+            };
+
+            $("#search").click(function () {
+                busqueda_asis();
+            });
+
+        });
+
+        function resultadoasistencia(){
+            var indicador = $("#id_indicador").val();
+            var textoIndicador = $("#id_indicador option:selected").text();
+            var modalidad = $("#id_modalidad").val();
+            var textoModalidad = $("#id_modalidad option:selected").text();
+            var jornada = $("#id_jornada").val();
+            var textoJornada = $("#id_jornada option:selected").text();
+            var fecha = $("#id_fecha").val();
+
+            if (parseInt(indicador) > 0) {
+                if (fecha && !isNaN(new Date(fecha).getTime())) {
+                    _url = '/estadisticas?action=matriculadosasistencia&genera=1&indicador='+indicador+'&modalidad='+modalidad+'&jornada='+jornada+'&fecha='+fecha
+                    Swal.fire({
+                        html: `<b>¿Esta segur{% if persona.es_mujer %}a{% else %}o{% endif %} de generar el reporte ${textoIndicador}?</b><br><br><span>El archivo Excel se generará con los siguientes parametros. <b>Fecha:</b> ${fecha}, <b>Modalidad:</b> ${textoModalidad}, <b>Jornada:</b> ${textoJornada}, <b>Periodo:</b> {{ periodo.nombre }}.<span><br>`,
+                        title: '',
+                        text: '',
+                        type: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Si, ejecutar!',
+                        cancelButtonText: 'Cancelar'
+                    }).then((result) => {
+                        if (result.value) {
+                            bloqueointerface();
+                            $.get(_url, {}, function (data) {
+                            $.unblockUI();
+                            if (data.result) {
+                                $('#btnNotificacionTareas').html(data.btn_notificaciones);
+                                mensajeSuccess(data.mensaje)
+                            } else {
+                                mensajeWarning(data.mensaje)
+                            }
+                        }, "json");
+                        }
+                    })
+                } else { mensajeWarning('La fecha no es válida..'); }
+            } else { mensajeWarning('Seleccione un indicador para continuar..'); }
+        }
+
+        $(function () {
+        {% if listado %}
+
+            const sesionesData = {{ sesiones_data|safe }};
+            Object.keys(sesionesData).forEach(sesionKey => {
+                const containerId = `container_${sesionKey.replace(/\s+/g, '_')}`;
+                const div = document.createElement('div');
+                div.id = containerId;
+                div.style.marginBottom = '50px';
+                document.getElementById('container_asistencia').appendChild(div);
+
+                const categories = JSON.parse(sesionesData[sesionKey]['categories']);
+                const matriculados = JSON.parse(sesionesData[sesionKey]['matriculados_data']);
+                const asistieron = JSON.parse(sesionesData[sesionKey]['asistieron_data']);
+                const no_asistieron = JSON.parse(sesionesData[sesionKey]['noasistieron_data']);
+                {% if indicador == 2 %}
+                const docentesturno = JSON.parse(sesionesData[sesionKey]['docentesturno_data']);
+                {% endif %}
+
+                Highcharts.chart(containerId, {
+                    chart: {
+                        type: 'bar'
+                    },
+                    title: {
+                        text: `Asistencia de Matriculados - ${sesionKey}`
+                    },
+                    xAxis: {
+                        categories: categories,
+                        title: {
+                            text: null
+                        }
+                    },
+                    yAxis: {
+                        min: 0,
+                        title: {
+                            text: 'Número de Estudiantes {% if indicador == 2 %}y Docentes{% endif %}',
+                            align: 'high'
+                        },
+                        allowDecimals: false
+                    },
+                    tooltip: {
+                        valueSuffix: ' personas'
+                    },
+                    plotOptions: {
+                        bar: {
+                            dataLabels: {
+                                enabled: false
+                            },
+                            minPointLength: 3
+                        }
+                    },
+                    series: [
+                    {% if indicador == 2 %}
+                    {
+                        name: 'Docentes',
+                        data: docentesturno,
+                        color: '#000000'
+                    },
+                    {% endif %}
+                    {
+                        name: 'Matriculados',
+                        data: matriculados,
+                        color: '#FFA500'
+                    }, {
+                        name: 'Asistieron',
+                        data: asistieron,
+                        color: '#264763'
+                    }, {
+                        name: 'No Asistieron',
+                        data: no_asistieron,
+                        color: '#7C7C7C'
+                    }]
+                });
+
+            });
+       {% else %}
+            {% if fecha %}
+            mensajeWarning('No existen registros procesados en la fecha {{ fecha|date:'d-m-Y' }}. Utilice la opción GENERAR REPORTE para procesar y descargar los datos solicitados.');
+            {% endif %}
+       {% endif %}
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/estadisticas{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue"> <i class="fa fa-bar-chart"></i> {{ title }} del periodo {{ periodo.nombre|title2 }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class='row my-2 px-2'>
+        <div class='col-lg-12'>
+            <form method="GET">
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3">
+                    <div class='col-lg-4'>
+                        <i class="fas fa-clipboard-list"></i> Indicador:<br>
+                        <select id="id_indicador" name="indicador" style="width: 100%">
+                            <option value="0">--- Seleccione ---</option>
+                            {% for i in indicadores %}
+                                <option {% if i.id == indicador %}selected{% endif %}
+                                        value="{{ i.id }}">{{ i.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class='col-lg-4'>
+                        <div style="width: 100%">
+                            <i class="fa fa-calendar tu"></i> Fecha:<br>
+                            <input type='date' id='id_fecha' value='{{ fecha|date:'Y-m-d' }}' autocomplete="off" name="fecha"
+                                   placeholder="Fecha" style="width: 100%"/>
+                        </div>
+                    </div>
+                    <div class='col-lg-4'>
+                        <i class="fa fa-university"></i> Modalidad:<br>
+                        <select name="modalidad" id="id_modalidad" style="width: 100%" class="noselect2">
+                            <option value="100">Todas</option>
+                            {% for m in modalidades %}
+                                <option {% if m.id == modalidad %}selected{% endif %}
+                                        value="{{ m.id }}">{{ m.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class='col-lg-4'>
+                        <i class="fas fa-laptop-house"></i> Jornada:<br>
+                        <select name="jornada" id="id_jornada" style="width: 100%" class="noselect2">
+                            <option value="100">Todas</option>
+                            {% for j in jornadas %}
+                                <option {% if j.id == jornada %}selected{% endif %}
+                                        value="{{ j.id }}">{{ j.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class='col-lg-4'>
+                        <br>
+                        <a href="javascript:;" onclick="resultadoasistencia()" class="btn btn-success"> <i class="fa fa-file-excel "></i> Generar Reporte</a>
+                        <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda_asis()" id="button-addon2"><i class="fa fa-search"></i></a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class='row my-2 px-2'>
+        {% if listado %}
+        <div class='col-lg-12' style="text-align: center">
+            <h3>Gráficos de {{ texto_indicador|lower }} a {{ fecha|date:'d-m-Y' }}</h3>
+        </div>
+        {% endif %}
+        <div class='col-lg-12'>
+            <figure class="highcharts-figure">
+                <div id="container_asistencia"></div>
+            </figure>
+        </div>
+    </div>
+
+{% endblock %}

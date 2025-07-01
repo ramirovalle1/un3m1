@@ -1,0 +1,253 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+        google.load("visualization", "1", {packages:["corechart", 'bar']});
+        google.setOnLoadCallback(drawChart);
+
+        function drawChart() {
+
+            var data1 = google.visualization.arrayToDataTable([
+                ['PRESELECCIONADOS', ' TIPO_BECA'],
+                {% for becatipo in becastipos %}
+                    {% with cantidad_preseleccionados=becatipo|args:periodo|call:'get_cantidad_preseleccionados' %}
+                        ['{{ becatipo.nombre }}', {{ cantidad_preseleccionados }}]{% if not forloop.last %},{% endif %}
+                    {% endwith %}
+                {% endfor %}
+            ]);
+
+            var options1 = {
+                title: 'PRESELECCIONADOS BECAS',
+                is3D: true,
+                legend: {position: 'bottom'}
+            };
+
+            var chart1 = new google.visualization.PieChart(document.getElementById('chart_div1'));
+            chart1.draw(data1, options1);
+
+
+        }
+
+        $.extend(true, $.fn.dataTable.defaults, {
+            oLanguage: {
+                sSearch: "<span>Filtro:</span> _INPUT_",
+                sLengthMenu: "<span>Mostrar Entradas:</span> _MENU_",
+                sZeroRecords: "No se encontraron resultados",
+                sProcessing: "Procesando...",
+                sEmptyTable: "Ningún dato disponible para visualizar",
+                sInfo: "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+                sInfoEmpty: "Mostrando registros del 0 al 0 de un total de 0 registros",
+                sLoadingRecords: "Cargando...",
+                oPaginate: {
+                    sFirst: "<i title='Inicio' class='fa fa-step-backward'></i>",
+                    sLast: "<i title='Último' class='fa fa-step-forward'></i>",
+                    sNext: "<i title='Siguiente' class='fa fa-fast-forward'></i>",
+                    sPrevious: "<i title='Anterior' class='fa fa-fast-backward'></i>"
+                },
+            }
+        });
+
+        var ControllerRequests = {
+            init: function (modalForm ,eData){
+                var self = this;
+                self.$modalForm = modalForm;
+                self.$eData = eData;
+                self.$table = $('.datatable table', self.$modalForm);
+
+                $(".action-add").click(function (){
+                    uiModal.open('new', 0);
+                });
+
+                self.loadDataTable();
+                 $("#action_min").click(function(){
+                    $("#panel_filter .panel-body").hide();
+                    $("#action_min").hide();
+                    $("#action_max").show();
+                });
+                $("#action_max").click(function(){
+                    $("#panel_filter .panel-body").show();
+                    $("#action_min").show();
+                    $("#action_max").hide();
+                });
+
+
+                $("#action_min").trigger("click");
+
+            },
+            loadDataTable: function(){
+                var self = this;
+                self.$table.dataTable({
+                    responsive: true,
+                    searchDelay: 1000,
+                    bJQueryUI: false,
+                    bAutoWidth: false,
+                    //bProcessing: true,
+                    bServerSide: true,
+                    bSort: false,
+                    sPaginationType: "full_numbers",
+                    iDisplayLength: 25,
+                    sDom: '<"datatable-header"fl><"datatable-scroll"tr><"datatable-footer"ip>',
+                    sAjaxSource: "{{request.path}}",
+                    sServerMethod: "POST",
+                    fnServerParams: function (aoData)
+                    {
+                        bloqueointerface();
+                        aoData.push(
+                            {"name": "action", "value": 'loadDataTablePreseleccionadosTipoBeca'},
+                        );
+                        for (const name  in self.$eData) {
+                            aoData.push({"name": name, "value": self.$eData[name]})
+                        }
+                    },
+                    fnDrawCallback: function (oSettingst, oData) {
+                        var count = 0;
+                        $.unblockUI();
+                        $('.paneltitle',self.$modalForm).html(self.$eData.title);
+                        self.$modalForm.modal({backdrop:'static', width: '90%', keyboard: false}).modal('show');
+                    },
+                });
+                $("#dtViewGroups_filter input").unbind(); // 'x' es el nombre de tu tabla
+                $('#dtViewGroups_filter input').bind('keyup', function (e) {
+                    if (e.keyCode == 13) {
+                        self.$table.dataTable().fnFilter(this.value);
+                    }
+                });
+            },
+            destroy:function (){
+                var self = this;
+                self.$table.fnDestroy();
+            }
+        };
+        var uiModal = {
+            init: function () {
+                var self = this;
+                self.$controlTable = ControllerRequests;
+                self.$modalForm = $('#modalMatriculaTipo');
+                $('.action-close', self.$modalForm).click(function(){
+                    self.close();
+                });
+            },
+            close: function (){
+                var self = this;
+                self.$controlTable.destroy();
+                self.$modalForm.modal('hide');
+            },
+            open: function(eData={}){
+                var self = this;
+                self.$controlTable.init(self.$modalForm,eData);
+            },
+        };
+
+        $(function () {
+           uiModal.init();
+           $('.btn-detalle-tipobeca').click(function () {
+              let eData= $(this).data('json');
+               uiModal.open(eData);
+           });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/estadisticas{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class="span6">
+            <div id="chart_div1" style="width: 100%; height: 300px"></div>
+        </div>
+        <div class="span6">
+            <table class='table table-bordered table-condensed'>
+                <thead>
+                <tr>
+                    <th colspan="5" style="text-align: center;">MATRICULADOS SEGUN TIPO MATRICULA</th>
+                </tr>
+                <tr>
+                    <th style='text-align: left; padding-left: 20px; vertical-align: middle'>TIPO BECA</th>
+                    <th style='text-align: center; width: 200px'>TOTAL</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for becatipo in becastipos %}
+                    <tr>
+                        {% with cantidad_preseleccionados=becatipo|args:periodo|call:'get_cantidad_preseleccionados' %}
+                            <td>{{ becatipo.nombre }}</td>
+                            <td style='text-align: center;'>{{ cantidad_preseleccionados }}
+                                <a href="javascript:;" class="btn btn-info btn-mini btn-detalle-tipobeca" data-json='{"title":"ESTUDIANTES PRESELECCIONADO A BECA CON TIPO {{ becatipo.nombre }}", "becatipo_id":{{ becatipo.id }}}'>
+                                <i class="fa fa-adjust"></i>
+                                </a>
+                            </td>
+                        {% endwith %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                <tr style="font-weight: bold">
+                    <td>TOTALES</td>
+                    <td style='text-align: center;'>{{ totales }}</td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelmatriculados" style="display: none;">
+        <div class="modal-header">
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                        class="fa fa-window-close"></i>
+                    Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalMatriculaTipo" style="display: none;">
+        <div class="modal-header">
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body">
+            <div id="no-more-tables">
+                <div class='row-fluid'>
+                    <div class='span12'>
+                        <div class="datatable" id="divDetailData">
+                            <table id="dtViewRequests" class='table table-bordered table-striped'>
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: center; vertical-align: middle; width: 30%">Estudiante</th>
+                                        <th style="text-align: center; vertical-align: middle; width: 10%">Documento</th>
+                                        <th style="text-align: center; vertical-align: middle; width: 10%">Genero</th>
+                                        <th style="text-align: center; vertical-align: middle; width: 40%">Carrera</th>
+                                        <th style="text-align: center; vertical-align: middle; width: 20%">Semestre</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="el-templates" style="display:none;">
+                <div element="table-row-actions">
+                    <table>
+                        <tbody>
+                            <tr>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+{#            <a  href="javascript:;"  class="btn btn-danger action-save">SI</a>#}
+            <a  href="javascript:;"  class="btn btn-info action-close">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

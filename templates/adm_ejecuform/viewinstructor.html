@@ -1,0 +1,423 @@
+{% extends 'adm_ejecuform/baseejejcuform.html' %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        function actualizarmodelo(instructor, evento) {
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': 'actualizar_modelo_moodle_pos', 'id': instructor, 'evento':evento},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result) {
+                        NotificationJG.success(`Modelo evaluativo actualizado correctamente`);
+                    } else {
+                        NotificationJG.error(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    NotificationJG.error("Error al obtener los datos");
+                },
+                dataType: "json"
+            });
+        }
+        function falloimportar() {
+            $.unblockUI();
+            $("#recalcularexportarmodal").modal("hide");
+            NotificationJG.error("Fallo al crear grupo en el aula virtual");
+        }
+        function actualizargratuidad(idinscrito, indice, ideventoperiodo) {
+                var estadogratuidad = false;
+                if (indice.checked) {
+                    estadogratuidad = true;
+                } else {
+                    estadogratuidad = false;
+                }
+                $.ajax({
+                    type: "GET",
+                    url: '{{request.path}}',
+                    data: {
+                        'action': 'inscritoaplicagratuidad',
+                        'idinscrito': idinscrito,
+                        'ideventoperiodo': ideventoperiodo,
+                        'estadogratuidad': estadogratuidad,
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true) {
+                            if (data.identificadorgratuidad == 1) {
+                                $("#chksub_" + idinscrito).attr('checked', true);
+                            }
+                            if (data.identificadorgratuidad == 0) {
+                                $("#chksub_" + idinscrito).attr('checked', false);
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            }
+        function crearCursoPosgrado(id,text,action,titulo = 'Estás por crear perfil a este registro:'){
+            mensaje = {
+                html: `<b>${titulo}</b> ${text}`,
+                text: "Esta acción es irreversible",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }
+            Swal.fire(mensaje).then((result) => {
+                bloqueointerface();
+                if (result.value) {
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ request.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: action,
+                            id: id,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+                            $('#recalcularexportarmodal').modal({keyboard: false, backdrop: 'static'}).modal("show");
+                            var indice = 0;
+                            var cantidad = parseInt(data.cantidad);
+                            var listacurso = data.listacurso;
+                            console.log(listacurso, indice, (cantidad - 1), id);
+                            recalculoexportar(listacurso, indice, (cantidad - 1), id);
+                        }else{
+                            mensajeDanger(data.message)
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                    $.unblockUI();
+                }
+            })
+        }
+
+        function terminarecalculo() {
+            $("#recalcularmodal").modal("hide");
+            bloqueointerface();
+            location.reload();
+        }
+
+        function recalculoexportar(lista, elemento, cantidad, idinstructor) {
+            var inscrito = lista[elemento];
+            var cp = (100 / (cantidad)) * elemento + '%';
+            if (elemento > cantidad) {
+                terminarecalculo();
+            } else {
+                $("#recalcularexportarmodalprogresshint").html(inscrito.participante__apellido1 + ' ' + inscrito.participante__apellido2 + ' ' + inscrito.participante__nombres);
+                $("#progressbarexportar").css({'width': cp});
+                $("#progressbarexportar").html(((elemento * 100) / cantidad).toFixed(2) + '%');
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {
+                        "action": "exportarinscrito",
+                        "inscrito": inscrito.id,
+                        "idinstructor": idinstructor,
+                        "contador": elemento
+                    },
+                    success: function (data) {
+                        if (data.result) {
+                            intentos = 0;
+                            recalculoexportar(lista, elemento + 1, cantidad, idinstructor);
+                        } else {
+                            {#intentos += 1;#}
+                            {#if (intentos >= 100) {#}
+                            falloimportar();
+                            {# } else {#}
+                            {#    recalculoexportar(lista, elemento, cantidad, idinstructor);#}
+                            {# }#}
+                        }
+                    },
+                    error: function () {
+                        intentos += 1;
+                        if (intentos >= 100) {
+                            fallorecalculo();
+                        } else {
+                            recalculoexportar(lista, elemento, cantidad, idinstructor);
+                        }
+                    },
+                    dataType: "json"
+                });
+            }
+        }
+
+
+        $(document).ready(function(){
+            $('#id_nacimiento').prop('type', 'date');
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=planificacion&id={{ perd.id|encrypt }}{% endblock %}
+{% block content %}
+
+    <div class="card mb-2 mt-1">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <h4 class="mb-0"><b><i class="fa fa-"></i> {{ title }}</b></h4>
+{#                <h5>Periodo: {{ capa.periodo }}</h5>#}
+{#                <h5>Planificación: {{ capa.capevento }}</h5>#}
+{#                <h5>Fecha: {{ capa.fechainicio|date:"d-m-Y" }} - {{ capa.fechafin|date:"d-m-Y" }}</h5>#}
+                <a title="Periodo capacitación" href="{{ request.path }}" style="color: black"><i class="fa fa-layer-group"></i> {{ capa.periodo }}</a>
+                <svg style="overflow: visible; width: 13.384px; height: 10.217px; left: 4px; top: 6px; transform: matrix(1, 0, 0, 1, 0, 0) rotate(-90deg); fill: rgba(35, 129, 219, 1);"
+                     viewBox="502 281.329 18.217 10.384">
+                    <path d="M 502 282.4254760742188 C 502.0830078125 282.1046447753906 502.2172241210938 281.8173522949219 502.4864501953125 281.6033935546875 C 502.9396362304688 281.2431945800781 503.5977172851562 281.2347106933594 504.0513305664062 281.5958557128906 C 504.13916015625 281.6658325195312 504.2218627929688 281.7431030273438 504.3013305664062 281.8226318359375 C 506.51611328125 284.0364685058594 508.7302856445312 286.2509460449219 510.9437866210938 288.4661254882812 C 510.9937744140625 288.5162048339844 511.0343017578125 288.5757446289062 511.157470703125 288.6674194335938 C 511.1923828125 288.6049499511719 511.2152709960938 288.5304565429688 511.263916015625 288.481689453125 C 513.4972534179688 286.2444458007812 515.7333984375 284.010009765625 517.9675903320312 281.7735595703125 C 518.362060546875 281.378662109375 518.8184204101562 281.2262878417969 519.3607788085938 281.3994750976562 C 520.1549072265625 281.6530456542969 520.478515625 282.6720886230469 519.978759765625 283.3398132324219 C 519.9220581054688 283.4155578613281 519.8599243164062 283.4882507324219 519.7930908203125 283.5551147460938 C 517.2188720703125 286.1308898925781 514.644287109375 288.7063293457031 512.0682983398438 291.2802124023438 C 511.5978393554688 291.7502136230469 511.0006713867188 291.8434143066406 510.4639282226562 291.5272827148438 C 510.3331909179688 291.4503173828125 510.2169189453125 291.3427124023438 510.1085205078125 291.2344970703125 C 507.607421875 288.7366943359375 505.1097412109375 286.2353515625 502.6067504882812 283.7393493652344 C 502.3292846679688 283.462646484375 502.0819091796875 283.1770629882812 502 282.7813415527344 L 502 282.4254760742188 Z">
+                    </path>
+                </svg>
+                <a title="Evento capacitación" href="{{ request.path }}?action=planificacion&id={{ perd.id|encrypt }}" style="color: black"><i class="fa fa-wor"></i> {{ capa.capevento }}</a>
+                <svg style="overflow: visible; width: 13.384px; height: 10.217px; left: 4px; top: 6px; transform: matrix(1, 0, 0, 1, 0, 0) rotate(-90deg); fill: rgba(35, 129, 219, 1);"
+                     viewBox="502 281.329 18.217 10.384">
+                    <path d="M 502 282.4254760742188 C 502.0830078125 282.1046447753906 502.2172241210938 281.8173522949219 502.4864501953125 281.6033935546875 C 502.9396362304688 281.2431945800781 503.5977172851562 281.2347106933594 504.0513305664062 281.5958557128906 C 504.13916015625 281.6658325195312 504.2218627929688 281.7431030273438 504.3013305664062 281.8226318359375 C 506.51611328125 284.0364685058594 508.7302856445312 286.2509460449219 510.9437866210938 288.4661254882812 C 510.9937744140625 288.5162048339844 511.0343017578125 288.5757446289062 511.157470703125 288.6674194335938 C 511.1923828125 288.6049499511719 511.2152709960938 288.5304565429688 511.263916015625 288.481689453125 C 513.4972534179688 286.2444458007812 515.7333984375 284.010009765625 517.9675903320312 281.7735595703125 C 518.362060546875 281.378662109375 518.8184204101562 281.2262878417969 519.3607788085938 281.3994750976562 C 520.1549072265625 281.6530456542969 520.478515625 282.6720886230469 519.978759765625 283.3398132324219 C 519.9220581054688 283.4155578613281 519.8599243164062 283.4882507324219 519.7930908203125 283.5551147460938 C 517.2188720703125 286.1308898925781 514.644287109375 288.7063293457031 512.0682983398438 291.2802124023438 C 511.5978393554688 291.7502136230469 511.0006713867188 291.8434143066406 510.4639282226562 291.5272827148438 C 510.3331909179688 291.4503173828125 510.2169189453125 291.3427124023438 510.1085205078125 291.2344970703125 C 507.607421875 288.7366943359375 505.1097412109375 286.2353515625 502.6067504882812 283.7393493652344 C 502.3292846679688 283.462646484375 502.0819091796875 283.1770629882812 502 282.7813415527344 L 502 282.4254760742188 Z">
+                    </path>
+                </svg>
+                <a href="{{ request.path }}?action=instructor&id={{ capa.id|encrypt }}" style="color: black"><i class="fa fa-wor"></i> Instructores</a>
+            </h5>
+        </div>
+    </div>
+    <div class='row'>
+        <div class="col-sm-6">
+             <a href="javascript:void(0);"
+                onclick="formModal('{{ capa.id|encrypt }}','ADICIONAR INSTRUCTOR','addinstructor')"
+                class="btn btn-success">
+                <i class="fa fa-plus"></i> Adicionar
+            </a>
+        </div>
+        <div class="col-sm-6">
+            <form method="GET">
+                <div class="input-group">
+                    <input class='searchinput form-control' type='text' id='searchinput' value='{{ search }}'
+                           autocomplete="off"
+                           name="s"
+                           placeholder="Descripción"/>
+                    <div class="input-group-append">
+                        <button class="btn btn-primary" type="submit" id="button-addon2"><i
+                                class="fa fa-search"></i></button>
+                        {% if url_vars %}
+                            <a href="{{ request.path }}" id='allresults' class='btn btn-default'><span
+                                    class="fa fa-refresh "></span>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+            <table class='tabla_responsive table table-hover table-bordered' style="margin-top: 0px!important;">
+                <thead class="table-light cabecera-fija">
+                <tr>
+                    <th style="text-align: center;">Cédula</th>
+                    <th style="text-align: center;">Instructor</th>
+                    <th style="text-align: center;">Curso</th>
+                    <th style="text-align: center;">Usuario</th>
+                    <th style="text-align: center;">Email</th>
+                    <th style="text-align: center;">Telefono</th>
+                    <th style="text-align: center;">Principal</th>
+                    <th style="text-align: center;width: 10%">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for instructor in listado %}
+                    <tr>
+                        <td style="text-align: center;">
+                             {{ instructor.instructor.cedula }} ({{ instructor.id }})
+                        </td>
+                        <td style="text-align: center;">
+                           <div class="mb-3" style="max-width: 100%;">
+                                  <div class="row g-0">
+                                    <div class="col-md-3 text-center">
+                                        {% if instructor.instructor.foto.foto %}
+                                        <img src="https://sga.unemi.edu.ec{{ instructor.instructor.foto.foto.url }}" alt="" class="img-fluid rounded-circle" width="40px">
+
+                                        {% else %}
+                                        {% if instructor.instructor.sexo_id == 1 %}
+                                        <img class="img-fluid rounded-circle"
+                                             src="/static/images/iconos/mujer.png">
+                                        {% else %}
+                                        <img class="img-fluid rounded-circle"
+                                             src="/static/images/iconos/hombre.png">
+                                        {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-9">
+                                      <div class="">
+                                        <small class="card-text"><i class="fa fa-user" aria-hidden="true"></i> {{ instructor.instructor }}</small><br>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                        </td>
+                        <td>{{ instructor.nombrecurso }}
+                            <br>
+                            {% if persona.usuario.is_superuser %}
+                                <label class="label label-warning">id moodle: {{ instructor.idcursomoodle }}</label><br>
+
+
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if instructor.instructor.usuario and not instructor.instructor.usuario.is_superuser %}
+                                <i class="fa fa-user"></i> {{ instructor.instructor.usuario }}
+                            {% else %}
+                                <span class="label label-info tu">USUARIO NO DIPONIBLE</span>
+                            {% endif %}
+                        </td>
+                        <td style='text-align: left'>
+                            <div class="mb-3" style="max-width: 100%;">
+                              <div class="row g-0">
+                                <div class="col-md-12">
+                                  <div class="">
+                                    <small class="card-text">
+                                        <i class="fa fa-envelope" aria-hidden="true"></i>
+                                            {{ instructor.instructor.email }}
+                                    </small><br>
+                                    <small class="card-text">
+                                        <i class="fa fa-envelope" aria-hidden="true"></i>
+                                            {{ instructor.instructor.emailinst }}
+                                    </small>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                        </td>
+                        <td style="text-align: left;">
+                            <div class="mb-3" style="max-width: 100%;">
+                              <div class="row g-0">
+                                <div class="col-md-12">
+                                  <div class="">
+                                    <small class="card-text">
+                                         <i class="fa fa-phone" aria-hidden="true"></i> {{ instructor.instructor.telefono }}
+                                            <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ instructor.instructor.telefono }}&text=Hola {{ instructor.instructor }}'
+                                                target="_blank" class="btn btn-mini btn-success tu" title="" data-bs-original-title="Enviar mensaje por whatsapp">
+                                                <i class="fa fa-whatsapp" aria-hidden="true"></i>
+                                            </a>
+                                    </small>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                        </td>
+                        <td style="text-align: center">
+                            {% if not instructor.tiene_asistencia_calificacion %}
+                                <input class="form-check-input" {% if instructor.instructorprincipal %}checked{% endif %} onclick="updateCheck('{{ instructor.id }}','updateprincipal',this)" type="checkbox">
+                            {% else %}
+                                {% if instructor.instructorprincipal %}
+                                <i class="fa fa-check tu" title="Es principal" style="color: green"></i>
+                                {% else %}
+                                    <i class="fa fa-remove tu" title="No es principal" style="color: red"></i>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            <div class="dropbottom" style="text-align: left">
+                                <button type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    Acciones <i class="fa fa-angle-down"></i>
+                                </button>
+                                <ul class="dropdown-menu pull-right" x-placement="right-start">
+                                    <li class="dropdown-item">
+                                        <a href="javascript:void(0);"
+                                           onclick="formModal('{{ instructor.id|encrypt }}','{{ instructor }}','editinstructor')"
+                                        ><i class="fa fa-refresh"></i>
+                                            Editar instructor</a>
+                                    </li>
+                                    <li class="dropdown-item">
+                                        <a href="javascript:void(0);"
+                                           onclick="eliminarajax('{{ instructor.id }}','{{ instructor }}','delinstructor')"
+                                        ><i class="fa fa-remove"></i>
+                                            Eliminar</a>
+                                    </li>
+
+                                    {% if not per.tiene_perfilusuario and per.instructorprincipal %}
+                                        <li class="dropdown-item">
+                                            <a href="javascript:void(0);"
+                                               onclick="crearPerfil('{{ instructor.id }}','{{ instructor }}','createinstructorperfil')"
+                                            ><i class="fa fa-user"></i>
+                                                Crear Perfil</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if instructor.nombrecurso %}
+                                        <li class="dropdown-item">
+                                            <a href='javascript:void(0);'
+                                               onclick="crearCursoPosgrado('{{ instructor.id|encrypt }}','{{ instructor.capeventoperiodo }}','createcoursemoodle','Estas seguro de crear el curso moodle posgrado del siguiente registro')"><span
+                                                class="fa fa-share-alt-square"></span>
+                                            {% if instructor.idcursomoodle > 0 %}Actualizar{% else %}
+                                                Crear{% endif %} curso moodle</a></li>
+                                    {% endif %}
+                                    {% if instructor.puede_eliminar %}
+                                        <li class="dropdown-item">
+                                            <a href="javascript:;" title="Eliminar"
+                                               onclick="eliminarajax('{{ instructor.id|encrypt }}', '{{ instructor }}', 'deleventocapacitacion')">
+                                                <i class="fa fa-trash"></i> Eliminar
+                                            </a>
+                                        </li>
+                                    {% endif %}
+                                    <li class="dropdown-item">
+                                        <a href="javascript:void(0);" onclick="actualizarmodelo('{{ instructor.id|encrypt }}', '{{ eventoperiodo.id|encrypt }}')"
+                                           ><span
+                                            class="fa fa-share-alt-square"></span>
+                                        Actualizar modelo </a>
+                                    </li>
+                                    {% if instructor.idcursomoodle %}
+                                        <li class="dropdown-item">
+                                            <a href="{{ instructor.capeventoperiodo.periodo.urlmoodle }}/course/view.php?id={{ instructor.idcursomoodle }}"
+                                               target="_blank"><span class="fa fa-file-pdf-o"></span> Ir
+                                                al curso de moodle</a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="20">NO EXISTEN REGISTROS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal static" id="recalcularexportarmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Exportando moodle</h3>
+                </div>
+                <div class="modal-body">
+                    <div style='margin-bottom:1px;height: 20px;background-image: linear-gradient(to bottom, #dde2df, #d7e2dd)'
+                         class="progress progress-striped active">
+                        <div class="bar" style="font-weight: bold; width: 0;" id="progressbarexportar" aria-valuenow="25"></div>
+                    </div>
+                    <div id="recalcularexportarmodalprogresshint">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

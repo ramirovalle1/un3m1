@@ -1,0 +1,219 @@
+{% load sga_extras %}
+
+{% block heading %}
+    <script type="text/javascript">
+        var asignaturaseleccionadageneral = [];
+        $(function () {
+            selectorasignaturas = $(".selectorasignaturas");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorasignaturas:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalasignaturas").html(`Asignaturas Seleccionados: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorasignaturas.prop('checked', true);
+                } else {
+                    selectorasignaturas.prop('checked', false);
+                }
+                actulizarvalor();
+            });
+
+            selectorasignaturas.change(function () {
+                actulizarvalor();
+            });
+
+            $("#ingresarasignaturas").click(function () {
+                var ids;
+                var seleccionados = $(".selectorasignaturas:checked");
+                ids = '';
+                seleccionados.each(function () {
+                    if (ids.length > 0) {
+                        ids += ",";
+                    }
+                    ids += $(this).attr('rid');
+                });
+                if (ids.length > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/mallas",
+                        data: {'action': "addhomologacionasignaturas", 'id': '{{ asignaturaorigen.id }}', 'ids': ids,'idmalladestino':{{malladestino.id}} },
+                        success: function (data) {
+                            if (data.result === 'ok') {
+                                setTimeout($.unblockUI, 1);
+                                NotificationJG.success('ASIGNATURAS GUARDADAS', 'Aviso!', 10000);
+                                traertabla();
+                                $('#modalasignaturas').modal('hide');
+                            } else {
+                                setTimeout($.unblockUI, 1);
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            setTimeout($.unblockUI, 1);
+                            mensajeWarning("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+
+                } else {
+                    smoke.alert("Debe seleccionar al menos una asignatura");
+                }
+            });
+
+            selectorasignaturas.prop("checked", false);
+        });
+
+    </script>
+    <script>
+        $(".filterable tr:has(td)").each(function () {
+            var t = $(this).text().toLowerCase();
+            $("<td class='indexColumn'></td>").hide().text(t).appendTo(this);
+        });
+
+        $("#FilterTextBox").keyup(function () {
+            var s = $(this).val().toLowerCase().split(" ");
+            $(".filterable tr:hidden").show();
+            $.each(s, function () {
+                $(".filterable tr:visible .indexColumn:not(:contains('" + this + "'))").parent().hide();
+            });
+            $(".filterable3 tr:hidden").show();
+        });
+        function eliminarajaxs(pk,origen, nombre, accion, malladestino) {
+            Swal.fire({
+                title: `Estás por eliminar este registro:\n ${nombre}`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: $("input[name=csrfmiddlewaretoken]").val(),
+                            action: accion,
+                            id: pk,
+                            origen:origen,
+                            malladestino:malladestino,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        if (data.error === false) {
+                            setTimeout($.unblockUI, 1);
+                            NotificationJG.success('REGISTRO ELIMINADO', 'Aviso!', 10000);
+                            $('#ocultar'+pk).css('display','none');
+                            $('#checkver'+pk).css('display','initial');
+                            traertabla();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        NotificationJG.error('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            })
+        }
+        function traertabla() {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/mallas",
+                data: {
+                    'action': "tablahomologacion",
+                    'id': {{ malladestino.id }},
+                    'origen': {{ asignaturaorigen.malla.id }},
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('#contenidomalla').html(data.data);
+                        $('.homologar').css('display','initial')
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensaje
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+    <style>
+    .estilotabla {
+        border-collapse: collapse;
+        border-bottom: 1px solid #ddd;
+    }
+    .estilocabdeta {
+        display: block;
+        height: 280px;
+        overflow-y: scroll
+    }
+
+    th, td {
+        box-sizing: border-box;
+    }
+
+</style>
+{% endblock %}
+<h5>{{ asignaturaorigen }}</h5>
+<label class="label label-warning"> {{ malladestino }} </label>
+<br>
+<b id="totalasignaturas">Terminos y Condiciones Seleccionados: 0</b>
+<input type="search" style="text-transform: uppercase; margin-bottom: 0px"
+       class="input-block-level" placeholder="BUSCAR TERMINOS Y CONDICIONES..." id="FilterTextBox"
+       name="FilterTextBox">
+<table class='table table-striped table-bordered filterable estilotabla' cellpadding="0" cellspacing="0">
+    <tbody class="estilocabdeta" style="width: 100%">
+    <tr>
+        <td style="text-align: center">
+            <input type="checkbox" id="todos">
+        </td>
+        <td style="text-align: center">
+            Terminos y Condiciones
+        </td>
+    </tr>
+    {% for termino in terminos %}
+        <tr>
+            <td style="text-align: center">
+{#                {% with uso_destino_asignatura=asignaturamalladestino|args:asignaturaorigen|call:'uso_destino' %}#}
+{#                    {% if uso_destino_asignatura %}#}
+{#                        <a class="btn btn-danger btn-mini" id="ocultar{{ termino.id }}"href="javascript:;" onclick="eliminarajaxs('{{ termino.id }}','{{ asignaturaorigen.id }}','{{ asignaturamalladestino.asignatura.nombre }}', 'deletehomologacionasignaturas', {{malladestino.id}} )"> Eliminar </a>#}
+                        <input class="selectorasignaturas" style="display: none;" type="checkbox"  id="checkver{{ termino.id }}" rid="{{ termino.id }}">
+{#                    {% else %}#}
+                        <input type="checkbox" class="selectorasignaturas" rid="{{ termino.id }}">
+{#                    {% endif %}#}
+{#                {% endwith %}#}
+            </td>
+            <td style="text-align: left; width: 100%">
+                <b>{{ termino }}</b>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+
+<a href="javascript:;" id="ingresarasignaturas" class="btn btn-success"><i
+        class="fa fa-plus-circle"></i> INGRESAR TERMINOS Y CONDICIONES</a>

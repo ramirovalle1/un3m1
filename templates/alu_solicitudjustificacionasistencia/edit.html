@@ -1,0 +1,313 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        var items =1;
+        var lista_items1 = [];
+        var lista_items2 = [];
+        $(function() {
+             if (document.getElementById('id_extendida').checked==true){
+                $("#materias_mostrar").show();
+                $("#tablaasignaturas").hide();
+
+            }else{
+
+                $("#materias_mostrar").hide();
+                $("#tablaasignaturas").show();
+            }
+
+            $("#id_casojustificacion,#id_justificativo,#id_fechainicioreposo,#id_fechafinreposo,#id_codigoafiliacionmsp,#id_nombredoctor,#id_diagnostico").addClass("validate[required]");
+
+            $("#id_fecha").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            numero_dias_descanso = function (finicio,ffin){
+
+
+                var numdiasdescanso = 0;
+                var fechaInicio = finicio.split("-");
+                var fechaFin = ffin.split("-");
+                var fechadesde = new Date(fechaInicio[2], fechaInicio[1]-1, fechaInicio[0]);
+                var fechahasta = new Date(fechaFin[2], fechaFin[1]-1, fechaFin[0]);
+                if (fechahasta>=fechadesde) {
+                    var dias = fechahasta.getTime() - fechadesde.getTime();
+                    var diff_ =dias/(1000 * 60 * 60 * 24);
+                    numdiasdescanso = diff_+1;
+                    $("#id_numerodiasreposo").val(numdiasdescanso);
+                }else{
+                    $("#id_fechafinreposo").val(finicio);
+                    $("#id_numerodiasreposo").val('1');
+                }
+            };
+
+            contar_numero_dias_laborales = function (finicio,ffin) {
+
+
+                var numdiaslaborales = 0;
+                request = $.post("/alu_justificacion_asis", {'action': 'numero_dias_laborales', 'finicio': finicio, 'ffin': ffin},
+                    function (data) {
+                        if (data.result) {
+                            numdiaslaborales= data.numerodias;
+                            $("#numdiassolicitud").val(numdiaslaborales);
+                            console.log(numdiaslaborales);
+                        }
+                        else{
+                            smoke.alert("Error al obtener los datos.")
+                        }
+                    }, 'json');
+            };
+
+            $("#id_fechainicioreposo").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+                $(this).datepicker('hide');
+                var finicio = $("#id_fechainicioreposo").val();
+                var ffin = $("#id_fecha").val();
+                contar_numero_dias_laborales(finicio,ffin);
+                var finiciodescanso = $("#id_fechainicioreposo").val();
+                var ffindescanso = $("#id_fechafinreposo").val();
+                numero_dias_descanso(finiciodescanso, ffindescanso);
+            });
+
+            $("#id_fechafinreposo").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){
+                $(this).datepicker('hide');
+                var finicio = $("#id_fechainicioreposo").val();
+                var ffin = $("#id_fechafinreposo").val();
+                numero_dias_descanso(finicio,ffin);
+            });
+
+            $("#id_asignatura").change(function () {
+                $('#id_horario').empty().append('<option value="0">Horario</option>').val(0).trigger("change");
+                if ($(this).val()>0) {
+                    bloqueointerface();
+                    request = $.post("/alu_justificacion_asis", {'action': 'horario_asignatura', 'id': $(this).val()},
+                        function (data) {
+                            $.unblockUI();
+                            if (data.result) {
+                                for (elemento in data.results) {
+                                    var dato = data.results[elemento];
+                                    $('#id_horario').append('<option value="' + dato.id + '">' + dato.fechahora + '</option>');
+                                }
+                            }
+                            else{
+                                smoke.alert("Error al obtener los datos.")
+                            }
+                        }, 'json');
+                }
+                document.getElementById("mensaje").style.display = "none";
+            });
+
+            $("#adicionarasignaturahorario").click(function () {
+                document.getElementById("mensaje").style.display = "none";
+                var idasig = $( "#id_asignatura option:selected" ).val();
+                var idhora = $( "#id_horario option:selected" ).val();
+                if (idasig > 0 && idhora > 0) {
+                    if(verificar_existe_asignatura_horario(idasig,idhora) == false) {
+                        bloqueointerface();
+                        request = $.post("/alu_justificacion_asis", {'action': 'puedeadicionar', 'id': idasig, 'c':contar_asignatura_horario(idasig)},
+                            function (data) {
+                                $.unblockUI();
+                                if (data.result)
+                                {
+                                    if (data.puede)
+                                    {
+                                         cargar_tabla(idasig, idhora, $("#id_asignatura option:selected").text(), $("#id_horario option:selected").text());
+                                    }
+                                    else{
+                                        smoke.alert("No puede exceder mas del "+data.porciento+"% de justificación de asistencia")
+                                    }
+                                }
+                                else{
+                                     smoke.alert("Error al obtener los datos.")
+                                }
+                            }, 'json');
+                    }
+                }else {
+                    $("#mensaje").show();
+                }
+            });
+
+            actualizar_lista_asignatura_horario = function () {
+                lista_items1 = [];
+                $(".elementosasig").each(function () {
+                    var item = {
+                        idasig: $(this).find(".idasig").html(),
+                        idlecc: $(this).find(".idlecc").html(),
+                        asig: $(this).find(".asig").html(),
+                        lecc: $(this).find(".lecc").html()
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            eliminar_asignatura_horario = function () {
+                $(".eliminarasignatura").unbind();
+                $(".eliminarasignatura").click(function () {
+                    var padre = $(this).parent().parent();
+                    padre.remove();
+                    actualizar_lista_asignatura_horario();
+                });
+            };
+
+            verificar_existe_asignatura_horario = function (idasig,idhora) {
+                var existe=false;
+                $(".elementosasig").each(function () {
+                    if (idasig==$(this).find(".idasig").html() && idhora== $(this).find(".idlecc").html()){
+                        existe=true
+                    }
+                });
+                if (existe==true){
+                    smoke.alert("Ya se encuentra en la lista de Justificación de Asistencia")
+                }
+                return existe;
+            };
+
+            cargar_tabla = function (idasig, idhora, asig, lecc) {
+                $("#contenidoproducto").append('<tr class="elementosasig"  id="fila_' + items + '">' +
+                    '<td style="text-align: center ; display:none" class="idasig">' + idasig + '</td>' +
+                    '<td style="text-align: center ; display:none" class="idlecc">' + idhora + '</td>' +
+                    '<td style="text-align: left;" class="asig">' + asig + '</td>' +
+                    '<td style="text-align: center;" class="lecc">' + lecc + '</td>' +
+                    '<td style="text-align:center width: 10px;"><a class="btn btn-tini btn-danger tu eliminarasignatura" title="Eliminar"><i class="fa fa-close"></i></a></td>' +
+                    '</tr>');
+                items += 1;
+                actualizar_lista_asignatura_horario();
+                eliminar_asignatura_horario();
+            };
+
+            cargar_tabla_editar=function ()
+            {
+                lista_items2 = [];
+                {% for asignatura in solicitud.justificacion_materias %}
+                    {% for fecha_hora in asignatura.detalle_materia %}
+                        var item = {
+                            idasig: {{ asignatura.materiaasignada.id }},
+                            idlecc: {{ fecha_hora.asistencialeccion.id }}
+                        };
+                        lista_items2.push(item);
+                    {% endfor %}
+                {% endfor %}
+                request = $.post("/alu_justificacion_asis", {'action': 'editcarga', 'id':{{ solicitud.id }}, 'lista': JSON.stringify(lista_items2)},
+                    function (data) {
+                        if (data.result) {
+                            for (elemento in data.results) {
+                                var dato = data.results[elemento];
+                                cargar_tabla(dato[0],dato[1],dato[2],dato[3])
+                            }
+                        }
+                    }, 'json');
+            };
+
+            cargar_tabla_editar();
+
+            contar_asignatura_horario = function (idasig) {
+                var contar=0;
+                $(".elementosasig").each(function () {
+                    if (idasig==$(this).find(".idasig").html()){
+                        contar+=1
+                    }
+                });
+                return contar;
+            };
+
+            $("#id_casojustificacion").change(function () {
+                if ($(this).val()>0) {
+                    request = $.post("/alu_justificacion_asis", {'action': 'mensajeevidencia', 'id': $(this).val()},
+                        function (data) {
+                            if (data.result) {
+                                document.getElementById("mensajeevidencia").innerText = data.mensajeevidencia;
+                                $("#mensajeevidencia").show();
+                            }
+                        }, 'json');
+                }
+                else {
+                    document.getElementById("mensajeevidencia").style.display = "none";
+                }
+            });
+            $("#id_extendida").click(function () {
+                if (document.getElementById('id_extendida').checked==true){
+                    $("#materias_mostrar").show();
+                    $("#tablaasignaturas").hide();
+
+                }else{
+
+                    $("#materias_mostrar").hide();
+                    $("#tablaasignaturas").show();
+                }
+
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/alu_justificacion_asis{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/alu_justificacion_asis{% endblock %}
+{% block formaction %}/alu_justificacion_asis{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edit'/>
+    <input type='hidden' name='numdiassolicitud' id='numdiassolicitud' value="" />
+    <input type='hidden' name='id' value='{{ solicitud.id }}'/>
+    <div class="alert alert-block" style="text-align: center;font-size: 12px"><b>{{ mensaje }}</b></div>
+    <div class="alert alert-block" style="text-align: center;font-size: 12px"><b>{{ mensaje2 }}</b></div>
+    <div class="alert alert-block" style="text-align: center;font-size: 12px"><b>{{ mensaje3 }}</b></div>
+    <div class="alert alert-block" style="text-align: center;font-size: 12px"><b>{{ mensaje4 }}</b></div>
+{% endblock %}
+{% block formback %}/alu_justificacion_asis{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="alert alert-info" id="mensajeevidencia" style="margin-left: 11%;width: 86%;text-align: justify;font-size: 10px">{{ solicitud.casojustificacion.descripcion }}</div>
+    <fieldset id="tablaasignaturas" class="control-group nomargins">
+        <div class="controls">
+            <table style="width: 100%; margin: 0px;overflow-y:auto;height:100px; " class="table table-bordered table-condensed" >
+                <thead>
+
+                <tr>
+                    <th style="width: 600px;">Asignatura</th>
+                    <th style="width: 200px;text-align: center">Profesor</th>
+{#                    <th style="width: 20px"></th>#}
+                </tr>
+                </thead>
+                <tbody id="contenidoproducto">
+                    {% for ma in materias_2 %}
+                    <tr>
+                        <td>
+                            {{  ma.materiaasignada.materia.asignatura }}
+                        </td>
+                        <td>
+                            {{  ma.materiaasignada.materia.profesor_principal }}
+                        </td>
+
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </fieldset>
+    <div id="materias_mostrar" class="controls">
+            <table class="table table-bordered table-condensed" >
+                <thead>
+                <tr>
+                    <th colspan="3" style="text-align: center;"> Asignaturas matriculadas en el período actual</th>
+                </tr>
+                <tr>
+                    <th style="width: 400px;">Asignatura</th>
+                    <th style="width: 200px;text-align: center">Profesor</th>
+                </tr>
+                </thead>
+                <tbody >
+
+
+                </tbody>
+            </table>
+        </div>
+{% endblock %}
+
+{% block validaciones %}
+    if(lista_items1.length==0)
+    {
+        var estado = $("#id_extendida").val();
+        if (document.getElementById('id_extendida').checked==false){
+            $.unblockUI();
+            $("#mensaje").show();
+            valid= false;
+        }
+    }
+{% endblock %}

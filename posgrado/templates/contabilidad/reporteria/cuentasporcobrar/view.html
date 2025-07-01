@@ -1,0 +1,246 @@
+{% extends 'contabilidad/reporteria/base.html' %}
+{% load tz %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script>
+        $('.select2').select2();
+    </script>
+{% endblock %}
+{% block extra_js_end %}
+    <!-- CSS para columnas estáticas y ocultar texto -->
+    <style>
+        .sticky-column {
+            position: sticky;
+            left: 0;
+            background-color: white;
+            z-index: 1;
+            min-width: 200px;
+        }
+
+        /* Evitar que las columnas de datos se desborden y ocultar texto si es necesario */
+        .hidden-text {
+            max-width: 150px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+    </style>
+
+    <!-- Estilos adicionales para hacer más bonito el campo de búsqueda y los checkboxes -->
+    <style>
+        #searchCarrera {
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        #checkboxContainer .form-check {
+            margin-bottom: 10px;
+        }
+
+        #checkboxContainer .form-check-input {
+            margin-right: 10px;
+        }
+    </style>
+
+{% endblock %}
+{% load sga_extras %}
+{% block contenido_bajo_menu %}
+
+{% endblock %}
+{% block content-reporteria %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }} </h3>
+                <h6>Ingresos por programas de maestría del Año: {{ anio }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class=" container">
+
+        <form method="GET" action="/contabilidadposgrado" id="filterForm" class="mt-4">
+            <div class="row">
+                <!-- Campo de búsqueda -->
+                <div class="row">
+                    <label for="searchCarrera" class="form-label">Buscar Carreras:</label>
+                    <input type="text" id="searchCarrera" autocomplete="off" class="form-control"
+                           onkeyup="filterCarreras()"
+                           placeholder="Escribe el nombre de la carrera">
+                </div>
+                <input type="hidden" name="action" id="action" value="reporteriacontabilidad_cuentasporcobrar">
+
+                <!-- Listado de checkboxes con scroll -->
+                <div class="row">
+                    <label class="form-label">Seleccionar Carreras:</label>
+                    <div id="checkboxContainer" class="form-check"
+                         style="max-height: 100px; overflow-y: scroll; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                        {% for carrera in eCarreras %}
+                            <div class="form-check">
+                                <input type="checkbox" name="carreras" value="{{ carrera.id }}" class="form-check-input"
+                                       id="carrera{{ carrera.id }}"
+                                       {% if carrera.id|stringformat:"i" in carreras_ids %}checked{% endif %}>
+                                <label class="form-check-label"
+                                       for="carrera{{ carrera.id }}">[{{ carrera.id }}]-{{ carrera.nombre_completo|title2 }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <!-- Botones de acción -->
+            <div class="row mt-4">
+                <div class="col-md-12 d-flex justify-content-between">
+                    <div>
+                        <button type="submit" class="btn btn-primary">Filtrar</button>
+                        <a title="Ver todo"
+                           href="{{ request.path }}?action=reporteriacontabilidad_cuentasporcobrar"
+                           class="btn btn-default tr">
+                            Ver todos
+                        </a>
+                        <a target="_blank" href="{{ request.path }}?action=reporteriacontabilidad_cuentasporcobrar&option=downloadexcel" class="btn btn-default tr"> <i class="fa fa-file-pdf"></i> </a>
+                    </div>
+                    <p> Generado el {{ cache_timestamp.day }} de {{ cache_timestamp|nombremes }} del {{ cache_timestamp.year }} a
+                    las {{ cache_timestamp.hour }}: {{ cache_timestamp.minute }}</p>
+
+                    <a title="Actualizar reporte"
+                       href="{{ request.path }}?action=reporteriacontabilidad_cuentasporcobrar&clear_cache=1"
+                       class="btn btn-warning tr float-right">
+                        Actualizar reporte de ingresos
+                    </a>
+                </div>
+            </div>
+        </form>
+
+    </div>
+
+    <div class="row">
+        <div class="table-responsive" style="overflow-x: auto;">
+            <table class="table table-bordered">
+                <thead class="table">
+                <tr>
+                    <th class="text-center sticky-column" rowspan="2">PROGRAMA</th>
+                    <th class="text-center " rowspan="2">MODALIDAD</th>
+                    {% for numero, mes in meses %}
+                        <th class="text-center" colspan="4">{{ mes |upper }}</th>
+                    {% endfor %}
+
+
+                </tr>
+                <tr>
+                    {% for numero, mes in meses %}
+                        <th class="text-center">CUENTAS POR COBRAR AÑOS ANTERIORES</th>
+                        <th class="text-center">CUENTAS POR COBRAR</th>
+                        <th class="text-center">PRESUPUESTADO MES ACTUAL</th>
+                        <th class="text-center">PRESUPUESTADO SIN MES ACTUAL</th>
+                        <th class="text-center">PRESUPUESTADO ACUMULADO</th>
+                        <th class="text-center">PAGADO</th>
+                    {% endfor %}
+
+
+                </tr>
+                </thead>
+                <tbody>
+                {% for item in estructura %}
+                    <tr>
+                        <td class="text-center sticky-column"
+                            style="background: white">[{{ item.eCarrera.pk }}]{{ item.eCarrera.nombre_completo }}</td>
+                        <td class="text-center ">{{ item.eCarrera.get_modalidad_display }}</td>
+                        {% for a in item.encabezado_meses %}
+                            {% for mes in a.detalle_mes %}
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="{{ a.nombre_mes }} - {{ a.anio }} : Cuentas por cobrar años anteriores ">{% if mes.cuentas_por_cobrar_anios_anteriores %}
+                                        ${{ mes.cuentas_por_cobrar_anios_anteriores }}{% else %} - {% endif %}</span>
+
+                                </td>
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="Cuentas por cobrar {{ a.nombre_mes }} - {{ a.anio }}">{% if mes.cuentas_por_cobrar_anio_mes_actual %} ${{ mes.cuentas_por_cobrar_anio_mes_actual }}{% else %} - {% endif %}</span>
+
+                                </td>
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="Total presupuestado en el Mes de {{ a.nombre_mes }} - {{ a.anio }}">{% if mes.presupuestado_anio_mes_actual %} ${{ mes.presupuestado_anio_mes_actual }}{% else %} - {% endif %}</span>
+
+                                </td>
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="Total presupuestado sin este mes{{ a.nombre_mes }} - {{ a.anio }}">{% if mes.presupuestado_anio_mes_sin_mes_actual %} ${{ mes.presupuestado_anio_mes_sin_mes_actual }}{% else %} - {% endif %}</span>
+
+                                </td>
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="Total presupuestado acumulado hasta el Mes {{ a.nombre_mes }} - {{ a.anio }}">{% if mes.presupuestado_anio_hasta_mes_actual_acumulado %} ${{ mes.presupuestado_anio_hasta_mes_actual_acumulado }}{% else %} - {% endif %}</span>
+
+                                </td>
+                                <td class="text-center hidden-text">
+                                    <span class="title tu"
+                                          title="Pagado {{ a.anio }}-{{ a.nombre_mes }} "> {% if mes.pagado %}$
+                                        {{ mes.pagado }}{% else %} - {% endif %} </span>
+
+                                </td>
+                            {% endfor %}
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                <!-- Añadir más filas según sea necesario -->
+                <tr>
+                    <td class="text-center sticky-column" style="background: white">Totales</td>
+                    <td class="text-center hidden-text"></td>
+                    {% for anio, meses in diccionario_totales_por_mes.items %}
+                        {% for mes, totales in meses.items %}
+                            <td class="text-center hidden-text"> ${{ totales.total_cuentas_por_cobrar_anios_anteriores }}</td>
+                            <td class="text-center hidden-text"> ${{ totales.total_cuentas_por_cobrar_anio_mes_actual }}</td>
+                            <td class="text-center hidden-text">${{ totales.total_presupuestado_anio_mes_actual }}</td>
+                            <td class="text-center hidden-text">${{ totales.total_presupuestado_anio_mes_actual_sin_este_mes }}</td>
+                            <td class="text-center hidden-text">${{ totales.total_presupuestado_anio_mes_actual_acumulado }}</td>
+                            <td class="text-center hidden-text">${{ totales.total_pagado }}</td>
+                        {% endfor %}
+                    {% endfor %}
+
+
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row">
+
+    </div>
+
+    <script>
+        function filterCarreras() {
+            var input, filter, container, divs, label, i, txtValue;
+            input = document.getElementById("searchCarrera");
+            filter = input.value.toUpperCase();
+            container = document.getElementById("checkboxContainer");
+            divs = container.getElementsByClassName("form-check");
+
+            for (i = 0; i < divs.length; i++) {
+                label = divs[i].getElementsByTagName("label")[0];
+                txtValue = label.textContent || label.innerText;
+                if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                    divs[i].style.display = "";
+                } else {
+                    divs[i].style.display = "none";
+                }
+            }
+        }
+
+        // Función para limpiar los filtros y deseleccionar todas las carreras
+        function clearFilters() {
+            var checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]');
+            for (var checkbox of checkboxes) {
+                checkbox.checked = false;
+            }
+            document.getElementById("searchCarrera").value = '';
+            filterCarreras(); // Resetear la búsqueda
+        }
+    </script>
+{% endblock %}

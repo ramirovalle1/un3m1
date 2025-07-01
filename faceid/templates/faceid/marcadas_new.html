@@ -1,0 +1,850 @@
+{% extends 'faceid/base.html' %}
+{% block heading %}
+    {% if valida_captcha %}
+        <script src='https://www.google.com/recaptcha/api.js?v=2.0.1'></script>
+        <link rel="stylesheet" href="/static/css/captcha/chaptcha_response.css?v=2.0.1" type="text/css" media="screen"/>
+    {% endif %}
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <style>
+        body {
+            background: #ffffff !important;
+        }
+
+        #video {
+            border: 1px solid black;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .video-container {
+            position: relative;
+            padding-bottom: 70%; /* Relación de aspecto 4:3 (480/640 * 100) */
+            height: 0;
+            overflow: hidden;
+            max-width: 100%;
+            background: #000;
+            width: 100%;
+        }
+
+        .video-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    {% include 'faceid/marcadas/utils_info.html' %}
+    <script src="/static/js/face_detect/detection.js?v=1.1"></script>
+    <script type="application/javascript">
+        const registerChecked = async () => {
+            let capippriva = '';
+            navegador = window.jscd.browser + ' ' + window.jscd.browserMajorVersion;
+            os = window.jscd.os + ' ' + window.jscd.osVersion;
+            cookies = window.jscd.cookies;
+            screensize = window.jscd.screen;
+            bloqueointerface();
+            $(this).attr({"disabled": "disabled"});
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {
+                    'action': 'checkAuth2',
+                    'capippriva': capippriva,
+                    'navegador': navegador,
+                    'os': os,
+                    'cookies': cookies,
+                    'screensize': screensize,
+                    'usuario': $("#inputUsuario").val(),
+                    {#'password': $("#inputPassword").val(),#}
+                    'marcada': marcada,
+                    'similitud': similitud,
+                    'imagen': JSON.stringify({ image: imgURL }),
+                    'g-recaptcha-response': captcha
+                },
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $("#usuario").val('');
+                        {#$("#password").val('');#}
+                        $(".marcada").each(function (index) {
+                            $(this).attr('checked', false);
+                        });
+                        Swal.fire({
+                            html: `Marcación realizada el ${data.fecha} ${data.horaactual}:${data.minutoactual}:${data.segundoactual}`,
+                            text: "¡Registro guardado correctamente!",
+                            type: 'success',
+                            showCancelButton: false,
+                            allowOutsideClick: false,
+                            confirmButtonText: 'Continuar',
+                        }).then((result) => {
+                            if (result.value) {
+                                bloqueointerface();
+                                location.reload();
+                            }
+                        })
+                    } else {
+                        $.unblockUI();
+                        mensajeDangerReload(data.mensaje, 'Aceptar');
+                    }
+                    {% if valida_captcha %}
+                        grecaptcha.reset();
+                    {% endif %}
+                },
+                error: function () {
+                    $("#login").removeAttr('disabled');
+                    $("#errormensaje").html('Error al enviar los datos').show();
+                    {% if valida_captcha %}
+                        grecaptcha.reset();
+                    {% endif %}
+                },
+                dataType: "json"
+            });
+        };
+
+        const registrarFraude = async () => {
+            let capippriva = '';
+            navegador = window.jscd.browser + ' ' + window.jscd.browserMajorVersion;
+            os = window.jscd.os + ' ' + window.jscd.osVersion;
+            cookies = window.jscd.cookies;
+            screensize = window.jscd.screen;
+            bloqueointerface();
+            $(this).attr({"disabled": "disabled"});
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {
+                    'action': 'addsancion',
+                    'capippriva': capippriva,
+                    'navegador': navegador,
+                    'os': os,
+                    'cookies': cookies,
+                    'screensize': screensize,
+                    'usuario': $("#inputUsuario").val(),
+                    {#'password': $("#inputPassword").val(),#}
+                    'marcada': marcada,
+                    'imagen': JSON.stringify({ image: imgURL }),
+                    'g-recaptcha-response': captcha
+                },
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        Swal.fire({
+                            html: `<b>¡Marcación no realizada!</b> <br><br>
+                                        Se ha registrado una incidencia de falta leve a nombre de <b>${data.persona}</b>. <br>
+                                        Esta incidencia será revisada por el Departamento de Talento Humano. Si no se encuentra evidencia de fraude, se procederá a eliminar la incidencia. <br>
+                                        <b>Fecha y hora de registro:</b> ${data.fecha} ${data.horaactual}:${data.minutoactual}:${data.segundoactual}.
+                                    `,
+                            type: 'warning',
+                            showCancelButton: false,
+                            allowOutsideClick: false,
+                            confirmButtonText: 'Continuar',
+                        }).then((result) => {
+                            bloqueointerface();
+                            location.reload();
+                        })
+                    } else {
+                        $.unblockUI();
+                        mensajeDangerReload(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $("#login").removeAttr('disabled');
+                    mensajeDangerReload('Error al enviar los datos');
+                },
+                dataType: "json"
+            });
+        };
+
+        $(async function () {
+            $("#intentar_new").hide();
+            await reloadTime();
+            await clienteinfo(window);
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const captureButton = document.getElementById('registrar');
+            const cerrarButton = document.getElementById('cerrar');
+            const intentarNew = document.getElementById('intentar_new');
+            const resultText = document.getElementById('result');
+            const instructionText = document.getElementById('instructions');
+            const cloudFunctionUrl = 'https://us-central1-unemi-biometrico-sga.cloudfunctions.net/analyze_photo';
+            const usernameInput = document.getElementById('inputUsuario');
+            let blinkCount = 0;
+            let lastBlinkDetected = false;
+            let noBlinkFrameCounter = 0;
+            let camera;
+            let ingresoApi=false
+            let isProcessing = false; // Nueva variable para controlar el procesamiento
+            let detectionStopped = false;
+            let lastMovementTime = 0;
+            let lastNoseX = null; // Posición anterior de la nariz en X
+            let lastNoseY = null; // Posición anterior de la nariz en Y
+            let intentos = 0;
+            let interval;
+            const movementThreshold = 0.05; // Umbral para determinar si un movimiento es significativo
+            $("#id_intentos").text(intentos+1);
+
+            function sendAuditoria(){
+                intentos++;
+                $("#id_intentos").text(intentos+1);
+                if((3 - intentos) > 0){
+                    let articulo='intentos';
+                    if((3 - intentos) == 1){
+                        articulo='intento';
+                    }
+                    stopDetection();
+                    mensajeWarning('Le quedan ' + (3 - intentos) + ' ' + articulo +
+                                                '<br> Recuerde que una vez se agoten los intentos se registrara una incidencia de falta leve a su nombre', '¡Intento Fallido!');
+                }else{
+                    captureAndSendImage()
+                }
+            }
+
+            function onResults(results) {
+                if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                    instructionText.innerText = "No se detectó un rostro. Inténtelo de nuevo.";
+                    resultText.classList.add('text-danger');
+                    resultText.classList.remove('text-success');
+                    sendAuditoria();
+                 }
+                 if (detectionStopped) {
+                    return; // Detiene la detección si está marcada como detenida
+                }
+                resultText.classList.remove('text-danger');
+                if (isProcessing) {
+                    // Si estamos esperando que pase el tiempo de espera, no procesamos nada
+                    return
+                }
+                const landmarks = results.multiFaceLandmarks[0];
+                const initialBrowDistance = captureInitialBrowDistance(landmarks);
+                const leftEAR = [landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]]
+                const rightEAR = [landmarks[263], landmarks[387], landmarks[385], landmarks[362], landmarks[380], landmarks[373]]
+                const noseX = landmarks[1].x;
+                const noseY = landmarks[1].y;
+                const leftEyeY = landmarks[159].y;
+                const rightEyeY = landmarks[386].y;
+                const mouthLeftX = landmarks[61].x;
+                const mouthRightX = landmarks[291].x;
+                const chinY = landmarks[152].y;
+                const chinX = landmarks[152].x;
+                const mouthTopY = landmarks[13].y;
+                const mouthBottomY = landmarks[14].y;
+                const browLeftX = landmarks[70].x;
+                const browRightX = landmarks[107].x;
+
+                let movementDetected = false;
+                let incorrectMovementDetected = false;
+
+
+                if (lastNoseX !== null && lastNoseY !== null) {
+                    // Calcula la magnitud del movimiento
+                    const movementMagnitude = Math.sqrt(Math.pow(noseX - lastNoseX, 2) + Math.pow(noseY - lastNoseY, 2));
+
+                    // Si el movimiento es significativo y ocurrió en menos de 3 segundos, marcarlo como sospechoso
+                    const currentTime = performance.now();
+                    if (movementMagnitude > movementThreshold && currentTime - lastMovementTime < 3000) {
+                        instructionText.html = "Movimiento sospechoso detectado. <br> Por favor, realice las acciones lentamente."
+                        resultText.classList.add('text-danger');
+                        sendAuditoria();
+                        return;
+                    }
+
+                    if (movementMagnitude > movementThreshold) {
+                        lastMovementTime = currentTime; // Actualiza el tiempo del último movimiento significativo
+                    }
+                }
+
+                lastNoseX = noseX;
+                lastNoseY = noseY;
+
+                if (currentStep < sequence.length) {
+                    {#console.log(`Paso ${currentStep + 1}: ${sequence[currentStep]}`);#}
+                    switch (sequence[currentStep]) {
+                        {#case 'left':#}
+                        {#    movementDetected = detectLeftMovement(noseX);#}
+                        {#    incorrectMovementDetected = detectRightMovement(noseX);#}
+                        {#    break;#}
+                        {#case 'right':#}
+                        {#    movementDetected = detectRightMovement(noseX);#}
+                        {#    incorrectMovementDetected = detectLeftMovement(noseX); //#}
+                        {#    break;#}
+                        case 'smile':
+                            movementDetected = detectSmile(mouthLeftX, mouthRightX);
+                            break;
+                        case 'blink':
+                            movementDetected = detectBlink(leftEAR, rightEAR);
+                            break;
+                        {#case 'serious':#}
+                        {#    movementDetected = detectSerious(mouthLeftX, mouthRightX);#}
+                        {#    break;#}
+                        {#case 'headUp':#}
+                        {#    movementDetected = detectHeadUp(noseY, chinY);#}
+                        {#    break;#}
+                        case 'tiltLeft':
+                            movementDetected = detectTiltLeft(noseX, chinX);
+                            incorrectMovementDetected = detectTiltRight(noseX, chinX);
+                            break;
+                        case 'tiltRight':
+                            movementDetected = detectTiltRight(noseX, chinX);
+                            incorrectMovementDetected = detectTiltLeft(noseX, chinX);
+                            break;
+                        {#case 'mouthOpen':#}
+                        {#    movementDetected = detectMouthOpen(mouthTopY, mouthBottomY);#}
+                        {#    break;#}
+                    }
+
+                    if (incorrectMovementDetected) {
+                        // Resetea la secuencia y notifica al usuario
+                        instructionText.innerText = `Movimiento incorrecto detectado.`;
+                        resultText.classList.add('text-danger');
+                        stopDetection();
+                    } else if (movementDetected) {
+                        isProcessing = true; // Bloquea la detección de nuevos movimientos
+                        paso = currentStep + 1;
+                        {#console.log(paso)#}
+                        instructionText.innerText = `Paso ${paso} completado. Espere...`;
+                        if(paso < 1){
+                            setTimeout(() => {
+                                if (!detectionStopped){
+                                    currentStep++;
+                                    updateInstructions();
+                                }
+                                isProcessing = false; // Desbloquea para el siguiente movimiento
+                            }, 2000); // 2000 milisegundos = 2 segundos de retraso
+                        }else{
+                            currentStep++;
+                            updateInstructions();
+                            isProcessing = false; // Desbloquea para el siguiente movimiento
+                        }
+                    }
+                }
+
+                if (currentStep >= sequence.length) {
+                    resultText.innerText = 'Prueba de vida completada con éxito';
+                    resultText.classList.add('text-success');
+                    resultText.classList.remove('text-danger');
+                     captureAndSendImage();
+                }
+            }
+
+            function startDetection() {
+                const faceMesh = new FaceMesh({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                    }
+                });
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: video});
+                    },
+                    width: 640,
+                    height: 480
+                });
+                camera.start();
+                faceMesh.onResults(onResults);
+                {#startProgressBar();#}
+                startCountDetection()
+                detectionStopped = false;
+                $("#intentar_new").hide();
+            }
+
+            function stopDetection() {
+                {#stopProgressBar();#}
+                stopCountDetection()
+                detectionStopped = true;
+
+                if (camera) {
+                    camera.stop(); // Detener la cámara
+                }
+
+                // Detener el flujo de medios (apagar la cámara)
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+
+                // Limpiar el video para liberar recursos
+                video.srcObject = null;
+
+                // Actualizar la interfaz
+                resultText.innerText = "Detección detenida.";
+                resultText.classList.add('text-danger');
+                resultText.classList.remove('text-success');
+                $("#intentar_new").show();
+
+            }
+
+            function startProgressBar() {
+                const progressBar = document.getElementById('progress-bar');
+                const duration = 15000; // 5 segundos
+                const startTime = performance.now(); // Hora de inicio de la animación
+
+                function updateProgressBar(currentTime) {
+                    const elapsedTime = currentTime - startTime;
+                    const progress = Math.min(100, (elapsedTime / duration) * 100);
+
+                    progressBar.style.width = progress + '%';
+                    progressBar.setAttribute('aria-valuenow', progress);
+
+                    if (progress < 100) {
+                        progressInterval = requestAnimationFrame(updateProgressBar);
+                    } else {
+                        stopDetection(); // Llama a stopDetection cuando se complete la barra
+                        if (!ingresoApi) {
+                            $("#intentar_new").show();
+                        }
+                    }
+                }
+
+                progressInterval = requestAnimationFrame(updateProgressBar);
+            }
+
+            function startCountDetection() {
+                const tiempo = document.getElementById('id_time');
+                const duration = 12000;
+                const startTime = performance.now(); // Hora de inicio de la animación
+                interval = setInterval(() => {
+                    const elapsedTime = performance.now() - startTime; // Tiempo transcurrido
+                    const timeLeft = Math.max(0, duration - elapsedTime); // Tiempo restante en milisegundos
+
+                    // Convertir milisegundos a segundos
+                    const secondsLeft = Math.ceil(timeLeft / 1000);
+
+                    {#console.log(timeLeft)#}
+                    // Actualizar la etiqueta con el tiempo restante
+                    tiempo.textContent = `Tiempo restante: ${secondsLeft} segundos`;
+                    if (timeLeft <= 0) {
+                        stopDetection();
+                        if (!ingresoApi) {
+                            $("#intentar_new").show();
+                        }
+                    }
+                }, 1000);
+            }
+
+            function stopCountDetection() {
+                clearInterval(interval); // Detener el intervalo usando clearInterval
+            }
+
+            function stopProgressBar(){
+                // Detener la barra de progreso
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    cancelAnimationFrame(progressInterval);
+                }
+                // Resetear la barra de progreso a 0
+                const progressBar = document.getElementById('progress-bar');
+                progressBar.style.width = '0%';
+                progressBar.setAttribute('aria-valuenow', 0);
+            }
+
+            function stopCountDetection() {
+                clearInterval(interval); // Detener el intervalo usando clearInterval
+            }
+
+            function validarUser(){
+                bloqueointerface()
+                $.ajax({
+                    url: '{{ request.path }}',
+                    type: 'GET',
+                    data: { 'usuario': $("#inputUsuario").val(),
+                            'password': $("#inputPassword").val(),
+                            'action': 'validarusuario'},
+                    success: function (response) {
+                        $.unblockUI();
+                        if (response.result === false){
+                            alertaDanger(response.mensaje)
+                            if(response.tipo === 'usuario'){
+                                $("#inputUsuario").focus();
+                                $("#helpUsuario").html(response.mensaje);
+                                $("#helpUsuario").addClass('text-danger');
+                                $("#inputUsuario").addClass('is-invalid');
+                            }else{
+                                $("#inputPassword").focus();
+                                $("#helpPassword").html(response.mensaje);
+                                $("#helpPassword").addClass('text-danger');
+                                $("#inputPassword").addClass('is-invalid')
+
+                                $("#helpUsuario").html('');
+                                $("#inputUsuario").removeClass('text-danger');
+                                $("#inputUsuario").removeClass('is-invalid');
+                                $("#inputUsuario").addClass('is-valid');
+                            }
+                            return false
+                        }else{
+                            $("#helpPassword, #helpUsuario").removeClass('text-danger').html('');
+                            $("#inputPassword, #inputUsuario").removeClass('is-invalid');
+                             $("#inputPassword, #inputUsuario").addClass('is-valid');
+                            startFaceDetection();
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        $.unblockUI();
+                        return false
+                        alertaDanger('Error de conexión')
+                        // Manejar el error de la consulta AJAX si es necesario
+                    }
+                });
+            }
+
+            function startFaceDetection() {
+                    bloqueointerface()
+                    navigator.mediaDevices.getUserMedia({video: true})
+                        .then(stream => {
+                            video.srcObject = stream;
+                            video.play();
+                            video.onloadedmetadata = () => {
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                            };
+                        })
+                        .catch(err => {
+                            console.error("Error de acceso a la camara: ", err);
+                            mensajeDangerReload('Error al acceder a la cámara. <br> Por favor verifique los permisos y recargue la pagina.', 'Recargar');
+                        });
+                    setTimeout(() => {
+                        $.unblockUI();
+                        formModal('Capturar imagen', 'modal-md', false, 'fa fa-camera');
+                        resetSequence();
+                        startDetection(); // Iniciar detección cuando se presiona "Registrar"
+                    }, 1000);
+            }
+
+            async function captureAndSendImage() {
+                if (isProcessing) return; // Si ya está en proceso, no hacer nada.
+                isProcessing = true;
+                bloqueointerface();
+                ingresoApi = true;
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const dataURL = canvas.toDataURL('image/jpg');
+                    const username = usernameInput.value.toLowerCase();
+                    const payload = JSON.stringify({
+                        image: dataURL,
+                        cedula: username
+                    });
+
+                    stopDetection();
+                    $('#itemspanelbase').modal('hide');
+                    if ((3 - intentos) > 0) {
+                        fetch(cloudFunctionUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: payload
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log(data);
+                            if (data.status === 'success') {
+                                imgURL = dataURL;
+                                similitud = data.message;
+                                registerChecked();
+                            } else {
+                                $.unblockUI();
+                                mensajeDangerReload(' No se pudo identificar al usuario con la imagen capturada, asegure que sus datos sean correctos y vuelva a intentarlo.');
+                            }
+                        })
+                        .catch(error => {
+                            $.unblockUI();
+                            console.error('Error:', error);
+                            mensajeDangerReload('Ocurrió un error inesperado en la verificación de imagen, por favor recargue la página e intente de nuevo');
+                        });
+                    } else {
+                        imgURL = dataURL;
+                        registrarFraude();
+                    }
+
+                } else {
+                    mensajeDanger('La cámara no está lista. Por favor, inténtelo de nuevo.');
+                    isProcessing = false; // Liberar bloqueo
+                }
+            }
+
+           const validarCampos = async () =>{
+                const usuario = $("#inputUsuario").val();
+                let isValid = true;
+                if (usuario.length == 0) {
+                    $("#inputUsuario").focus();
+                    $("#helpUsuario").html("Ingrese un usuario");
+                    $("#helpUsuario").addClass('text-danger');
+                    $("#inputUsuario").addClass('is-invalid');
+                    return false;
+                } else {
+                    $("#inputUsuario").addClass('is-valid');
+                }
+                {#const password = $("#inputPassword").val();#}
+                {#if (password.length == 0) {#}
+                {#    if (usuario.length != 0) {#}
+                {#        $("#inputPassword").focus();#}
+                {#    }#}
+                {#    $("#helpPassword").html("Ingrese una contraseña");#}
+                {#    $("#helpPassword").addClass('text-danger');#}
+                {#    $("#inputPassword").addClass('is-invalid');#}
+                {#    return false;#}
+                {# } else {#}
+                {#    $("#inputPassword").addClass('is-valid');#}
+                {# }#}
+                $('.marcada').each(function (index) {
+                    if ($(this).is(':checked')) {
+                        isValid = true;
+                        marcada = $(this).val();
+                    }
+                });
+                if (marcada == 0) {
+                    $("#options-marcada").html("Seleccione la jornada de marcada");
+                    $("#options-marcada").addClass('text-danger');
+                    return false;
+                }
+                {% if valida_captcha %}
+                    if ($("#g-recaptcha-response").length !== 0) {
+                        if (!checkRecaptcha()) {
+                            $("#helpRecaptcha").html("Complete el captcha para continuar");
+                            $("#helpRecaptcha").addClass('text-danger');
+                            return false;
+                        }
+                    }
+                    captcha = $("#g-recaptcha-response").val();
+                {% endif %}
+                {#validarUser();#}
+                startFaceDetection()
+            }
+
+            intentarNew.addEventListener('click', async () => {
+                blinkCount = 0;
+                resultText.innerText = "";
+                resetSequence();
+                startDetection();
+                $("#intentar_new").hide();
+            });
+
+            captureButton.addEventListener('click', async () => {
+                await validarCampos();
+            });
+
+            cerrarButton.addEventListener('click', async () => {
+                {#stopDetection();#}
+                {#$('#itemspanelbase').modal('hide');#}
+                {#ingresoApi=false#}
+                {#resultText.innerText = "";#}
+                {#resultText.classList.remove('text-danger');#}
+                {#resultText.classList.remove('text-success');#}
+                {#$("#intentar_new").hide();#}
+                bloqueointerface()
+                location.reload()
+            });
+        });
+
+        $(function(){
+            let checkAll = localStorage.getItem('checkAll')
+            let esMovil = esDispositivoMovil()
+            if (esMovil){
+                location.href = '/adm_marcadas?mobile=true';
+            }
+            {% if guia_obligatoria %}
+                if (checkAll == 'false') {
+                    location.href = '/adm_marcadas';
+                }
+            {% endif %}
+            $("#ver_guia").click(function(){
+                bloqueointerface()
+                localStorage.setItem('checkAll', false)
+                location.href = '/adm_marcadas?guia=true';
+            })
+        });
+
+        function esDispositivoMovil() {
+            const anchoPantalla = screen.width;
+            const altoPantalla = screen.height;
+            // Detecta si la pantalla es pequeña o si tiene capacidad táctil
+            const esPantallaMovil = anchoPantalla < 821;
+            const esTactil = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            {#alert(anchoPantalla)#}
+            // Si la pantalla es pequeña o tiene capacidad táctil, es probable que sea un móvil
+            return (esPantallaMovil && esTactil)
+        }
+    </script>
+{% endblock %}
+{% block clock %}
+    <ul class="p-0 m-2">
+        <li class="ms-2">
+            <div class="fecha_line">
+                <ul class="list-inline p-0 m-0">
+                    <li class="list-inline-item m-0">
+                        <span class="hours display-6 fw-bold text-warning">{{ tiempo.hour }}</span>
+                    </li>
+                    <li class="list-inline-item m-0">
+                        <span class="display-6 fw-bold text-warning">:</span>
+                    </li>
+                    <li class="list-inline-item m-0">
+                        <span class="minutes display-6 fw-bold text-warning ">{{ tiempo.minute }}</span>
+                    </li>
+                    <li class="list-inline-item m-0 hidden-phone">
+                        <span class="display-6 fw-bold text-warning">:</span>
+                    </li>
+                    <li class="list-inline-item m-0 hidden-phone">
+                        <span class="seconds display-6 fw-bold text-warning ">{{ tiempo.second }}</span>
+                    </li>
+                </ul>
+            </div>
+        </li>
+    </ul>
+{% endblock %}
+{% block canvas %}
+    <div class="row justify-content-center pt-4 min-vh-100">
+        <div class="col-lg-5 order-1 order-lg-0">
+            <div class="card">
+                <div class="card-header pb-0">
+                    <div class="row">
+                        <div class="col-lg-7">
+                              <div class="headtitle ms-0">
+                                <h3 class="texto-blue">Guia de registro</h3>
+                                <h6>Instrucciones paso a paso para el registro</h6>
+                            </div>
+                        </div>
+                        <div class="col-lg-5 text-end d-flex justify-content-end align-items-center text-truncate">
+                              <a href="javascript:void()" id="ver_guia" class="texto-blue lh-15">
+                                    <img src="https://sga.unemi.edu.ec/static/images/iconssga/icon_landin5.svg" alt="" class="pb-0" width="40px">
+                                    <b>Ver guía completa</b>
+                                </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body text-center pt-2">
+                    <div class="text-start">
+                        <h4 class="ms-2 mb-0 texto-blue">Recomendaciones para un uso exitoso del biométrico:</h4>
+                       <ol class="mt-1">
+                            <li>Evita la contraluz y usa una luz uniforme para evitar sombras.</li>
+                            <li>Si usas lentes, ajusta la luz para evitar reflejos.</li>
+                            <li> Evita movimientos bruscos frente a la cámara.</li>
+                            <li> Captura todo el rostro sin cortar partes importantes.</li>
+                        </ol>
+                    </div>
+                    {% if mostrar_video %}
+                        <iframe width="90%" height="315"
+                            src="{{ url_video }}"
+                        title="YouTube video player"
+                        frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerpolicy="strict-origin-when-cross-origin" allowfullscreen>
+                        </iframe>
+                    {% endif %}
+                 {% if mostrar_img %}
+                        <img width="90%" height="90%"
+                            src="{{ url_img }}">
+                        </img>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 col-xl-3 col-md-5 col-sm-8 col-10 py-0 py-xl-0 order-0 order-lg-1">
+            <div class="card m-0 border-2 mb-2" style="background: #f5f5f5 !important;">
+                <div class="card-header px-1 pb-0 text-center" style="background: #f5f5f5 !important;">
+                    <div class="headtitle ms-0 border-0">
+                        <h3 class="texto-blue">Marcar asistencia</h3>
+                        <h6>Digita los datos solicitados</h6>
+                    </div>
+                </div>
+                <div class="card-body px-1 pt-0">
+                    <form>
+                        <div class="form-floating mb-1 mx-3 mt-0">
+                            <input type="text" class="form-control" id="inputUsuario" placeholder="Nombre de usuario">
+                            <label for="inputUsuario">Usuario</label>
+                            <span class="fs-6 text-danger" id="helpUsuario"></span>
+                        </div>
+{#                        <div class="form-floating mb-1 mx-3 mt-0">#}
+{#                            <input type="password" class="form-control" id="inputPassword" placeholder="******************">#}
+{#                            <label for="inputPassword">Contraseña</label>#}
+{#                            <span class="fs-6 text-danger" id="helpPassword"></span>#}
+{#                        </div>#}
+                        <div class="row mt-1">
+                            <div class="col-sm-12 text-center">
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="entrada_trabajo" value="1" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="entrada_trabajo">Entrada <br>al trabajo<br><img width="60" height="60" src="/static/images/iconos/entradajob.png"></label>
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="salida_trabajo" value="2" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="salida_trabajo">Salida <br>del trabajo<br><img width="60" height="60" src="/static/images/iconos/entradajob.png"></label>
+                            </div>
+                        </div>
+                        <div class="row mt-1">
+                            <div class="col-sm-12 text-center">
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="salida_comida" value="3" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="salida_comida">Salida <br>al almuerzo<br><img width="60" height="60" src="/static/images/iconos/salidacomida.png"></label>
+                                <input type="radio" class="btn-check marcada" name="options-marcada" id="entrada_comida" value="4" autocomplete="off">
+                                <label class="btn btn-outline-light-primary text-dark" style="width: 110px; height: 110px;" for="entrada_comida">Regreso <br>del almuerzo<br><img width="60" height="60" src="/static/images/iconos/salidacomida.png"></label>
+                            </div>
+                        </div>
+                         <div class="row mb-1">
+                            <div class="col-sm-12 text-center">
+                                <p class="text-danger" id="options-marcada"></p>
+                            </div>
+                        </div>
+
+                        {% if valida_captcha %}
+                            <div class="mb-1 mt-0 mx-3">
+                                <label for="inputSeguridad" class="form-label pb-0 mb-0">Seguridad:</label>
+                                <div style="margin-top: 1px;" id="g-recaptcha-response" class="g-recaptcha" data-sitekey="{{ public_key }}"></div>
+                                <span class="fs-6 text-danger" id="helpRecaptcha"></span>
+                            </div>
+                        {% endif %}
+                        <div class="d-grid gap-2 col-8 mx-auto my-3">
+                            <a class="btn btn-orange btn-lg text-dark"  id="registrar" href="javascript:;"><i class="fa fa-video"></i> Registrar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelbase" style="display: none;">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable" role="document" id="wmodalbase">
+        <div class="modal-content border-radius-modal">
+           <div class="modal-header p-2 border-0 pb-0">
+                <h4 class="modal-title ps-3">
+                    <span id="id_intentos"></span>/3 Intentos
+                </h4>
+                <button type="button" class="btn-close-blue cerrar" id="cerrar" data-bs-dismiss="modal" aria-label="Close">
+                </button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="panelbody-base m-3 my-0">
+                    <div class="row justify-content-center">
+                        <div class="col-12 text-center px-3 pt-0">
+                            <h2 class="card-title fw-bold texto-azul mb-0">Captura de imagen</h2>
+                            <p class="text-orange lh-15 mb-2">Siga las instrucciones que aparecen a continuación</p>
+{#                            <div class="progress">#}
+{#                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>#}
+{#                            </div>#}
+                            <h4 class="texto-azul my-1" id="instructions"></h4>
+                            <a class="btn btn-orange btn-lg text-dark fs-5" id="intentar_new" href="javascript:;">
+                                <i class="fa fa-video"></i> Intentar nuevamente
+                            </a>
+
+                        </div>
+                    </div>
+
+                </div>
+                 <div class="video-container">
+                    <video id="video" class="img-fluid" autoplay playsinline muted></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                </div>
+                <div class="text-center">
+                    <h5 id="result" class="lh-15 mt-2"></h5>
+                    <h5 id="id_time"></h5>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

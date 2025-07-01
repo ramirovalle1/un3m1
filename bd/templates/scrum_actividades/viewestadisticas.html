@@ -1,0 +1,218 @@
+{% extends 'scrum_actividades/baseestadistica.html' %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-colorschemes@0.6.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+{% endblock %}
+{% block extraJs %}
+    <script>
+        $(function () {
+            $("select").select2({width: '100%', minimunResultsForSearch: 10});
+
+            $("#planificacion").change(function () {
+                location.href = `{{ request.path }}?action={{ action }}&plan=${$(this).val()}&desde=${$("#desde").val()}&hasta=${$("#hasta").val()}`;
+            });
+
+            busqueda = function () {
+                var term = $("#searchinput").val().trim().toUpperCase();
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "{{ request.path }}?action={{ action }}&s=" + term;
+                }
+                return false;
+            };
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+        });
+
+        // Get the canvas element
+        var ctxgeneral = document.getElementById('general').getContext('2d');
+        var ctxactividades = document.getElementById('actividades').getContext('2d');
+        var ctxd = document.getElementById('detalleequipo').getContext('2d');
+
+        // Sample data for the chart
+        var datageneral = {
+            labels: ['Pendiente','En Proceso','Finalizado'],
+            datasets: [
+                {% for equipo in equipos %}
+                {
+                    label: ['{{ equipo.nombre }}'],
+                    {% if not planificacion and not desde and not hasta %}
+                        data: [{x:'Pendiente',y:'{{ equipo.pendiente.count }}'},{ x:'En Proceso',y:'{{ equipo.proceso.count }}'},{ x:'Finalizado',y:'{{ equipo.finalizado.count }}'}],
+                    {% else %}
+                        {% with totales=equipo|args:planificacion|args:desde|args:hasta|call:"totales_por_equipos_fecha_plan" %}
+                        data: [{x:'Pendiente',y:'{{ totales.pendiente }}'},{ x:'En Proceso',y:'{{ totales.proceso }}'},{ x:'Finalizado',y:'{{ totales.finalizado }}'}],
+                        {% endwith %}
+                    {% endif %}
+                },
+                {% endfor%}
+            ]
+        };
+        var datad = {
+            labels: ['Sin asignar', 'Pendientes', 'En proceso','Finalizadas'],
+            datasets: [{
+                data: [parseInt('{{ total_sinasignar.count }}'),
+                    parseInt('{{ total_pendientes.count }}'),
+                    parseInt('{{ total_enproceso.count }}'),
+                    parseInt('{{ total_finalizadas.count }}')],
+            }]
+        };
+        var dataactividades = {
+            labels: [
+                {% for equipo in equipos %}
+            '{{ equipo.nombre }}',
+                 {% endfor%}
+            ],
+            datasets: [
+                 {% for equipo in equipos %}
+                {
+                label: ['{{ equipo.nombre }}'],
+                {% if not planificacion and not desde and not hasta %}
+                    data: [{x:'{{ equipo.nombre }}',y:'{{ equipo.total_incidencias.count }}'}],
+                {% else %}
+                    {% with totalesincidencias=equipo|args:planificacion|args:desde|args:hasta|call:"totales_incidencias_fecha_plan" %}
+                    data: [{x:'{{ equipo.nombre }}',y:'{{ totalesincidencias }}'}],
+                    {% endwith %}
+                {% endif %}
+            },
+                {% endfor%}
+            ]
+        };
+
+        // Chart configuration
+        var configgeneral = {
+            type: 'bar',
+            data: datageneral,
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                    display: true,
+                    text: 'Estados por equipo'
+                },
+                    colorschemes: {
+                        scheme: 'brewer.Paired12'
+                    },
+                }
+            }
+        };
+        var configactividades = {
+            type: 'bar',
+            data: dataactividades,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        display: true,
+                    },
+                    y: {
+                        display: true,
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Requerimientos recibidos por equipos'
+                },
+                    colorschemes: {
+                        scheme: 'brewer.Paired12'
+                    },
+                }
+            }
+        };
+        var configd = {
+            type: 'doughnut',
+            data: datad,
+            options: {
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Resumen de requerimientos'
+                    },
+                    colorschemes: {
+                        scheme: 'brewer.Paired12'
+                    },
+
+                }
+            }
+
+        };
+
+        // Create the chart with the configuration
+        var general = new Chart(ctxgeneral, configgeneral);
+        var actividades = new Chart(ctxactividades, configactividades);
+        var detalleequipo = new Chart(ctxd, configd);
+    </script>
+{% endblock %}
+{% block subtitle %}
+    Requerimientos en cifras
+{% endblock %}
+
+{% block content_aux %}
+    <form method="GET" id="id_scrumform" class="form-row py-0">
+        <div class="col-md-4 col-lg-4 col-12 pe-md-2">
+            <label for=""><i class="fa fa-university"></i> Planificación: </label>
+            <select class="form-control select2" name="planificacion" id="planificacion">
+                <option value=""> Todos</option>
+                {% for plan in planificaciones %}
+                    <option value="{{ plan.id }}" {% if planificacion == plan.id %}selected{% endif %}>{{ plan.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4 col-lg-4 col-12 pe-md-2">
+            <label for=""><i class="fa fa-calendar"></i> Desde: </label>
+            <input type="date" class="form-control" name="desde" data-bs-toggle="tooltip" data-placement="left" id="desde" value="{{ desde }}" title="Desde"/>
+        </div>
+        <div class="col-md-6 col-lg-4 col-12 pe-lg-2">
+            <label for=""><i class="fa fa-calendar"></i> Hasta: </label>
+            <div class="input-group mb-2">
+                <input type="hidden" name="action" value="{{ action }}">
+                <input type="date" class="form-control" name="hasta" data-bs-toggle="tooltip" data-placement="left" id="hasta" value="{{ hasta }}" title="Hasta"/>
+                <div class="input-group-append">
+                    <button class="btn btn-primary-old" type="submit" id="button-addon2"><i class="fa fa-search"></i></button>
+                    {% if url_vars|realizo_busqueda %}
+                        <a title="Ver todo" href="{{ request.path }}?action=estadisticas" class="btn btn-default tr"><i class="fas fa-sync-alt"></i></a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="container">
+        <div class="row">
+
+            <div class="col-md-12">
+                <p><b>Total requerimientos: </b>{{ total_incidencias }} | <b>Días min. empleado: </b>{{ promedio_min_actividad.duracion.days }} |
+                <b>Días max. empleado: </b>{{ promedio_max_actividad.duracion.days  }}</p>
+            </div>
+            <div class="col-md-8">
+                <canvas id="general"></canvas>
+            </div>
+
+            <div class="col-md-4">
+                <canvas id="detalleequipo"></canvas>
+            </div>
+
+            <div class="col-md-12 col-lg-10 col-12 pe-md-2">
+                <canvas id="actividades"></canvas>
+            </div>
+        </div>
+
+
+    </div>
+
+
+{% endblock %}

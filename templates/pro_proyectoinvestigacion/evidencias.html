@@ -1,0 +1,583 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+{#    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>#}
+{#    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>#}
+{#    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>#}
+
+    <script type="text/javascript">
+        $(function() {
+            var filas_evidencias = 0;
+            var registro;
+            var secuenciaevidencia = 0;
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+
+            $(".subirevidencia").click(function() {
+                var idp = $(this).attr('idp');
+                var ida = $(this).attr('ida');
+                var retraso = $(this).attr('retraso');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'subirevidencia', 'idp': idp, 'ida': ida, 'retraso': retraso},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".paneltitlesubirevidencia").html(data.title);
+                            $("#descripcionactividad").html(data.descripcionactividad);
+
+                            lista_entregables = data.entregables;
+
+                            $('#entregable').empty().append('<option value="">---------</option>');
+                            for(ind in lista_entregables){
+                                $('#entregable').append('<option value="'+lista_entregables[ind].id+'">'+lista_entregables[ind].descripcion+'</option>');
+                            }
+
+
+                            $("#idactividad").val(ida);
+                            $("#idproyecto").val(idp);
+                            $("#retrasada").val(retraso);
+                            limpiarFormularioEvidencia();
+                            $("#itemspanelsubirevidencia").modal({backdrop:'static', width: '700px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".archivos").change(function () {
+                var cantidad = $(this).get(0).files.length;
+                $("#bgarchivorevidencia").html(cantidad.toString());
+            });
+
+            limpiarFormularioEvidencia = function (){
+                $("#entregable").val("").trigger("change");
+                $("#descripcionevidencia").val("");
+                $("#archivoevidencia").val("");
+                $("#bgarchivorevidencia").html("0");
+            };
+            
+            $("#itemspanelsubirevidencia .guardar").click(function () {
+                envioformularioreg("/pro_proyectoinvestigacion","subirevidencia", false);
+                return false;
+            });
+
+            $("#itemspanelsubirevidencia .cerrar").click(function () {
+                $('#itemspanelsubirevidencia').modal('hide');
+            });
+
+            $("#itemspanelsubirevidencia .cerrar2").click(function () {
+                $('#itemspanelsubirevidencia').modal('hide');
+            });
+
+            validarformularioevidencia = function (){
+                var validacion = true;
+
+                if($("#entregable").val()==''){
+                    smoke.alert("Seleccione el entregable de la actividad");
+                    return false;
+                }
+
+                if($("#archivoevidencia").get(0).files.length == 0){
+                    smoke.alert("Seleccione el archivo de la evidencia");
+                    return false;
+                }
+
+                if($("#descripcionevidencia").val().trim() == ''){
+                    smoke.alert("Ingrese una breve descripción de la evidencia");
+                    return false;
+                }
+
+                return validacion;
+            };
+            
+            envioformularioreg = function(url, action, destino){
+                if(action == 'subirevidencia')
+                    var valido = validarformularioevidencia();
+                else if(action == 'editevidencia')
+                    var valido = validarformularioeditevidencia();
+
+                if (valido){
+                    bloqueointerface();
+
+                    if(action == 'subirevidencia')
+                        var formdata = new FormData($("#formularioevidencia")[0]);
+                    else if(action == 'editevidencia')
+                        var formdata = new FormData($("#formularioevidenciaupdate")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action : action,
+                        url: url,
+                        data:  formdata,
+                        success: function(data) {
+                            if (data.result == 'ok') {
+                                if(action == 'subirevidencia' || action == 'editevidencia') {
+                                    //location.href="/pro_proyectoinvestigacion?action=evidenciasproyecto&id={{ proyecto.id|encrypt }}&";
+                                    location.reload();
+                                }
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }
+            };
+
+            $('#itemspanelmensajemodal .btn-aceptar').click(function () {
+                cerrarMsgModal();
+            });
+
+            $(".mostrarevidencias").click(function() {
+                var ida = $(this).attr('ida');
+                var desa = $(this).attr('desa');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'mostrarevidencias', 'ida': ida},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".paneltitlemostrarevidencias").html(data.title);
+                            $("#descripcionactividadevidencias").html("<strong>Actividad: </strong>"+data.descripcionactividad);
+                            $("#detalle_evidencias").empty();
+
+                            lista_evidencias = data.evidencias;
+                            secuenciaevidencia = 0;
+                            for(ind in lista_evidencias){
+                                secuenciaevidencia ++;
+                                filas_evidencias ++;
+
+                                control_eliminar = '';
+                                control_editar = '';
+                                idreg = lista_evidencias[ind].id;
+
+                                if(lista_evidencias[ind].estadocod == "1" || lista_evidencias[ind].estadocod == "4"){
+                                    control_editar = '<a href="javascript:;" class="btn btn-tini btn-info editarevidencia tu" idreg="'+idreg+'" ent="'+lista_evidencias[ind].entregable+'" des="'+lista_evidencias[ind].descripcion+'" actividad="'+desa+'" title="Editar"><i class="fa fa-edit"></i></a>';
+                                    control_eliminar = '<a href="javascript:;" class="btn btn-tini btn-danger eliminarevidencia tu" idfila="'+filas_evidencias.toString()+'" ida="'+ida+'" idreg="'+idreg+'" des="'+lista_evidencias[ind].descripcion+'"  title="Eliminar"><i class="fa fa-remove"></i></a>';
+                                }
+
+                                filatabla = '<tr id="filaevidencia_'+filas_evidencias.toString()+'">'+
+                                            '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                                            '<td style="text-align: justify">'+lista_evidencias[ind].entregable+'</td>'+
+                                            '<td style="text-align: justify">'+lista_evidencias[ind].descripcion+'</td>'+
+                                            '<td style="text-align: center">'+lista_evidencias[ind].fecha+'</td>'+
+                                            '<td style="text-align: center"><a href="'+lista_evidencias[ind].archivo+'" target="_blank" class="btn btn-warning btn-tini tu" title="Descargar Archivo"><i class="fa fa-arrow-down"></i> </a></td>'+
+                                            '<td style="text-align: center">'+lista_evidencias[ind].retraso+'</td>'+
+                                            '<td style="text-align: center"><span class="label label-'+lista_evidencias[ind].colorestado+'">'+lista_evidencias[ind].estado+'</span></td>'+
+                                            '<td style="text-align: justify">'+lista_evidencias[ind].observacion+'</td>'+
+                                            '<td style="text-align: center">'+control_editar+'</td>'+
+                                            '<td style="text-align: center">'+control_eliminar+'</td>'+
+                                            '</tr>';
+                                $("#detalle_evidencias").append(filatabla);
+
+                                $(".editarevidencia").unbind("click.editarevidencia");
+                                $(".editarevidencia").bind("click.editarevidencia", editarEvidencia);
+
+                                $(".eliminarevidencia").unbind("click.eliminarevidencia");
+                                $(".eliminarevidencia").bind("click.eliminarevidencia", eliminarEvidencia);
+
+                            }
+                            $("#itemspanelmostrarevidencias").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            editarEvidencia = function() {
+                var idevid = $(this).attr('idreg');
+                var entregable = $(this).attr('ent');
+                var descripcion = $(this).attr('des');
+                var actividad = $(this).attr('actividad');
+
+                $("#idevidencia").val(idevid);
+                $("#descripcionactividadedit").html(actividad);
+                $("#entregableedit").html(entregable);
+                $("#descripcionevidenciaupdate").val(descripcion);
+
+                $("#archivoevidenciaupdate").val("");
+                $("#bgarchivorevidenciaupdate").html("0");
+
+                $("#itemspanelactualizarevidencia").modal({backdrop:'static', width: '700px'}).modal('show');
+            };
+
+            $("#itemspanelactualizarevidencia .guardar").click(function () {
+                envioformularioreg("/pro_proyectoinvestigacion","editevidencia", false);
+                return false;
+            });
+
+            $("#itemspanelactualizarevidencia .cerrar").click(function () {
+                $('#itemspanelactualizarevidencia').modal('hide');
+            });
+
+            $("#itemspanelactualizarevidencia .cerrar2").click(function () {
+                $('#itemspanelactualizarevidencia').modal('hide');
+            });
+
+            $(".archivosupdate").change(function () {
+                var cantidad = $(this).get(0).files.length;
+                $("#bgarchivorevidenciaupdate").html(cantidad.toString());
+            });
+
+            validarformularioeditevidencia = function (){
+                var validacion = true;
+
+                /*if($("#archivoevidenciaupdate").get(0).files.length == 0){
+                    smoke.alert("Seleccione el archivo de la evidencia");
+                    return false;
+                }*/
+
+                if($("#descripcionevidenciaupdate").val().trim() == ''){
+                    smoke.alert("Ingrese una breve descripción de la evidencia");
+                    return false;
+                }
+
+                return validacion;
+            };
+
+            eliminarEvidencia = function() {
+                registro = $(this);
+                descripcion = $(registro).attr("des");
+
+                //showMsgAlertModal("Proceso finalizado", "El proceso de envío de e-mail ha finalizado con éxito después de un proceso de ims de 00:45:52.2 msonds", "success");
+
+                showMsgConfirmationModal ("Eliminar Evidencia", "¿Está seguro de eliminar la evidencia del entregable: "+descripcion+"?", "warning", "Si", "No");
+            };
+
+            /*$('#itemspanelmsgalertmodal .btn-accept-am').click(function () {
+                closeMsgAlertModal();
+            });*/
+
+            $('#itemspanelmsgconfirmationmodal .btn-positive-cm').click(function () {
+                var idreg = $(registro).attr("idreg");
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_proyectoinvestigacion",
+                    data: {'action': 'delevidencia', 'ide': idreg},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            closeMsgConfirmationModal ();
+                            actualizarPantallaEvidencias(parseInt(data.totalevidencias));
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $('#itemspanelmsgconfirmationmodal .btn-negative-cm').click(function () {
+                closeMsgConfirmationModal ();
+            });
+
+            $("#itemspanelmostrarevidencias .cerrar").click(function () {
+                cerrarMostrarEvidencias();
+            });
+
+            $("#itemspanelmostrarevidencias .cerrar2").click(function () {
+                cerrarMostrarEvidencias();
+            });
+
+            cerrarMostrarEvidencias = function (){
+                $('#itemspanelmostrarevidencias').modal('hide');
+            };
+
+            actualizarPantallaEvidencias = function (totalevidencias){
+                var idf = $(registro).attr("idfila");
+                var ida = $(registro).attr("ida");
+                $("#filaevidencia_"+idf).remove();
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                $("#bdg_totalevidencias_"+ida).html(totalevidencias);
+
+                if(totalevidencias == 0){
+                    $("#btn_mostrarevidencias_"+ida).remove();
+                    $("#bdg_totalevidencias_"+ida).removeClass("badge badge-info").addClass("badge badge-important");
+                    cerrarMostrarEvidencias();
+                }
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class="alert alert-info" style="text-align: justify">
+        <strong>{{ proyecto.titulo }}</strong>
+    </div>
+
+    <div class="row-fluid" id="detallecronograma">
+        <div class="accordion" id="accordion2">
+        {% for objetivo in objetivos %}
+            <div class="accordion-group">
+                <div class="accordion-heading" style="background-color: whitesmoke">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapse_{{ objetivo.id }}">
+                        {{ objetivo.descripcion }}
+                        <span class="badge badge-info tu" title="Total Actividades" id="bdg_totalactividades_{{ objetivo.id }}">{{ objetivo.total_actividades }}</span>
+                        <span class="label label-success tu" title="Total % ponderación" id="lbl_totalobjetivo_{{ objetivo.id }}">{{ objetivo.total_ponderaciones }}</span>
+                    </a>
+                </div>
+                <div id="collapse_{{ objetivo.id }}" class="accordion-body collapse">
+                    <div class="accordion-inner" style="padding: 5px">
+                        <table class="table table-bordered" id="tbrecurso_{{ objetivo.id }}">
+                            <thead>
+                                <tr>
+                                    <th style="width: 31%; text-align: center">Actividad</th>
+                                    <th style="width: 7%; text-align: center">Ponderación (%)</th>
+                                    <th style="width: 7%; text-align: center">Fecha Inicio</th>
+                                    <th style="width: 7%; text-align: center">Fecha Fin</th>
+                                    <th style="width: 8%; text-align: center">Estado</th>
+                                    <th style="width: 7%; text-align: center">Total Evidencias</th>
+                                    <th style="width: 5%; text-align: center">Evidencias</th>
+                                    <th style="width: 7%; text-align: center">% Ejecución</th>
+                                    <th style="width: 16%; text-align: center">Observaciones</th>
+                                    <th style="width: 5%;text-align: center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detalle_cronograma_{{ objetivo.id }}">
+                                {% for detalle in objetivo.cronograma_actividades %}
+                                    <tr>
+                                        <td style="text-align: justify">{{ detalle.id }}-{{ detalle.actividad }}</td>
+                                        <td style="text-align: center">{{ detalle.ponderacion }}</td>
+                                        <td style="text-align: center">{{ detalle.fechainicio|date:"Y-m-d" }}</td>
+                                        <td style="text-align: center">{{ detalle.fechafin|date:"Y-m-d" }}</td>
+                                        <td style="text-align: center">
+                                            <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span id="bdg_totalevidencias_{{ detalle.id|encrypt }}" class="badge badge-{% if detalle.total_evidencias > 0 %}info{% else %}important{% endif %}">{{ detalle.total_evidencias }}</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            {% if detalle.total_evidencias > 0 %}
+                                                <a href="javascript:;" id="btn_mostrarevidencias_{{ detalle.id|encrypt }}" ida="{{ detalle.id|encrypt }}" desa="{{ detalle.actividad }}" class="btn btn-warning mostrarevidencias btn-mini tu" title="Mostrar Evidencias"><i class="fa fa-table"></i></a>
+                                            {% endif %}
+                                        </td>
+                                        <td style="text-align: center">{{ detalle.porcentajeejecucion|floatformat:2 }}</td>
+                                        <td style="text-align: justify">{{ detalle.observacioninv }}</td>
+                                        <td style="text-align: center">
+                                            {% if detalle.puede_subir_evidencias %}
+                                                <div class="btn-group" style="text-align: left">
+                                                    <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span>
+                                                    </a>
+                                                    <ul class="dropdown-menu pull-right">
+                                                        <li><a href="javascript:;" class="subirevidencia" idp="{{ proyecto.id|encrypt }}" ida="{{ detalle.id|encrypt }}" retraso="NO"><i class="fa fa-upload"></i> Subir Evidencia</a></li>
+                                                    </ul>
+                                                </div>
+                                            {% endif %}
+
+                                            {% if detalle.puede_subir_evidencias_retraso %}
+                                                <div class="btn-group" style="text-align: left">
+                                                    <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span>
+                                                    </a>
+                                                    <ul class="dropdown-menu pull-right">
+                                                        <li><a href="javascript:;" class="subirevidencia" idp="{{ proyecto.id|encrypt }}" ida="{{ detalle.id|encrypt }}" retraso="SI"><i class="fa fa-upload"></i> Subir Evidencia con Retraso</a></li>
+                                                    </ul>
+                                                </div>
+                                            {% endif %}
+
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <td colspan="1"><strong>TOTAL PONDERACIÓN</strong></td>
+                                <td style="text-align: center"><strong><span id="lbl_totalponderacion_{{ objetivo.id }}">{{ objetivo.total_ponderaciones }}</span></strong></td>
+                                <td colspan="8"></td>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelsubirevidencia" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitlesubirevidencia">Título del Modal</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodysubirevidencia">
+            <form id="formularioevidencia" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                <input type='hidden' name='action' value='subirevidencia'/>
+                <input type='hidden' name='idactividad' id='idactividad' value=''/>
+                <input type='hidden' name='retrasada' id='retrasada' value=''/>
+                <input type='hidden' name='idproyecto' id='idproyecto' value=''/>
+                <table class="table table-bordered" >
+                    <tbody>
+                        <tr>
+                            <td style="width: 20%;">Actividad:</td>
+                            <td colspan="3" style="text-align: justify; width: 80%;"><span style="color: royalblue" id="descripcionactividad"></span></td>
+                        </tr>
+                        <tr>
+                            <td>Entregable:</td>
+                            <td colspan="3">
+                                <select id="entregable" name="entregable" style="width: 95%">
+                                    <option value="" selected>---------</option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Archivo:</td>
+                            <td colspan="3">
+                                <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgarchivorevidencia" class="badge">0</span><input type="file" style="color: transparent" class="archivos" id="archivoevidencia" name="archivoevidencia" hidden> </label>
+                                <small class="form-text text-muted">Tamaño Maximo permitido 10Mb</small>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Descripción:</td>
+                            <td colspan="3"><textarea style="width: 95%; text-transform: none;" cols="40" id="descripcionevidencia" name="descripcionevidencia" rows="3"></textarea></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </form>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelactualizarevidencia" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitleactualizarevidencia">Editar Evidencia</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodyactualizarevidencia">
+            <form id="formularioevidenciaupdate" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                <input type='hidden' name='action' value='editevidencia'/>
+                <input type='hidden' name='idactividad' id='idactividad' value=''/>
+                <input type='hidden' name='idproyecto' id='idproyecto' value=''/>
+                <input type='hidden' name='idevidencia' id='idevidencia' value=''/>
+                <table class="table table-bordered" >
+                    <tbody>
+                        <tr>
+                            <td style="width: 20%;">Actividad:</td>
+                            <td colspan="3" style="text-align: justify; width: 80%;"><span style="color: royalblue" id="descripcionactividadedit"></span></td>
+                        </tr>
+                        <tr>
+                            <td>Entregable:</td>
+                            <td colspan="3">
+                                <span id="entregableedit"></span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Archivo:</td>
+                            <td colspan="3">
+                                <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgarchivorevidenciaupdate" class="badge">0</span><input type="file" style="color: transparent" class="archivosupdate" id="archivoevidenciaupdate" name="archivoevidenciaupdate" hidden> </label>
+                                <small class="form-text text-muted">Tamaño Maximo permitido 10Mb</small>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Descripción:</td>
+                            <td colspan="3"><textarea style="width: 95%; text-transform: none;" cols="40" id="descripcionevidenciaupdate" name="descripcionevidenciaupdate" rows="3"></textarea></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </form>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+            <a href="javascript:;" class="btn btn-danger cerrar"> Cancelar</a>
+        </div>
+    </div>
+
+
+
+    <div class="modal fade static"  data-keyboard="false" id="itemspanelmostrarevidencias" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h4 class="paneltitlemostrarevidencias">Lista Resolución</h4></td>
+                    <td><a href="javascript:;" title="Cerrar" class="btn btn-danger btn-mini pull-right cerrar2"><i class="fa fa-remove"></i></a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbodymostrarevidencias">
+            <div id="descripcionactividadevidencias" style="text-align: justify" class="alert alert-info" role="alert">
+                Texto del mensaje
+            </div>
+            <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbdetalleevidencias">
+                <thead>
+                <tr>
+                    <th style="width: 3%; text-align: center;">#</th>
+                    <th style="width: 27%; text-align: center;">Entregable</th>
+                    <th style="width: 20%; text-align: center;">Descripción</th>
+                    <th style="width: 10%; text-align: center;">Fecha</th>
+                    <th style="width: 10%; text-align: center;">Archivo</th>
+                    <th style="width: 10%; text-align: center;">Retraso</th>
+                    <th style="width: 10%; text-align: center;">Estado</th>
+                    <th style="width: 10%; text-align: center;">Observaciones</th>
+                    <th style="width: 5%; text-align: center;"></th>
+                    <th style="width: 5%; text-align: center;"></th>
+                </tr>
+                </thead>
+                <tbody id="detalle_evidencias">
+
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-footer" style="text-align: right">
+            <a href="javascript:;" class="btn btn-info cerrar"> Cerrar</a>
+        </div>
+    </div>
+
+
+
+{% endblock %}

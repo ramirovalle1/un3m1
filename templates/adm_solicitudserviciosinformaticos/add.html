@@ -1,0 +1,338 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        var lista_items1 = [];
+        $(function () {
+
+            var app = {
+                add: function (item) {
+                    if (!this.existe(item)) {
+                        lista_items1.push(item);
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'success',
+                            title: 'Producto agregado a la solicitud',
+                            showConfirmButton: false,
+                            timer: 6000
+                        })
+                    }
+                    this.presentar();
+                    return true;
+                },
+                existe: function (item) {
+                    for (var i in lista_items1) {
+                        if (item.id == lista_items1[i].id) {
+                            totalcantidad = parseFloat(lista_items1[i].cantidad) + parseFloat(item.cantidad);
+                            total = numericoconvertir(totalcantidad, 0, 1000000, 4);
+                            lista_items1[i].cantidad = total;
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                type: 'success',
+                                title: `Se adiciono ${item.cantidad}`,
+                                showConfirmButton: false,
+                                timer: 6000
+                            })
+                            return true;
+                        }
+                    }
+                    return false;
+                },
+                presentar: function () {
+                    $('#tdetalle').html('');
+                    for (var item of
+                        lista_items1
+                        ) {
+                        var tr = '<tr>';
+                        tr += '<td style="text-align: center">' + item.codigo + '</td>';
+                        tr += '<td style="text-align: center">' + item.cuentacontable + '</td>';
+                        tr += '<td style="text-align: center">' + item.nombre + '</td>';
+                        tr += '<td style="text-align: center">' + item.cantidad + '</td>';
+                        tr += '<td style="text-align: center">' + item.unidadmedida + '</td>';
+                        tr += '<td style="text-align: center">' +
+                            '<a data-id="' + item.id + '" class="btn btn-mini btn-danger delespecie"><i style="color:#ffffff"  class="fa fa-trash"></i> Quitar</a>' +
+                            '</td>';
+                        tr += '</tr>';
+                        $('#tdetalle').append(tr);
+                    }
+                },
+            }
+
+            const tablaServicios = $("#listaProductos");
+
+            tablaServicios.on("click", "tbody tr td .delespecie", function () {
+                var id = $(this).attr("data-id");
+                for (var i in lista_items1) {
+                    if (parseInt(lista_items1[i].id) == id) {
+                        lista_items1.splice(i, 1);
+                        app.presentar();
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'warning',
+                            title: 'Producto quitado de la solicitud',
+                            showConfirmButton: false,
+                            timer: 6000
+                        })
+                        return true;
+                    }
+                }
+            });
+
+            $('#btn-agregar').on('click', function (e) {
+                e.preventDefault();
+                var item = {};
+                var option = $('#id_producto').val();
+                var cantidad = parseFloat($('#id_cantidad').val());
+                var stock = parseFloat($('#id_stock').val());
+                var codigo = $('#idproducto').val();
+                var nombre = $('#idproductonombre').val();
+                var unidadmedida = $('#idunidadmedida').val();
+                var cuentacontable = $('#idcuentacontable').val();
+                if (option !== null) {
+                    if (cantidad > 0) {
+                        item.id = option;
+                        item.codigo = codigo;
+                        item.nombre = nombre;
+                        item.stock = stock;
+                        item.cantidad = cantidad;
+                        item.unidadmedida = unidadmedida;
+                        item.cuentacontable = cuentacontable;
+                        app.add(item);
+                    } else {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            type: 'error',
+                            title: 'Cantidad debe ser mayor a 0',
+                            showConfirmButton: false,
+                            timer: 6000
+                        })
+                    }
+                } else {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        type: 'error',
+                        title: 'Debe seleccionar un producto',
+                        showConfirmButton: false,
+                        timer: 6000
+                    })
+                }
+            });
+
+            $("#id_cantidad").blur(function () {
+                numerico($(this), 0, 1000000, 4);
+            });
+
+            $("#id_producto").val(0).trigger("change");
+
+            ItemsDisplay = function (item) {
+                if (item.name) {
+                    return $('<span>' + item.name + '</span>');
+                } else {
+                    return '-------------------------------------------';
+                }
+            };
+
+            $("#id_producto").select2({
+                placeholder: "Buscar Productos",
+                width: '100%',
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `{{ request.path }}?action=buscarproductos&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                bloqueointerface();
+                $.ajax({
+                    type: 'GET',
+                    url: '{{ request.path }}',
+                    data: {'action': 'consultarproducto', 'id': evt.params.data.id},
+                    success: function (data) {
+                        $.unblockUI();
+                        var object = JSON.parse(data)
+                        if (object.state) {
+                            var modelo = object.modelo;
+                            $('#id_stock').val(object.stock)
+                            $('#idproductonombre').val(modelo.descripcion)
+                            $('#idproducto').val(modelo.codigo)
+                            $('#idunidadmedida').val(object.unidadmedida)
+                            $('#idcuentacontable').val(object.cuentacontable)
+                        }
+                    }
+                })
+                $('#id_cantidad').val('0.0000')
+            });
+
+            $("#id_departamento, #id_responsable, #id_numerodocumento, #id_descripcion").addClass("validate[required]");
+            $("#id_fechaoperacion").datepicker({format: "dd-mm-yyyy"}).on("changeDate", function (ev) {
+                $(this).datepicker("hide");
+            });
+
+            $("#id_departamento").change(function () {
+                var id = $(this).val();
+                $("#id_responsable").html('').append('<option selected="selected" value="">---------</option>');
+                if (id) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_solicitudproductos",
+                        data: {"action": "buscarresponsable", "id": id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (x = 0; x < data.lista.length; x++) {
+                                    elemento = data.lista[x];
+                                    $("#id_responsable").append('<option value="' + elemento[0] + '">' + elemento[1] + '</option>');
+                                }
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+            numericoconvertir = function (elemento, min, max, decimales) {
+                var nvalor = 0;
+                var valor = elemento;
+                if (valor == "") {
+                    valor = parseFloat(0).toFixed(decimales);
+                    elemento.val(valor);
+                    return;
+                }
+                if (isNaN(valor)) {
+                    nvalor = parseFloat(min).toFixed(decimales);
+                    elemento.val(nvalor);
+                    return;
+                }
+                if (valor < min) {
+                    nvalor = parseFloat(min).toFixed(decimales);
+                    elemento.val(nvalor);
+                    return;
+                }
+                if (max > 0 && valor > max) {
+                    nvalor = parseFloat(max).toFixed(decimales);
+                    elemento.val(nvalor);
+                    return;
+                }
+                nvalor = parseFloat(valor).toFixed(decimales);
+                return nvalor;
+            };
+
+        });
+
+        function validarstock(event) {
+            var evento = event || window.event;
+            var valor = parseFloat($(evento.target).val()) || 1;
+            $(evento.target).val(valor);
+            var stock = parseFloat($('#id_stock').val() || 1);
+            if (valor > stock) {
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    type: 'error',
+                    title: 'Cantidad supera el stock',
+                    showConfirmButton: false,
+                    timer: 6000
+                })
+                $(evento.target).val(stock);
+            }
+        }
+
+
+    </script>
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block atras %}/adm_solicitudproductos{% endblock %}
+{% block formaction %}/adm_solicitudproductos{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block formdestination %}/adm_solicitudproductos{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <table class="table">
+            <thead>
+            <tr>
+                <td width="80%">
+                    <label><b>Productos:</b></label>
+                    <input type="hidden" id="idproducto" value="0">
+                    <input type="hidden" id="idproductonombre" value="">
+                    <input type="hidden" id="idcuentacontable" value="">
+                    <input type="hidden" id="idunidadmedida" value="">
+                    <select class="form-control" style="width: 90%"
+                            id="id_producto" select2search="true"
+                            data-placeholder="Seleccione Productos">
+                    </select>
+                </td>
+                <td>
+                    <label><b>Stock:</b></label>
+                    <input type="text" id="id_stock" value="0.0000" disabled class="imp-moneda">
+                </td>
+                <td>
+                    <label><b>Cantidad:</b></label>
+                    <input type="number" id="id_cantidad" value="0.0000" class="imp-moneda" step="0.0001">
+                </td>
+                <td width="10%"><br>
+                    <a class="btn btn-info tr" title="Adicionar Producto" style="color: #FFFFFF;"
+                       id="btn-agregar"> <i class="fa fa-plus-circle"></i> Adicionar</a>
+                </td>
+            </tr>
+            </thead>
+        </table>
+        <table id="listaProductos" class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th style="width: 200px; text-align: center">C&oacute;digo</th>
+                <th style="text-align: center">Cuenta Contable</th>
+                <th style="text-align: center">Descripci&oacute;n</th>
+                <th style="width: 100px; text-align: center">Cantidad</th>
+                <th style="width: 100px; text-align: center">Unidad de Medida</th>
+                <th style="width: 40px; text-align: center"><i class="fa fa-cog"></i></th>
+            </tr>
+            </thead>
+            <tbody id="tdetalle" class="datatable">
+            <tr>
+                <td colspan="10">NO EXISTEN PRODUCTOS EN LA SALIDA</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='add'/>
+{% endblock %}
+{% block formback %}/adm_solicitudproductos{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

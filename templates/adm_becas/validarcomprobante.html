@@ -1,0 +1,178 @@
+{% load sga_extras %}
+{% load humanize %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script>
+        $(function(){
+            var ec = '{{ comprobante.estadorevisonfin }}';
+
+            $("#estadocumplimiento").addClass("validate[required]");
+
+            $('#estadocumplimiento').change(function() {
+                var control = $(this);
+                $("#observacion").val("");
+                valor = control.val();
+
+                if((valor == '2' || valor =='')){
+                    $("#observacion").prop('disabled', true).removeClass("validate[required]");
+                }
+                else{
+                    $("#observacion").prop('disabled', false).addClass("validate[required]");
+                }
+            });
+
+            if(ec == '2' || ec == '3' || ec == '6')
+                $("#estadocumplimiento").val(ec).trigger("change");
+
+            {% if not permite_modificar %}
+                $("#itemspanelvalidarcomprobanteguardar").css('display','none');
+            {% else %}
+                $("#itemspanelvalidarcomprobanteguardar").css('display','inline-block');
+            {% endif %}
+
+
+            $('#itemspanelvalidarcomprobanteguardar').click(function () {
+                $("#formulario").validationEngine('attach',{ scroll: false });
+                var valid = $("#formulario").validationEngine('validate', { scroll: false });
+
+                if(valid){
+                    bloqueointerface();
+                    var formdata = new FormData($("#formulario")[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_becas",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                location.href = "/adm_becas?estadodocumento={{ estadodocumento }}&estadocontrato={{ estadocontrato }}&estadocumplimiento={{ estadocumplimiento }}&estadocomprobante={{ estadocomprobante }}";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            $('.nav-tabs a').on('shown.bs.tab', function(event){
+                var x = $(event.target).parent().index();        // active tab
+                if(x == 0)
+                    $("#itemspanelvalidarcomprobanteguardar").css('display','inline-block');
+                else
+                    $("#itemspanelvalidarcomprobanteguardar").css('display','none');
+            });
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class="tabbable">
+        <ul class="nav nav-tabs">
+            <li class="active"><a class="tabs" href="#1" data-toggle="tab"><i class="fa fa-check-square"></i> Revisión y Validación</a></li>
+            {% if permite_modificar %}
+                <li><a class="tabs" href="#2" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Comprobante de Venta</a></li>
+            {% endif %}
+        </ul>
+        <div class="tab-content" style="overflow: inherit">
+            <div class="tab-pane active" id="1">
+                <table class="table table-bordered" >
+                    <thead>
+                        <tr>
+                            <th style="vertical-align: middle">Alumno:</th>
+                            <td>{{ beca.solicitud.inscripcion.persona.nombre_completo_inverso }}</td>
+                            <th style="vertical-align: middle;">N°Solicitud:</th>
+                            <td><span class="label label-success">{{ beca.solicitud.id }}</span></td>
+                        </tr>
+                        <tr>
+                            <th>Tipo Beca:</th>
+                            <td><span class="label label-info">{{ beca.solicitud.becatipo.nombre|upper }}</span></td>
+                            <th>Fecha Asignación</th>
+                            <td>{{ beca.fecha_creacion|date:"Y-m-d" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Monto Asignado Beca:</th>
+                            <td colspan="3">$ {{ beca.montobeneficio|floatformat:2|intcomma }}</td>
+                        </tr>
+                        <tr>
+                            <th>Ruc Proveedor: </th>
+                            <td>{{ comprobante.rucproveedor }}</td>
+                            <th>Total Comprobante: </th>
+                            <td>$ {{ comprobante.total|floatformat:2|intcomma }}</td>
+                        </tr>
+                    </thead>
+                </table>
+                <table class="table table-bordered" >
+                    <thead>
+                    <tr>
+                        <th style="width: 50%; text-align: center">Tipo</th>
+                        <th style="width: 30%; text-align: center">Archivo</th>
+                        <th style="width: 20%; text-align: center">Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                        <td>Comprobante de Venta:</td>
+                        <td style="text-align: center">
+                            {% if comprobante.archivo  %}
+                                <a target="_blank" href="{{ comprobante.archivo.url }}" class="btn btn-success tu" title="Descargar"><i class="fa fa-download"></i> Descargar</a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            {% if not comprobante.archivo  %}
+                                <span class="label label-warning">NO CARGADO</span>
+                            {% else %}
+                                <span class="label label-{% if comprobante.estadorevisionfin == 1 %}info{% elif comprobante.estadorevisionfin == 2 %}success{% elif comprobante.estadorevisionfin == 3 or comprobante.estadorevisionfin == 6 %}important{% else %}warning{% endif %}">{{ comprobante.get_estadorevisionfin_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+                {% if permite_modificar %}
+                    <form name="formulario" id="formulario">
+                        <table class="table table-bordered" >
+                            <tbody>
+                                <tr>
+                                    <td>Estado:<input type='hidden' name='id' id='id' value='{{ idb }}' />
+                                    <input type='hidden' name='action' value='validarcomprobante' /></td>
+                                    <td>
+                                        <select id="estadocumplimiento" name="estadocumplimiento" style="width: 200px">
+                                            <option value="">---------</option>
+                                            <option value="2">VALIDADO</option>
+                                            <option value="3">RECHAZADO</option>
+                                            <option value="6">RECHAZADO X INCUMPLIMIENTO</option>
+                                        </select><div class="help-text"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Observaciones:</td>
+                                    <td colspan="3">
+                                        <textarea id="observacion" name="observacion" value="" style="width: 95%; text-transform: uppercase"></textarea><div class="help-text"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                {% endif %}
+            </div>
+            {% if permite_modificar %}
+                <div class="tab-pane" id="2">
+                    <iframe border=0 frameborder=0 height=400px width=820 src="{{ comprobante.archivo.url }}"></iframe>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

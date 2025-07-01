@@ -1,0 +1,371 @@
+{% extends "pro_actividadestutorpracticas/basetutor.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    {% if listadoregistros %}
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/dataTables.buttons.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.bootstrap.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.colVis.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.flash.min.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.html5.min.js"></script>
+    {% endif %}
+    <link href="https://gitcdn.github.io/bootstrap-toggle/2.2.2/css/bootstrap-toggle.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/2.5.0/jszip.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/pdfmake.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/vfs_fonts.js"></script>
+    <script type="text/javascript" src="/static/js/bootstrap-filestyle.min.js?v=1.0.0"></script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.0/dist/leaflet.css"/>
+    <link rel="stylesheet" href="/static/css/leaflet/leaflet1.css?0.1"/>
+    <link rel="stylesheet" href="/static/css/leaflet/leaflet-search.css"/>
+    <link rel="stylesheet" href="/static/css/leaflet/markercluster/MarkerCluster.css"/>
+    <link rel="stylesheet" href="/static/css/leaflet/markercluster/MarkerCluster.Default.css"/>
+    <script src="https://unpkg.com/leaflet@1.3.0/dist/leaflet.js"></script>
+    <script src="/static/css/leaflet/leaflet-search.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@v0.74.0/dist/L.Control.Locate.min.js"
+            charset="utf-8"></script>
+    <script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/Leaflet.fullscreen.min.js'></script>
+    <link href='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/leaflet.fullscreen.css'
+          rel='stylesheet'/>
+    <style>
+        #nav-footer {
+            display: none;
+        !important;
+        }
+        .select2-container {
+            margin-top: 10px;
+        }
+    </style>
+
+    <script>
+
+        $(function () {
+            var elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+            elems.forEach(function (html) { var switchery = new Switchery(html, {size: 'small', color: '#2f96b4'}); });
+
+            $("select").select2({minimumResultsForSearch: 5, width: '100%'});
+
+            $('#id_carrera').change(function () {
+                $('#id_docente').empty().append('<option value="0">SELECCIONE UN DOCENTE</option>').val(0).trigger("change");
+                var control = $(this);
+                var id = $(this).val();
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {'action': 'listadodocentes', 'id': id},
+                    success: function (data) {
+                        if (data.state == true) {
+                            for (elemento in data.result) {
+                                $('#id_docente').append('<option value="' + data.result[elemento]['id'] + '">' + data.result[elemento]['text'] + '</option>');
+                            }
+                        } else {
+                            control.val(0).trigger("change");
+                            alertaDanger(data.mensaje);
+                        }
+                        $.unblockUI();
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        control.val(0).trigger("change");
+                        alertaDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+             });
+
+            var fechaDiv = document.getElementById("fieldest_fecha");
+            $('#check_fecha').change(function() {
+                var check_fecha = $('#check_fecha').is(':checked');
+                fechaDiv.style.display = check_fecha ? "block" : "none";
+            });
+
+        });
+    </script>
+
+    <script type="text/javascript">
+
+        var map;
+        var lyrHEAT;
+
+        $(function () {
+            var map = new L.Map('map', {fullscreenControl: {pseudoFullscreen: false}}).setView([48.86, 2.35], 12);
+            map.on('fullscreenchange', function () {
+                if (map.isFullscreen()) {
+                    console.log('Abierto');
+                } else {
+                    console.log('Cerrado');
+                }
+            });
+
+            map.addLayer(new L.TileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'));
+            var grupo = L.featureGroup().addTo(map).on("click", groupClick);
+            var markers = new L.MarkerClusterGroup();
+            var marker, test;
+            var marker_lista = [];
+            navigator.geolocation.getCurrentPosition(function (position) {
+                map.setView([-1.574876, -78.636631], 6);
+            }, function (err) {
+                alertaInfo('Active la ubicación de esta página, si usted ha denegado el acceso en su navegador para rastrear su ubicación\n vuelva a activarla ingresando a \n Configuración > Privacidad > Ubicación\n y permita el acceso a este sitio.', '', 'error');
+            });
+
+            function groupClick(event) {
+                console.log("Click " + event.layer.test);
+            }
+
+            $('#actualizarMapadocente').on('click', function () {
+                bloqueointerface();
+                var docente = $('#id_docente').val();
+                var carrera = $('#id_carrera').val();
+                var check_fecha = $('#check_fecha').is(':checked');
+                var fecha;
+                if (check_fecha){ fecha = $('#id_fecha').val(); }
+                if (parseInt(docente) > 0 ) {
+                    $.ajax({
+                        type: "GET",
+                        url: "{{ request.path }}",
+                        data: {
+                            'action': 'viewpersonaubicacion',
+                            'docente': docente,
+                            'carrera': carrera,
+                            'check_fecha': check_fecha,
+                            'fecha': fecha,
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === 'ok') {
+                                var object = JSON.parse(data.listado);
+                                $('.tbdetalle').html(data.data);
+                                var coordsCliente = object;
+                                for (var i = 0; i < marker_lista.length; i++) {
+                                    map.removeLayer(marker_lista[i]);
+                                }
+                                if (markers) {
+                                    map.removeLayer(markers);
+                                }
+                                markers = new L.MarkerClusterGroup();
+                                marker_lista = []
+                                coordsCliente.forEach(function (valor, indice, array) {
+                                    var eEmpresa = 'Sin empresa asignada';
+                                    var eLatitud = -2.146283381314332; //Ubicación unemi
+                                    var eLongitud = -79.60111797765467; //Ubicación unemi
+                                    if (valor.asignacionempresapractica__ubicacionempresapractica__latitud !== null){
+                                        eLatitud = valor.asignacionempresapractica__ubicacionempresapractica__latitud;
+                                        eLongitud = valor.asignacionempresapractica__ubicacionempresapractica__longitud;
+                                    }
+                                    if (valor.asignacionempresapractica__nombre !== null){
+                                        eEmpresa = valor.asignacionempresapractica__nombre;
+                                    }
+                                    const eFecha = valor.fecha ? `<b>Fecha:</b> ${valor.fecha}<br>` : '';
+                                    const eHora = valor.fecha ? `<b>Hora:</b> ${valor.hora}` : '';
+                                    marker = L.marker([eLatitud, eLongitud]).bindPopup(`<b><i class="fa fa-user"></i> ${valor.inscripcion__persona__apellido1} ${valor.inscripcion__persona__apellido2} ${valor.inscripcion__persona__nombres}</b><br>
+                                                                                            <b>Lugar:</b>  ${valor.asignacionempresapractica__canton__nombre} / ${valor.asignacionempresapractica__canton__provincia__nombre} / ${valor.asignacionempresapractica__canton__provincia__pais__nombre} <br>
+                                                                                            <b>Empresa:</b> ${eEmpresa}<br>
+                                                                                            <b>Carrera:</b> ${valor.inscripcion__carrera__nombre}<br>
+                                                                                            ${eFecha}${eHora}`);
+                                    {#<br><a href="javascript:void('0');" class="btn btn-danger btn-mini" style="color: #ffffff" onclick="resetearLocalidad('${valor.id}', '${valor.inscripcion__persona__apellido1} ${valor.inscripcion__persona__apellido2} ${valor.inscripcion__persona__nombres}', '${valor.asignacionempresapractica__ubicacionempresapractica__latitud}', '${valor.asignacionempresapractica__ubicacionempresapractica__longitud}')"><i class="fa fa-times"></i> Resetear ubicación</a>#}
+                                    marker.test = valor.id;
+                                    marker_lista.push(marker)
+                                    markers.addLayer(marker)
+                                });
+                                map.addLayer(markers);
+                            } else {
+                                alertaDanger(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            alertaDanger("Problemas al obtener los datos");
+                        },
+                        dataType: "json"
+                    });
+
+                } else {
+                    alertaWarning('Por favor, seleccione un docente..');
+                    $.unblockUI();
+                }
+            });
+
+            markers.on('clusterclick', function (a) {
+                {#alert('Cluster Clicked');#}
+            });
+            {#markers.on('click', function (a) {#}
+            {#alert('Marker Clicked');#}
+            {# });#}
+
+            $('#actualizarMapaCalorDocente').on('click', function () {
+                bloqueointerface();
+                var docente = $('#id_docente').val();
+                var carrera = $('#id_carrera').val();
+                var check_fecha = $('#check_fecha').is(':checked');
+                var fecha;
+                if (check_fecha){ fecha = $('#id_fecha').val(); }
+                if (parseInt(docente) > 0) {
+                    $.ajax({
+                        type: "GET",
+                        url: "{{ request.path }}",
+                        data: {
+                            'action': 'viewpersonaubicacion',
+                            'docente': docente,
+                            'carrera': carrera,
+                            'check_fecha': check_fecha,
+                            'fecha': fecha,
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === 'ok') {
+                                var object = JSON.parse(data.listado);
+                                $('.tbdetalle').html(data.data);
+                                var coordsCliente = object;
+                                for (var i = 0; i < marker_lista.length; i++) {
+                                    map.removeLayer(marker_lista[i]);
+                                }
+                                if (markers) {
+                                    map.removeLayer(markers);
+                                }
+                                // Eliminar la capa de calor existente
+                                if (typeof lyrHEAT !== 'undefined') {
+                                    map.removeLayer(lyrHEAT);
+                                }
+                                marker_lista = []
+                                var heatdict = {
+                                    max: 2,
+                                    data: []
+                                };
+                                coordsCliente.forEach(function (valor, indice, array) {
+                                    var eLatitud = -2.146283381314332; //Ubicación unemi
+                                    var eLongitud = -79.60111797765467;
+                                    if (valor.asignacionempresapractica__ubicacionempresapractica__latitud !== null){
+                                        eLatitud = valor.asignacionempresapractica__ubicacionempresapractica__latitud;
+                                        eLongitud = valor.asignacionempresapractica__ubicacionempresapractica__longitud;
+                                    }
+                                    var item = new Object();
+                                    item.lat = eLatitud;
+                                    item.lng = eLongitud;
+                                    item.count = 0.1;
+                                    heatdict.data.push(item)
+                                })
+                                map.createPane('heatPane');
+                                var cfg = {
+                                    "radius": 0.1,
+                                    "maxOpacity": .9,
+                                    "scaleRadius": true,
+                                    "useLocalExtrema": true,
+                                    "latField": 'lat',
+                                    "lngField": 'lng',
+                                    "valueField": 'count'
+                                }
+                                {#lyrHEAT = new HeatmapOverlay(cfg).addTo(map);#}
+                                {#map.removeLayer(lyrHEAT);#}
+                                lyrHEAT = new HeatmapOverlay(cfg).addTo(map);
+                                lyrHEAT['overlayPane'] = 'heatPane'; // this is critical (I can explain more if needed)
+                                lyrHEAT.setData(heatdict);
+                                map.addLayer(lyrHEAT);
+                            } else {
+                                alertaDanger(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            alertaDanger("Problemas al obtener los datos");
+                        },
+                        dataType: "json"
+                    });
+                } else {
+                    alertaWarning('Por favor, seleccione un docente..')
+                    $.unblockUI();
+                }
+            })
+
+            $('#resultadosMapaExcelDocente').on('click', function () {
+                bloqueointerface();
+                var docente = $('#id_docente').val();
+                var carrera = $('#id_carrera').val();
+                if (parseInt(docente) > 0) {
+                    openwindow('GET', '{{ request.path }}', {
+                        action: 'reporteexcelubicaciones',
+                        docente: docente,
+                        carrera: carrera,
+                    }, '_blank');
+                    $.unblockUI();
+                } else {
+                    alertaWarning('Por favor, seleccione un docente..')
+                    $.unblockUI();
+                }
+            })
+
+        });
+
+    </script>
+    <style>
+        .estilodet {
+            display: block;
+            height: 550px;
+            overflow-y: scroll;
+            width: 100%;
+        }
+    </style>
+    <script src="/static/css/leaflet/heatmap.min.js"></script>
+    <script src="/static/css/leaflet/leaflet-heatmap.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.1.0/dist/leaflet.markercluster.js"></script>
+{% endblock %}
+{% block content %}
+    <div class="container-fluid">
+        <div class="border-bottom">
+            <div class="headtitle mb-0 ms-0 mb-2">
+                <h3 class="texto-blue fs-4"> {{ title }}</h3>
+                <h6>Mapa de estudiantes supervisados</h6>
+            </div>
+        </div>
+        <div class='row'>
+            <div class="col-sm-12">
+                <div class="row mt-3">
+                    <div class="col-sm-8">
+                        <div id="map" style="height: 700px; width: 100%">
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <h5><b><i class="fa fa-search"></i> Filtros de búsqueda</b></h5>
+                        <form class="form-search ">
+                            <label><b>Carrera</b></label>
+                            <select id="id_carrera" name="carrera" required>
+                                <option value="0">TODAS CARRERAS</option>
+                                {% for c in listadocarreras %}
+                                    <option value="{{ c.id }}">{{ c.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <label><b>Docente</b></label>
+                            <select id="id_docente" name="docente" required>
+                                <option value="0">SELECCIONE UN DOCENTE</option>
+                                {% for f in listadoregistros %}
+                                    <option value="{{ f.id }}" {% if f.id == docente.id %}
+                                            selected {% endif %}>{{ f.persona }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <label><b>¿Buscar por fecha?</b></label>
+                            <input class='js-switch' id="check_fecha" type='checkbox'/><br>
+
+                            <div id="fieldest_fecha" style="display: none">
+                                <label><b>Fecha</b></label>
+                                <input class='searchinput' type='date' id='id_fecha' name="fecha" value='{{ hoy|date:"Y-m-d" }}' autocomplete="off"/>
+                            </div>
+
+                            <a href="javascript:void(0)" id="actualizarMapadocente" class="btn btn-primary tr mt-2">
+                                <i class="fa fa-map-marker"></i> Buscar
+                            </a>
+                            <a href="javascript:void(0)" id="actualizarMapaCalorDocente" class="btn btn-warning tr mt-2">
+                                <i class="fa fa-fire"></i> Mapa de Calor
+                            </a>
+                            <a href="javascript:void(0)" id="resultadosMapaExcelDocente" class="btn btn-success tr mt-2"
+                               title="Generar Reporte de Localidades.">
+                                <i class="fa fa-download"></i> Excel
+                            </a>
+                        </form>
+                        <div class="tbdetalle"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

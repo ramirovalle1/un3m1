@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript">
+
+        function irArriba() {
+            //console.log("arrr")
+            $('.ir-arriba').click(function () {
+                $('body,html').animate({scrollTop: '0px'}, 1000);
+            });
+            $(window).scroll(function () {
+                if ($(this).scrollTop() > 0) {
+                    $('.ir-arriba').slideDown(600);
+                } else {
+                    $('.ir-arriba').slideUp(600);
+                }
+            });
+            $('.ir-abajo').click(function () {
+                $('body,html').animate({scrollTop: '1000px'}, 1000);
+            });
+        }
+
+        $(document).ready(function() {
+            irArriba();
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+        });
+
+        busqueda = function () {
+            //debugger;
+            var term = $("#searchinput").val().trim().toUpperCase();
+            var ide = $("#id_estado").val();
+            var idt = $("#id_tipo").val();
+
+            if (term.length > 0) {
+                bloqueointerface();
+                location.href = "/adm_secretaria?action=listadoafirmar&ide=" + ide + "&idt=" + idt + "&s=" + term
+            } else {
+                location.href = "/adm_secretaria?action=listadoafirmar&ide=" + ide + "&idt=" + idt
+            }
+
+            return false;
+        };
+
+        function formModal(id, text, action, footer = true) {
+            {#debugger;#}
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === "ok") {
+                        $('.paneltitle').html(text);
+                        $('.panelbody').html(data.html);
+                        $('#itemspanel #totalfirmarmasivo').hide();
+                        $("#itemspanel").modal({
+                            backdrop: 'static',
+                            width: '900px'
+                        }).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbody").empty();
+                        });
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function (e) {
+            $('.fancybox').fancybox();
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("#id_estado").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+            $("#id_tipo").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+
+            if ('{{ ide }}'.length){
+                $('#id_estado').val('{{ ide }}').trigger('change');
+            }
+
+            if ('{{ idt }}'.length){
+                $('#id_tipo').val('{{ idt }}').trigger('change');
+            }
+
+
+            $('.refreshbutton').click(function (e) {
+                bloqueointerface();
+                //let producto = $('#id_servicio').val();
+                //let href = parseInt(producto) ? '?p=' + producto : '';
+                location.href = "/adm_secretaria?action=listadoafirmar";
+            });
+
+            selectorcontratos = $(".selectorcontratos");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorcontratos:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalleads").html(`Certificados seleccionados: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorcontratos.prop('checked', true);
+                } else {
+                    selectorcontratos.prop('checked', false);
+                }
+                actulizarvalor();
+            });
+
+            selectorcontratos.change(function () {
+                actulizarvalor();
+            });
+
+            selectorcontratos.prop("checked", false);
+
+
+            $('#btnFirmarMasivoSubmit').click(function () {
+                var firma = $("#id_firma").val();
+                var palabraclave = $("#id_palabraclave").val();
+                var formdata = new FormData($("#formfirmarcontrato")[0]);
+                if (firma.trim() && palabraclave.trim()) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_secretaria",
+                        data: formdata,
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $("#itemspanel").modal("hide");
+                                location.reload();
+                            } else {
+                                $.unblockUI();
+                                mensajeDanger(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeDanger("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                } else {
+                    if (firma.trim() == '') {
+                        mensajeWarning('Seleccione el archivo de la firma.');
+                    } else {
+                        mensajeWarning('Ingrese la contraseña de la firma.');
+                    }
+
+                }
+            });
+
+            $('#btnFirmarSubmit').click(function () {
+                var firma = $("#id_firma").val();
+                var palabraclave = $("#id_palabraclave").val();
+                var formdata = new FormData($("#formfirmarcontrato")[0]);
+                if (firma.trim() && palabraclave.trim()) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_secretaria",
+                        data: formdata,
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $("#itemspanel").modal("hide");
+                                location.reload();
+                            } else {
+                                if (data.result === "errornombre") {
+                                    location.reload();
+                                } else {
+                                    if (data.result === "badfirma") {
+                                        location.reload();
+                                    } else {
+                                        $.unblockUI();
+                                        mensajeDanger(data.mensaje);
+                                    }
+                                }
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeDanger("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                } else {
+                    if (firma.trim() == '') {
+                        mensajeWarning('Seleccione el archivo de la firma.');
+                    } else {
+                        mensajeWarning('Ingrese la contraseña de la firma.');
+                    }
+
+                }
+            });
+
+        });
+
+        function consultar(accion, nombre) {
+            var ids;
+            var contador = 0;
+            var seleccionados = $(".selectorcontratos:checked");
+            {#var maestria = $("#id_maestria").val();#}
+            {#var cohorte = $("#id_cohorte").val();#}
+            console.log(seleccionados);
+            ids = '';
+            seleccionados.each(function () {
+                if (ids.length > 0) {
+                    ids += ",";
+                }
+                ids += $(this).attr('rid');
+                contador += 1;
+            });
+            console.log(ids);
+            if (ids.trim() != '') {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    {#data: {'action': accion, 'maestria': maestria, 'cohorte': cohorte, 'ids': ids},#}
+                    data: {'action': accion, 'ids': ids},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true) {
+                            $('.panelbody').html(data.html);
+                            $('#itemspanel #totalfirmarmasivo').show();
+                            $('#itemspanel #totalfirmarmasivo').html(' Se firmará un total de ' + contador + ' certificados.');
+                            $('#itemspanel .paneltitle').html(nombre);
+                            $("#itemspanel").modal({
+                                backdrop: 'static',
+                                width: '900px'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $(".panelbody").empty();
+                            });
+                        } else {
+                            mensajeDanger(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            } else {
+                $.unblockUI();
+                mensajeWarning("Seleccione los estudiantes para ejecutar la acción.");
+            }
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_secretaria{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Gestión de formatos de certificados</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+
+        <div class="card mb-4">
+            <div class="card-header border-bottom-0">
+                <div class="col-lg-12 col-md-12 col-12">
+                    <div class="d-md-flex align-items-center">
+                        {% if perms.secretaria.puede_firmar_certificados %}
+                            <a href="javascript:void(0);"
+                               onclick="consultar('firmarcertificadomasivo', 'Firma grupal de certificados')"
+                               class="btn btn-success">
+                                <span class="fa fa-pencil-square-o "></span>
+                                <t class="">Firma masiva</t>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form method="GET">
+            <div class="row">
+
+                <div class="col-lg-4 col-md-3 col-sm-12">
+                    <i class="fa fa-check tu" title="Estados"></i> Estado:
+                    <div class="input-group mb-2">
+                        <select name="es" id="id_estado" style="width: 100%">
+                            <option value="0" {% if not ide %}selected{% endif %}>----Todos----</option>
+                            <option value="1" {% if ide == 1 %} selected {% endif %}>Firmado</option>
+                            <option value="2" {% if ide == 2 %} selected {% endif %}>No firmado</option>
+                        </select>
+                    </div>
+                </div>
+            <div class="col-lg-4 col-md-3 col-sm-12">
+                    <i class="fa fa-check tu" title="Tipo"></i> Tipo:
+                    <div class="input-group mb-2">
+                        <select name="tipo" id="id_tipo" style="width: 100%">
+                            <option value="0" {% if not idt %}selected{% endif %}>----Todos----</option>
+                            <option value="1" {% if idt == 1 %} selected {% endif %}>Posgrado</option>
+                            <option value="2" {% if idt == 2 %} selected {% endif %}>Pregrado</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-lg-4 col-md-3 col-sm-12">
+                    <i class="fa fa-search tu" title="Nombres"></i> Busqueda:
+                    <div class="input-group mb-2">
+                        <input class='form-control' type='text' id='searchinput' name="s" value='{{ search }}'
+                               autocomplete="off" placeholder="Buscar nombre de formato de certificado..."/>
+                        <div class="input-group-append">
+                            <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()"
+                               id="button-addon2"><i
+                                    class="fa fa-search"></i></a>
+                            {% if url_vars %}
+                                <a title="Ver todo" href="javascript:;" class="btn btn-default tr refreshbutton">
+                                    <i class="fas fa-sync-alt"></i>
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </form>
+
+        <div class="row">
+            {% if perms.secretaria.puede_firmar_certificados %}
+                <div class="col-lg-2 col-md-2 col-12">
+                    <p><b id="totalleads">Certificados seleccionados: 0</b></p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col" style="text-align: right">
+                Total: <span class="badge bg-info">{{ Total }}</span> |
+                Firmados: <span class="badge bg-success">{{ Firmados }}</span> |
+                No firmados: <span class="badge bg-warning">{{ Nofirmados }}</span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='tabla_responsive table table-bordered table-striped'>
+                            <thead>
+                            <tr>
+                                <th style="text-align: center; vertical-align: middle;"><input type="checkbox" id="todos"></th>
+                                <th style="text-align: center; vertical-align: middle;">Datos del estudiante</th>
+                                <th style="text-align: center; vertical-align: middle;">Detalle de la solicitud</th>
+                                <th style="text-align: center; vertical-align: middle;">Carrera -- Maestria</th>
+                                <th style="text-align: center; vertical-align: middle;">¿Pagado?</th>
+                                <th style="text-align: center; vertical-align: middle;">Archivo</th>
+                                <th style="text-align: center; vertical-align: middle;">Estado</th>
+                                <th style="text-align: center; vertical-align: middle;">Acciones</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for eSolicitud in eSolicitudes %}
+                                <tr>
+                                    <td style="text-align: center; vertical-align: middle" class="w-5">
+                                        {% if not eSolicitud.certificadofirmado %}
+                                            <input type="checkbox" class="selectorcontratos" rid="{{ eSolicitud.id }}">
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: left; vertical-align: middle" class="w-25">
+                                        <div class="mb-3" style="max-width: 540px;">
+                                            <div class="row g-0">
+                                                <div class="col-md-3 text-center">
+                                                    <img src="{{ eSolicitud.perfil.persona.get_foto }}" alt=""
+                                                         class="img-fluid rounded-circle" width="40px">
+                                                </div>
+                                                <div class="col-md-9">
+                                                    <div class="">
+                                                        <small class="card-text"><i
+                                                                class="fa fa-user tu"
+                                                                title="Nombre completo"></i> {{ eSolicitud.perfil.persona.nombre_completo_minus }}
+                                                        </small><br>
+                                                        <small class="card-text"><i
+                                                                class="fa fa-address-card tu"
+                                                                title="Cédula"></i> {{ eSolicitud.perfil.persona.cedula }}
+                                                        </small><br>
+                                                        <small class="card-text">
+                                                            {% if eSolicitud.perfil.persona.telefono %}
+                                                                <i class="fa fa-phone tu" title="Teléfono"></i>
+                                                                {{ eSolicitud.perfil.persona.telefono }}
+                                                                <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ eSolicitud.perfil.persona.telefono }}&text=Hola {{ eSolicitud.perfil.persona }}'
+                                                                   target="_blank" class="btn btn-mini btn-success tu"
+                                                                   title="Enviar mensaje por whatsapp">
+                                                                    <i class="fa fa-whatsapp"></i>
+                                                                </a>
+                                                            {% endif %}
+                                                        </small><br>
+                                                        <small class="card-text">
+                                                            <i class="fa fa-envelope tu" title="Correo"></i>
+                                                            {% if eSolicitud.perfil.persona.emailinst %}
+                                                                {{ eSolicitud.perfil.persona.emailinst }}
+                                                            {% else %}
+                                                                {{ eSolicitud.perfil.persona.email }}
+                                                            {% endif %}
+                                                        </small><br>
+                                                        {% if eSolicitud.perfil.inscripcion.graduado %}
+                                                            <small class="card-text">
+                                                                <span style="color: #198754!important; font-weight: bold; font-size:12px">Graduado</span>
+                                                            </small>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style="text-align: left; vertical-align: middle" class="w-25">
+                                    <b>Código: </b>{{ eSolicitud.codigo }}<br>
+                                    <b>Fecha/Hora:</b> {{ eSolicitud.fecha|date:"d-m-Y" }} {{ eSolicitud.hora|date:"h:i A" }}<br>
+                                    <b>Servicio:</b> {{ eSolicitud.servicio.nombre }}<br>
+                                    <b>Certificado: </b> {{ eSolicitud.certificado_solicitado.certificacion }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-25">
+                                        {% if eSolicitud.perfil.es_estudiante %}
+                                            {{ eSolicitud.perfil.inscripcion.carrera.nombre|title }}<br>
+                                            {{ eSolicitud.perfil.inscripcion.matricula_posgrado|title }}
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-5">
+                                    {% if eSolicitud.perfil.inscripcion.carrera.mi_coordinacion2 == 7 %}
+                                        {% if eSolicitud.tiene_rubro_pagado %}
+                                                <span style="color: #198754!important; font-weight: bold; font-size:12px">Si</span>
+                                            {% else %}
+                                                <span style="color: #FE9900!important; font-weight: bold; font-size:12px">No</span>
+                                            {% endif %}
+                                    {% elif eSolicitud.perfil.inscripcion.carrera.mi_coordinacion2 <= 5 %}
+                                        <span style="color: #198754!important; font-weight: bold; font-size:12px">No aplica</span>
+                                    {% endif %}
+
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-10">
+                                        <a class="btn btn-default btn-sm btn-hover gallerypdf"
+                                           data-fancybox-type="iframe" href="{{ eSolicitud.archivo_respuesta.url }}"><img
+                                                src="/static/images/pdf.png" width="18" height="18"
+                                                align="absmiddle"></a></a><br>
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-10">
+                                        {% if eSolicitud.certificadofirmado %}
+                                            <span style="color: #198754!important; font-weight: bold; font-size:12px">Firmado</span>
+                                        {% else %}
+                                            <span style="color: #FE9900!important; font-weight: bold; font-size:12px">No firmado</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-10">
+                                        {% if not eSolicitud.certificadofirmado %}
+                                            <a class="btn btn-success btn-mini" href='javascript:;'
+                                               onclick="formModal('{{ eSolicitud.id }}', 'Firmar certificado de {{ eSolicitud.perfil.inscripcion.persona }}', 'firmarcertificadoindividual', true)"><span
+                                                    class="fa fa-pencil-square"></span> Firmar</a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="11" style="text-align: center"><b>No existen formatos registrados</b>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <div class="text-muted fs-6">
+                            {% widthratio eFormatos|length 1 page.number as value %}
+                            <caption> Mostrando {% if not paging.num_pages == page.number %}{{ value }}{% else %}
+                                {% if paging.num_pages == 1 %}{{ eFormatos|length }}{% else %}
+                                    {% with len=eFormatos|length %}{% widthratio 10 1 page.number|add:"-1" as val %}
+                                        {{ val|add:len }}{% endwith %}{% endif %}{% endif %} de {{ count }}</caption>
+
+                        </div>
+                    </div>
+                    <div class="card-footer border-top-0">
+                        {% include 'paginacionb4.html' %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle"><span class="fa fa-pencil-square-o"></span> Firmar certificado </h3>
+                    <div class="" style="padding: 5px 5px">
+                        <button style="float: right;" type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <h4 id="totalfirmarmasivo" class="texto-gris fa fa-info-circle tu" data-bs-toggle="Mensaje"></h4>
+                    <form id="formfirmarcontrato" name="formfirmarcontrato" class="form-control">
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <table class="pull-right">
+                        <tr>
+                            <td>
+                                <button type="button" class="btn btn-warning" id="btnFirmar"><i
+                                        class="fa fa-check-circle"></i> Firmar
+                                </button>
+                            </td>
+                            <input style="display: none;" id="btnFirmarSubmit" class="button is-primary" type="button"
+                                   value="Firmar">
+                            <input style="display: none;" id="btnFirmarMasivoSubmit" class="button is-primary"
+                                   type="button" value="FirmarMasivo">
+                            <td>
+                                <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i
+                                        class="fa fa-times"></i> Cancelar
+                                </button>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

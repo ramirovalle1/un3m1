@@ -1,0 +1,333 @@
+{% load sga_extras %}
+<input type="hidden" name="id" value="{{ preinscripcion.id }}"/>
+<input type="hidden" name="idconfig" value="{{ configuracion.id }}"/>
+<input type="hidden" name="action" value="{{ action }}"/>
+
+{% if eMensaje %}
+    <div id="contenidocentral">
+        <div class="alert alert-info">
+            <a href="javascript:;" class="close" data-dismiss="alert">×</a>
+            <h4 class="alert-heading">{{ eMensaje|split:";"|first }}</h4> {{ eMensaje|split:";"|last }}
+        </div>
+    </div>
+{% endif %}
+
+{% for field in form %}
+    {% if field.field.widget.attrs.separator %}
+        {% if field.field.widget.attrs.blanklinebefore %}
+        {% endif %}
+        <div style="width: 100%; height: max-content">
+            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                 </span>
+            </h6>
+        </div>
+    {% endif %}
+    <div id="fieldset_{{ field.name }}"
+         class="col-sm-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}"
+         style="float: left; padding-right: 10px;">
+        <label class="control-label pr-2" for="id_{{ field.name }}">
+            <b>{{ field.label }}&nbsp;:</b>
+        </label>
+         <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+            {% if field.field.widget.attrs.select2search %}
+                <select id="id_{{ field.name }}_select2" style="width: 100%"
+                        {% if field.field.widget.attrs.disabled %}disabled=""{% endif %}>
+                    <option value="0" selected="selected">---------</option>
+                </select>
+                <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}"
+                       hidden="hidden"
+                       type="hidden"
+                       {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %}
+                       class="select2hidden">
+            {% else %}
+                {{ field }}
+            {% endif %}
+            <p id="errorMessage{{ field.name }}" class="fs-6 text-danger p-1 py-0"></p>
+        </div>
+    </div>
+{% endfor %}
+
+<div class="row-fluid">
+    <div style="text-align: right; float: left; width: 100%">
+        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-check-circle"></i> Guardar</button>
+        <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-times-circle"></i> Cancelar</a>
+    </div>
+</div>
+
+<script>
+     $(function () {
+        $('select').select2({width:'100%'});
+
+        {% if configuracion %}
+        $("#id_carrera, #id_itinerariomalla").removeClass("validate[required]");
+        {% endif %}
+
+        var carrera_ = 0;
+        carrera_ = JSON.stringify($("#id_carrera").val());
+
+        $("#id_numerohora, #id_cupo").blur(function () {
+            numerico($(this), 0, 2000, 0);
+        });
+
+        $("#id_fechainicio, #id_fechafin").on('change', function (ev) {
+            profesor();
+        });
+
+        $('#id_carrera').on('change', function () {
+            carrera_ = JSON.stringify($(this).val());
+            console.log(carrera_);
+            $('#id_itinerariomalla').empty().append('<option value="">---------</option>').val(0).trigger("change");
+            $('#id_itinerariomalla').select2({
+                placeholder: 'Seleccione Itinerarios',
+                allowClear: true,
+                ajax: {
+                    url: `{{request.path}}?action=buscaritinerario&idcar=${carrera_}`,
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            search: params.term
+                        };
+                    },
+                    processResults: function (response) {
+                        return {
+                            results: response.result
+                        };
+                    }
+                }
+            });
+        });
+
+        $('#id_itinerariomalla').on('change', function () {
+            profesor();
+        });
+
+        profesor = function () {
+            {#$('#contenidocentral_periodo').hide();#}
+            $('#id_tutorunemi').empty().append('<option value="">---------</option>').val(0).trigger("change");
+            var iditinerario = $("#id_itinerariomalla").val();
+            console.log(iditinerario.length);
+            var fd = $('#id_fechainicio').val();
+            var fh = $('#id_fechafin').val();
+            var idcarr = JSON.stringify($("#id_carrera").val());
+
+            if (iditinerario.length>0 && fd && fh) {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {
+                        'action': 'listaprofesordistributivomasivo', 'iditinerario': JSON.stringify(iditinerario), 'idcarr': idcarr, 'fd': fd, 'fh': fh, 'preinscripcion': '{{ preinscripcion.id }}',
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $('#id_tutorunemi').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                            for (dato in data.results) {
+                                $('#id_tutorunemi').append('<option value="' + data.results[dato][0] + '">' + data.results[dato][1] + '</option>')
+                            }
+                            $('#id_periodoevidencia').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                            for (dato in data.periodoevidencias) {
+                                $('#id_periodoevidencia').append('<option value="' + data.periodoevidencias[dato][0] + '">' + data.periodoevidencias[dato][1] + '</option>')
+                            }
+                            $('#id_asignacionempresapractica').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                            for (dato in data.listaaempresap) {
+                                $('#id_asignacionempresapractica').append('<option value="' + data.listaaempresap[dato][0] + '">' + data.listaaempresap[dato][1] + '</option>')
+                            }
+                            $('#id_periodoevidencia').val(data.perevid);
+                            $('#id_periodoevidencia').change();
+                            $('#id_numerohora').val(data.numerohora);
+                            {#document.getElementById('contenidocentral_periodo').innerHTML = '<div class="alert alert-info">' +#}
+                            {#    '<a href="javascript:;" class="close" data-dismiss="alert">×</a>' +#}
+                            {#    '<h4 class="alert-heading">AVISO</h4>' + data.mensaje + '</div>';#}
+                            {#$('#contenidocentral_periodo').show();#}
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            }
+        };
+
+        filtraresponsables = function () {
+            $('#id_responsable').empty().append('<option value="">---------</option>').val(0).trigger("change");
+            var empresa = $('#id_asignacionempresapractica').val();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}",
+                data: {
+                    'action': 'listaresponables', 'ide': empresa,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === 'ok') {
+                        $('#id_responsable').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                        for (dato in data.listaresponable) {
+                            $('#id_responsable').append('<option value="' + data.listaresponable[dato][0] + '">' + data.listaresponable[dato][1] + '</option>')
+                        }
+                        $("#id_lugarpractica").val(data.lugarpractica).change();
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error al enviar los datos.");
+                },
+                dataType: "json"
+            });
+        };
+
+        validarcampos = function (valor, campo) {
+            if (campo === 'asigemp'){
+                if (valor) {
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").removeClass("validate[required]");
+                    $("#id_otraempresaempleadora").prop("disabled", true);
+                } else {
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").addClass("validate[required]");
+                    $("#id_otraempresaempleadora").prop("disabled", false);
+                }
+            }
+            if (campo === 'otraemp'){
+                if (valor > 0) {
+                    $("#id_asignacionempresapractica").val(0);
+                    $("#id_asignacionempresapractica").change();
+                    $("#id_asignacionempresapractica").removeClass("validate[required]").prop("disabled", true);
+                } else {
+                    $("#id_asignacionempresapractica").val(0);
+                    $("#id_asignacionempresapractica").change();
+                    $("#id_asignacionempresapractica").addClass("validate[required]").prop("disabled", false);
+                }
+            }
+        }
+        $("#id_asignacionempresapractica").change(function () { validarcampos($(this).val(), 'asigemp'); filtraresponsables();});
+        $("#id_otraempresaempleadora").change(function () { validarcampos($(this).val().length, 'otraemp'); });
+        if ('{{ configuracion.asignacionempresapractica }}'.length){ validarcampos(true, 'asigemp'); }
+        if ('{{ configuracion.otraempresaempleadora }}'.length){ validarcampos('{{ configuracion.otraempresaempleadora }}'.length, 'otraemp'); }
+
+        $("#id_supervisor").attr({"value":('{{ supervisor }}')});
+        ItemsDisplay = function (item) {
+            if (item.name){
+                return $('<span>' + item.name+ '</span>');
+            }else{
+                if ($("#id_supervisor").val()==0){
+                    return '---------';
+                }else{
+                    return '<span>{{ configuracion.supervisor }}</span>';
+                }
+            }
+        };
+
+        $("#id_supervisor_select2").select2({
+            placeholder: "---------",
+            allowClear: true,
+            ajax: {
+                url: function (params) {
+                    return "/reportes?action=data&model=Profesor&p=1&s=10&q=" + params.term;
+                },
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term,
+                        page: params.page
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.results,
+                        pagination: {
+                            more: (params.page * 30) < data.total_count
+                        }
+                    };
+                },
+                cache: true
+            },
+            escapeMarkup: function (markup) {
+                return markup;
+            }, // let our custom formatter work
+            minimumInputLength: 1,
+            templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+            templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+        }).on("select2:select", function (evt) {
+            $("#id_supervisor").attr({"value": (evt.params.data.id)});
+            $("#id_supervisor").change();
+        });
+
+        $("#id_supervisor_select2").on("select2:unselecting", function(e) {
+            $("#id_supervisor").val(0);
+            $("#id_supervisor").change();
+            console.log('limpa supervisor');
+            console.log($("#id_supervisor").val());
+        });
+
+        $("#id_convenio").attr({"value":('{{ convenio }}')});
+        ItemsDisplay2 = function (item) {
+            if (item.name){
+                return $('<span>' + item.name+ '</span>');
+            }else{
+                if ($("#id_convenio").val()==0){
+                    return '---------';
+                }else{
+                    return '<span>{{ configuracion.convenio.empresaempleadora }} ({{ configuracion.convenio.fechainicio|date:'Y-m-d' }} - {{ configuracion.convenio.fechafinalizacion|date:'Y-m-d' }})</span>';
+                }
+            }
+        };
+        {#tiene que ser la fecha fin de convenio mayor a la fecha din del la prcatica#}
+        var fecha = new Date();
+        var fec = fecha.getFullYear() + '-' + (fecha.getMonth() + 1) + '-' + fecha.getDate();
+        $("#id_convenio_select2").select2({
+            placeholder: "---------",
+            allowClear: true,
+            ajax: {
+                url: function (params) {
+                    return `/reportes?action=data&model=ConvenioEmpresa:Q(fechafinalizacion__gte="${fec}",conveniocarrera__carrera_id="${carrera_}")&p=1&s=10&q=${params.term}`;
+                },
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term,
+                        page: params.page
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.results,
+                        pagination: {
+                            more: (params.page * 30) < data.total_count
+                        }
+                    };
+                },
+                cache: true
+            },
+            escapeMarkup: function (markup) {
+                return markup;
+            }, // let our custom formatter work
+            minimumInputLength: 1,
+            templateResult: ItemsDisplay2, // omitted for brevity, see the source of this page
+            templateSelection: ItemsDisplay2 // omitted for brevity, see the source of this page
+        }).on("select2:select", function (evt) {
+            $("#id_convenio").attr({"value": (evt.params.data.id)});
+            $("#id_convenio").change();
+        });
+
+        $("#id_convenio_select2").on("select2:unselecting", function(e) {
+            $("#id_convenio").attr({"value": (0)});
+            {#$("#id_convenio").change();#}
+            console.log('limpia conve');
+            console.log($("#id_convenio").val());
+        });
+
+     });
+</script>

@@ -1,0 +1,183 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script>
+
+        $(function() {
+
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/er_planificacion?s="+term;
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $('#searchinput').focus();
+
+            $("#detalleplanificacionmodal_aceptar").click(function(){
+                $("#detalleplanificacionmodal").modal("hide");
+            });
+
+            $(".detalleplanificacion").click(function() {
+                var id = $(this).attr("cid");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/er_planificacion",
+                    data: {'action':'detalle_planificacion', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalleplanificacionmodal_body").html(data.html);
+                            $("#detalleplanificacionmodal").modal({"backdrop":"static", "width": "800px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+        });
+
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            <a href="/er_planificacion?action=add" class='btn btn-success'><span class="fa fa-plus " ></span> Adicionar</a>
+        </div>
+        <div class='span6'>
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids %}
+                    <a href="/er_planificacion" class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 80px; text-align: center">Fecha</th>
+                    <th style="width: 150px">Bloque</th>
+                    <th>Departamento/Sección</th>
+                    <th style="width: 300px;">Trabajador</th>
+                    <th style="width: 40px;text-align: center">Trab. Exp.</th>
+                    <th style="width: 40px;text-align: center">Riesg.</th>
+                    <th style="width: 40px;text-align: center">Planif.</th>
+                    <th style="width: 40px;text-align: center">Confir.</th>
+                    <th style="width: 80px; text-align: center">Estado</th>
+                    <th style="width: 40px;"></th>
+                    <th style="width: 80px;"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for evaluacion in evaluaciones %}
+                    <tr>
+                        <td style="text-align: center">{{ evaluacion.fecha|date:'d-m-Y' }}</td>
+                        <td>{{ evaluacion.bloque.descripcion }}</td>
+                        <td>{% if evaluacion.departamento %}{{ evaluacion.departamento }}<br>{{ evaluacion.seccion.descripcion }}{% endif %}</td>
+                        <td>{{ evaluacion.trabajador|default_if_none:'' }}</td>
+                        <td style="text-align: center;">{{ evaluacion.trabajadoresexpuestos }}</td>
+                        <td style="text-align: center;">{{ evaluacion.cantidad_riesgos }}</td>
+                        <td style="text-align: center;">{{ evaluacion.cantidad_planificadas }}</td>
+                        <td style="text-align: center;">{{ evaluacion.cantidad_cerradas }}</td>
+                        <td style="text-align: center"><label class="label  {% if evaluacion.planificada or evaluacion.parcialplanificada %}label-warning{% elif evaluacion.noplanificada %}label-important{% else %}label-success{% endif %}">{{ evaluacion.rep_estadoplanaccion }}</label></td>
+                        <td style="text-align: center">
+                            <a class="btn btn-info btn-mini detalleplanificacion tu" title="Observaciones" href='javascript:;' cid="{{ evaluacion.id }}"><i class='fa fa-list'></i></a>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                    {% if evaluacion.tiene_riesgos and not evaluacion.noplanificada %}
+                                        <li><a href="/er_planificacion?action=detalleplanificacion&id={{ evaluacion.id }}"><i class="fa fa-list"></i> Detalle planificación</a></li>
+                                    {% endif %}
+                                    <li><a href="/er_planificacion?action=detalleevaluacion&id={{ evaluacion.id }}"><i class="fa fa-list"></i> Detalle evaluación</a></li>
+                                    {% if not evaluacion.completada %}
+                                        {% if not evaluacion.completada and perms.sagest.puede_modificar_planificacionriesgo and evaluacion.tiene_riesgos and not evaluacion.siplanificado %}
+                                            <li><a href="/er_planificacion?action=planificar&id={{ evaluacion.id }}"><i class="fa fa-plus"></i> Planificar</a></li>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if not evaluacion.tiene_planificaciones %}
+                                        <li class="divider"></li>
+                                        <li><a href="javascript:;" nhref="/er_planificacion?action=eliminar&id={{ evaluacion.id }}" class="eliminacionmodal"><i class="fa fa-remove"></i> Eliminar</a></li>
+                                    {% endif %}
+                                    {% if reporte_0 %}
+                                        <li class="dropdown-submenu pull-left">
+                                            <a href="javascript:;"><i class="fa fa-print"></i> Impresi&oacute;n</a>
+                                            <ul class="dropdown-menu" style="width: 230px;">
+                                                    <li><a href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="/reportes?action=run&n={{ reporte_0.nombre }}&id={{ evaluacion.id }}" class="reportedirecto"><i class="fa fa-print"></i> Evaluación de riesgos</a> </li>
+                                            </ul>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7"> NO EXISTEN REGISTROS DE EVALAUCIONES DE RIESGO </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/er_planificacion?page=1">1</a></li>
+                        <li><a href="/er_planificacion?page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/er_planificacion?page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/er_planificacion?page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/er_planificacion?page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/er_planificacion?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="modal fade static" id="detalleplanificacionmodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalles de evaluación</h3>
+        </div>
+        <div class="modal-body" id="detalleplanificacionmodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalleplanificacionmodal_aceptar" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}

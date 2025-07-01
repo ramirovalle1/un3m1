@@ -1,0 +1,706 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1" data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function() {
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            let nf_evidencia = secuenciaevidencia = 0;
+            lista_items1 = [];
+            lista_items2 = []; //Anexos eliminados
+            let fechaactual = '{{ fecha|date:"Y-m-d" }}';
+            let nueva;
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('antecedente', 'antecedente', true);
+            configurarChkEditor('conclusion', 'conclusion', true);
+            configurarChkEditor('recomendacion', 'recomendacion', true);
+
+            CKEDITOR.instances['antecedente'].on('change', function() {
+                if(CKEDITOR.instances['antecedente'].getData().length > 0)
+                    $("#antecedente_aux").val("OK");
+                else
+                    $("#antecedente_aux").val("");
+            });
+
+            CKEDITOR.instances['conclusion'].on('change', function() {
+                if(CKEDITOR.instances['conclusion'].getData().length > 0)
+                    $("#conclusion_aux").val("OK");
+                else
+                    $("#conclusion_aux").val("");
+            });
+
+            CKEDITOR.instances['recomendacion'].on('change', function() {
+                if(CKEDITOR.instances['recomendacion'].getData().length > 0)
+                    $("#recomendacion_aux").val("OK");
+                else
+                    $("#recomendacion_aux").val("");
+            });
+
+            $(".guardar").click(function () {
+                envioformularioreg("/adm_becadocente", "editinformeotorgamiento", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmInforme").validationEngine('attach',{ scroll: true });
+                valido = $("#frmInforme").validationEngine('validate', { scroll: true });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'editinformeotorgamiento'){
+                        try {
+                            for ( instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmInforme")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                        formdata.append("lista_items2", JSON.stringify(lista_items2));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}&id="+data.id;
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Informe sin haber guardado la información?", false, "/adm_becadocente", "", "", "/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}");
+            });
+
+            $(".agregaevidencia").click(function() {
+                if(datos_evidencia_completo()){
+                    nf_evidencia += 1;
+                    secuenciaevidencia += 1;
+
+                    borrar_fila_default_evidencia();
+
+                    nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="idregistro[]" name="idregistro[]" value="0"> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td>&nbsp;</td>'+
+                        '<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><input type="date" id="fecha_genera_'+nf_evidencia.toString()+'" name="fecha_genera[]" value="'+fechaactual+'"/> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>'+
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia" idreg="0" idf="' + nf_evidencia.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+                    $("#detalle_evidencias").append(nueva);
+                    $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#fecha_genera_"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#detalle_evidencias").find(".eliminaritem_evidencia").tooltip();
+                    $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                    $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+
+                    conectar_change_fileinput_evidencia();
+                }
+            });
+
+            eliminarItem_evidencia = function() {
+                let id = $(this).attr("idf");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+
+                $("#filaevidencia_"+id).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items2.push(item);
+                }
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                if(secuenciaevidencia == 0)
+                    agregar_fila_default_evidencia();
+
+                actualizar_lista_evidenciaarchivo();
+            };
+
+            actualizar_lista_evidenciaarchivo = function (){
+                lista_items1 = [];
+                let cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectar_change_fileinput_evidencia=function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizar_lista_evidenciaarchivo();
+                });
+            };
+
+            agregar_fila_default_evidencia = function (){
+                let filadefault = '<tr id="fila_default_evidencia">'+
+                              '<td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS ADICIONALES</td>'+
+                              '</tr>';
+                $("#detalle_evidencias").append(filadefault);
+            };
+
+            borrar_fila_default_evidencia = function (){
+                $("#fila_default_evidencia").remove();
+            };
+
+            datos_evidencia_completo = function (){
+                let c1e = true, c2e = true;
+                let indice = 0;
+
+                $('input[name="descripcion_evidencia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($('input[name="idregistro[]"]').eq(indice).val() == '0'){
+                        if($(this).get(0).files.length == 0){
+                            c2e = false;
+                            return false;
+                        }
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+            borrar_fila_default_evidencia();
+
+            {% for evidencia in anexos %}
+                nf_evidencia ++;
+                secuenciaevidencia ++;
+
+                nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="idregistro[]" name="idregistro[]" value="{{ evidencia.id }}"> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="{{ evidencia.descripcion }}" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center;"><a target="_blank" href="{{ evidencia.archivo.url }}" class="btn btn-mini btn-info tu" title="Descargar Archivo"><i class="fa fa-download"></i> </a> </td>' +
+                        '<td style="text-align: center;"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><input type="date" id="fecha_genera_'+nf_evidencia.toString()+'" name="fecha_genera[]" value="{{ evidencia.fecha|date:"Y-m-d" }}" /><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>'+
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia" idreg="{{ evidencia.id }}" idf="' + nf_evidencia.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+                $("#detalle_evidencias").append(nueva);
+                $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                $("#fecha_genera_"+nf_evidencia.toString()).addClass("validate[required]");
+                $("#detalle_evidencias").find(".eliminaritem_evidencia").tooltip();
+                $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+
+                conectar_change_fileinput_evidencia();
+                {% empty %}
+                agregar_fila_default_evidencia();
+            {% endfor %}
+
+
+            $("#antecedente_aux").val("OK");
+            $("#conclusion_aux").val("OK");
+            $("#recomendacion_aux").val("OK");
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <form name="frmInforme" id="frmInforme">{% csrf_token %}
+        <input type="hidden" name="action" value="editinformeotorgamiento">
+        <input type="hidden" name="id" value="{{ informe.id|encrypt }}">
+        <div class='col-lg-12 col-sm-12 col-12'>
+            {# TITULO #}
+            <div class="row">
+                <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                    <div class="headtitle">
+                        <h3 class="texto-blue">{{ title }}</h3>
+                        <h6>Postulación del docente</h6>
+                    </div>
+                </div>
+            </div>
+            {# TITULO #}
+            {# CUERPO DEL FORMULARIO #}
+            <div class="card">
+  	            <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-1">
+                    <div class="row">
+                        {# PESTAÑAS #}
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#informe">Informe Otorgamiento</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#postulacion">Datos de la Postulación</a>
+                            </li>
+                        </ul>
+                        {# PESTAÑAS #}
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                        <div class="tab-content px-0">
+                            <div id="informe" class="container tab-pane active"><br>
+                                {# CABECERA DEL INFORME #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbcabecera">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="8">Encabezado del informe</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 5%;"><strong>Número:</strong></td>
+                                                <td style="width: 10%;">{{ informe.numero }}</td>
+                                                <td style="width: 5%;"><strong>Fecha:</strong></td>
+                                                <td style="width: 10%;">{{ informe.fecha|date:"d-m-Y" }}</td>
+                                                <td style="width: 5%;"><strong>Para:</strong></td>
+                                                <td style="width: 30%;">{{ informe.destinatario.nombre_completo_inverso }}</td>
+                                                <td style="width: 5%;"><strong>De:</strong></td>
+                                                <td style="width: 30%;">{{ informe.remitente.nombre_completo_inverso }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 5%;"><strong>Objeto:</strong></td>
+                                                <td colspan="7">
+                                                    {{ informe.objeto|safe }}
+                                                </td>
+                                            </tr>
+                                            {% if postulacion.tiene_informe_juridico %}
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Informe Jurídico:</strong></td>
+                                                    <td colspan="5">
+                                                        <a target="_blank" href="{{ postulacion.informe_juridico.archivofirmado.url }}" class="btn btn-info tu" title="Descargar Informe jurídico"><i class="fa fa-download"></i> Descargar</a>
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# CABECERA DEL INFORME #}
+                                {# ANTECEDENTES, CONCLUSIONES Y RECOMENDACIONES #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbconclusion">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="2">Antecedentes, Conclusiones y Recomendaciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Antecedentes:</strong></td>
+                                                <td style="width: 90%;">
+                                                    <textarea name="antecedente" id="antecedente">{{ informe.antecedente }}</textarea>
+                                                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="antecedente_aux" value="">
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Conclusiones:</strong></td>
+                                                <td style="width: 90%;">
+                                                    <textarea name="conclusion" id="conclusion">{{ informe.conclusion }}</textarea>
+                                                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="conclusion_aux" value="">
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Recomendaciones:</strong></td>
+                                                <td style="width: 90%;">
+                                                    <textarea name="recomendacion" id="recomendacion">{{ informe.recomendacion }}</textarea>
+                                                    <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="recomendacion_aux" value="">
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# ANTECEDENTES, CONCLUSIONES Y RECOMENDACIONES #}
+                                {# ANEXOS #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbdetalleevidencias">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6">Anexos</th>
+                                            </tr>
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 59%; text-align: center;">Descripción</th>
+                                                <th style="width: 5%; text-align: center;">...</th>
+                                                <th style="width: 15%; text-align: center;">Archivo</th>
+                                                <th style="width: 15%; text-align: center;">Fecha Generación</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaevidencia" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Anexo"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_evidencias">
+                                            <tr id="fila_default_evidencia">
+                                                <td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS ADICIONALES</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# ANEXOS #}
+                                {# FILA DE LOS BOTONES #}
+                                <div class="row">
+                                    <div class="col-sm-12 px-0" style="text-align: right; float: left; width: 100%">
+                                        <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                                        <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                                    </div>
+                                </div>
+                                {# FILA DE LOS BOTONES #}
+                            </div>
+                            <div id="postulacion" class="container tab-pane fade"><br>
+                                {# DATOS DEL DOCENTE #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbdatossolicitante">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="10">Datos del Solicitante</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Identificación:</strong></td>
+                                                <td>{{ postulacion.profesor.persona.identificacion }}</td>
+                                                <td style="width: 10%;"><strong>Nombres y Apellidos:</strong></td>
+                                                <td>{{ postulacion.profesor.persona.nombre_completo_inverso }}</td>
+                                                <td style="width: 10%;"><strong>Categoría:</strong></td>
+                                                <td>{{ postulacion.profesor.nivelcategoria.nombre }}</td>
+                                                <td style="width: 10%;"><strong>Dedicación:</strong></td>
+                                                <td>{{ postulacion.profesor.dedicacion.nombre }}</td>
+                                                <td style="width: 10%;"><strong>Facultad:</strong></td>
+                                                <td>{{ postulacion.profesor.coordinacion.nombre }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# DATOS DEL DOCENTE #}
+                                {# DATOS DE LA POSTULACIÓN #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbdatossolicitud">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="8">Datos de la Postulación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Fecha:</strong></td>
+                                                <td>{{ postulacion.fechasolicitud|date:"d-m-Y" }}</td>
+                                                <td style="width: 10%;"><strong>Estado actual:</strong></td>
+                                                <td><span class="{{ postulacion.estado.clase }} tu" title="{{ postulacion.estado.observacion }}">{{ postulacion.estado.descripcion }}</span></td>
+                                                <td style="width: 10%;"><strong>Tipo estudios:</strong></td>
+                                                <td>{{ postulacion.get_tipoestudio_display }}</td>
+                                                <td style="width: 10%;"><strong>Nombre del programa:</strong></td>
+                                                <td>{{ postulacion.programa }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Título a obtener:</strong></td>
+                                                <td colspan="3">{{ postulacion.tituloobtener }}</td>
+                                                <td style="width: 10%;"><strong>Universidad:</strong></td>
+                                                <td colspan="3">{{ postulacion.institucion.nombre }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>País:</strong></td>
+                                                <td>{{ postulacion.pais.nombre }}</td>
+                                                <td style="width: 10%;"><strong>Provincia:</strong></td>
+                                                <td>{{ postulacion.provincia.nombre }}</td>
+                                                <td style="width: 10%;"><strong>Ciudad:</strong></td>
+                                                <td>{{ postulacion.canton.nombre }}</td>
+                                                <td style="width: 10%;"><strong>Inicio / Fin estudios:</strong></td>
+                                                <td>{{ postulacion.inicio|date:"d-m-Y" }} / {{ postulacion.fin|date:"d-m-Y" }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Modalidad:</strong></td>
+                                                <td>{{ postulacion.modalidad.nombre }}</td>
+                                                <td colspan="2" style="width: 10%;"><strong>¿Dispone tema o proyecto para titulación?:</strong></td>
+                                                <td>{% if postulacion.tienetematitulacion %}SI{% else %}NO{% endif %}</td>
+                                                <td colspan="3">&nbsp;</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>Tema o Proyecto:</strong></td>
+                                                <td colspan="3">{% if postulacion.tematitulacion %}{{ postulacion.tematitulacion }}{% else %}NINGUNO{% endif %}</td>
+                                                <td style="width: 10%;"><strong>Línea Investigación:</strong></td>
+                                                <td colspan="3">{% if postulacion.tematitulacion %}{{ postulacion.lineainvestigacion.nombre }}{% else %}NINGUNA{% endif %}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>¿Requiere ausentarse de UNEMI?:</strong></td>
+                                                <td>{% if postulacion.ausentismo %}SI{% else %}NO{% endif %}</td>
+                                                <td style="width: 10%;"><strong>Tipo Permiso:</strong></td>
+                                                <td>{% if postulacion.ausentismo %}{{ postulacion.get_tipopermiso_display }}{% else %}NINGUNO{% endif %}</td>
+                                                <td style="width: 10%;"><strong>Tiempo permiso(meses):</strong></td>
+                                                <td>{% if postulacion.ausentismo %}{{ postulacion.tiempomes }}{% endif %}</td>
+                                                <td style="width: 10%;"><strong>Tipo licencia:</strong></td>
+                                                <td>{% if postulacion.ausentismo %}{{ postulacion.get_tipolicencia_display }}{% else %}NINGUNA{% endif %}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 10%;"><strong>¿Puede impartir clases mientras estudia?:</strong></td>
+                                                <td>{% if postulacion.imparteclase %}SI{% else %}NO{% endif %}</td>
+                                                <td style="width: 10%;"><strong>Presupuesto:</strong></td>
+                                                <td>$ {{ postulacion.presupuesto|floatformat:2|intcomma }}</td>
+                                                <td colspan="4">&nbsp;</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# DATOS DE LA POSTULACIÓN #}
+                                {# REQUISITOS #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbrequisitos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6">Listado de Requisitos</th>
+                                            </tr>
+                                            <tr>
+                                                <th style="width: 3%; text-align: center">#</th>
+                                                <th style="width: 40%; text-align: center">Nombre del requisito</th>
+                                                <th style="width: 10%; text-align: center">Estado</th>
+                                                <th style="width: 10%; text-align: center">Archivo</th>
+                                                <th style="width: 15%; text-align: center">Cumplimiento</th>
+                                                <th style="width: 22%; text-align: center">Observación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for detalle in requisitos %}
+                                                <tr>
+                                                    <td style="text-align: center">
+                                                        <b>{{ forloop.counter }}</b>
+                                                    </td>
+                                                    <td>
+                                                        {{ detalle.requisito.descripcion|safe }}
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        {% if detalle.archivo %}
+                                                            <a target="_blank" href="{{ detalle.archivo.url }}" class="btn btn-info tu" title="Descargar Documento"><i class="fa fa-download"></i> Descargar</a>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        {% if detalle.estado == 2 %}
+                                                            <i class="fa fa-check-circle tu" title="Si cumple" style="color: green;"></i>
+                                                        {% elif detalle.estado == 4 %}
+                                                            <i class="fa fa-times tu" title="No cumple" style="color: red"></i>
+                                                        {% else %}&nbsp;{% endif %}
+                                                    </td>
+                                                    <td style="text-align: justify">
+                                                        {{ detalle.observacion|default_if_none:'' }}
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# REQUISITOS #}
+                                {# OTROS DOCUMENTOS #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbotrosdocumentos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6">Listado de Otros Documentos</th>
+                                            </tr>
+                                            <tr>
+                                                <th style="width: 3%; text-align: center">#</th>
+                                                <th style="width: 40%; text-align: center">Nombre del documento</th>
+                                                <th style="width: 10%; text-align: center">Estado</th>
+                                                <th style="width: 10%; text-align: center">Archivo</th>
+                                                <th style="width: 15%; text-align: center">Cumplimiento</th>
+                                                <th style="width: 22%; text-align: center">Observación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for detalle in documentos %}
+                                                <tr>
+                                                    <td style="text-align: center">
+                                                        <b>{{ forloop.counter }}</b>
+                                                    </td>
+                                                    <td>
+                                                        {{ detalle.documento.descripcion|safe }}
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        {% if detalle.archivofirmado %}
+                                                            <a target="_blank" href="{{ detalle.archivofirmado.url }}" class="btn btn-info tu" title="Descargar Documento"><i class="fa fa-download"></i> Descargar</a>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        {% if detalle.estado == 2 %}
+                                                            <i class="fa fa-check-circle tu" title="Si cumple" style="color: green;"></i>
+                                                        {% elif detalle.estado == 4 %}
+                                                            <i class="fa fa-times tu" title="No cumple" style="color: red"></i>
+                                                        {% else %}&nbsp;{% endif %}
+                                                    </td>
+                                                    <td style="text-align: justify">
+                                                        {{ detalle.observacion|default_if_none:'' }}
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {# OTROS DOCUMENTOS #}
+                                {# PRESUPUESTO #}
+                                <div class="row">
+                                    <table class="table table-bordered table-striped" id="tbdatossolicitante">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="{{ colspancab }}">Presupuesto de Beca</th>
+                                            </tr>
+                                            <tr>
+                                                <th rowspan="2" style="text-align: center; width: 25%;">Rubros</th>
+                                                <th rowspan="2" style="text-align: center; width: 6%;">Valor Unitario</th>
+                                                <th rowspan="2" style="text-align: center; width: 1%;">..</th>
+                                                {% for anio in anios %}
+                                                    <th colspan="2" style="text-align: center;">Periodo {{ forloop.counter }}</th>
+                                                {% endfor %}
+                                                <th rowspan="2" style="text-align: center; width: 6%;">Total</th>
+                                            </tr>
+                                            <tr>
+                                                {% for anio in anios %}
+                                                    <th style="text-align: center; width: 4%;">Cant</th>
+                                                    <th style="text-align: center; width: 5%">Año {{ anio }}</th>
+                                                {% endfor %}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for detalle in rubros %}
+                                                <tr>
+                                                    <td style="text-align: justify">
+                                                        {{ detalle.rubro.descripcion }}
+                                                    </td>
+                                                    <td style="text-align: right">
+                                                        $ {{ detalle.valorunitario|floatformat:2|intcomma }}
+                                                    </td>
+                                                    <td style="text-align: center">..</td>
+                                                        {% for anio in anios %}
+                                                            {% with detalleanio=detalle|args:anio|call:"detalle_anio" %}
+                                                            <td style="text-align: right">
+                                                                {{ detalleanio.cantidad }}
+                                                            </td>
+                                                            <td style="text-align: right">
+                                                                $ {{ detalleanio.subtotal|floatformat:2|intcomma }}
+                                                            </td>
+                                                            {% endwith %}
+                                                        {% endfor %}
+                                                    <td style="text-align: right">
+                                                        <strong>$ {{ detalle.total_rubro|floatformat:2|intcomma }}</strong>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td colspan="2" style="font-weight: bold">Totales:</td>
+                                                <td>...</td>
+                                                {% for anio in anios %}
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: right">
+                                                        {% with totalanio=presupuesto|args:anio|call:"total_anio" %}
+                                                            <strong>$ {{ totalanio|floatformat:2|intcomma }}</strong>
+                                                        {% endwith %}
+                                                    </td>
+                                                {% endfor %}
+                                                <td style="text-align: right">
+                                                    <span class="label label-info">
+                                                    <strong>$ {{ postulacion.presupuesto|floatformat:2|intcomma }}</strong>
+                                                        </span>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                {# PRESUPUESTO #}
+                            </div>
+                        </div>
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                    </div>
+                </div>
+            </div>
+            {# CUERPO DEL FORMULARIO #}
+        </div>
+    </form>
+{% endblock %}

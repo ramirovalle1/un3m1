@@ -1,0 +1,253 @@
+{% extends "basebs.html" %}
+{% block heading %}
+    <script>
+        $(function() {
+            $("#search").click(function() {
+                var term = $("#searchinput").val().toUpperCase();
+                location.href = "/helpdesk_hdaprobar?s="+term+"&ids="+$("#solicitud").val();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            $(".cerrarview").click(function() {
+                $("#vistaprevia").modal("hide");
+                return false;
+            });
+
+            $(".mostrarview").click(function() {
+                document.getElementById('pdfview_permi').src = $(this).attr("url");
+                $("#vistaprevia").modal({backdrop:'static', width: $(window).width()-100, height: '400px'}).modal('show');
+            });
+
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            $("#itemspanel .btn-aprobarcerrar").click(function() {
+                var id = $("#id_solicitud").val();
+                var obse = $("#id_observacion").val();
+                var esta = $("#id_estadosolicitud").val();
+                if(obse==""){
+                    smoke.alert("Ingrese una observación.");
+                    $("#id_observacion").focus();
+                    return false;
+                }
+                if(esta=="0"){
+                    smoke.alert("Selecione el estado de la aprobación.");
+                    $("#id_estadosolicitud").focus();
+                    return false;
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/helpdesk_hdaprobar",
+                    data: {'id': id, 'obse': obse, 'esta': esta, 'action': 'addaprobacion'},
+                    success: function(data) {
+                        if (data.result=='ok') {
+                            $("#itemspanel").modal("hide");
+                            location.href = '/helpdesk_hdaprobar';
+                        } else {
+                            $.unblockUI();
+                            smoke.alert("Problemas al guardar la solicitud.");
+                        }
+                    },
+                    error: function() {
+                        desbloqueoUi();
+                        smoke.alert("Error al enviar los datos al servidor.");
+                    },
+                    dataType: "json"
+                });
+
+            });
+
+            $(".mostrardetalle").click(function() {
+                $("#aprobarcerrar").css('display', 'block');
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/helpdesk_hdaprobar",
+                    data: {'action': 'detalle', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $(".mostrardetalle_view").click(function() {
+                $("#aprobarcerrar").css('display', 'none');
+                var id = $(this).attr('idr');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/helpdesk_hdaprobar",
+                    data: {'action': 'verdetalle', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbody").html(data.data);
+                            $("#itemspanel").modal({backdrop:'static', width: '900px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+        </div>
+    </div>
+    <div class='row-fluid'>
+       <div class='span6' align="right">
+            <form class="form-search">
+                <select id='solicitud' style="width: 25%">
+                    <option value="0" selected="selected">TODOS</option>
+                    {% for solicitud in solicitudes %}
+                        <option value="{{ solicitud.0 }}" {% if ids == solicitud.0 %}selected="selected"{% endif %}>{{ solicitud.1 }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+        <div class="span6" align="left">
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span> Buscar</a>
+                {% if search or ids %}
+                    <a href="/helpdesk_hdaprobar" id='allresults' class='btn btn-info'><span class="fa fa-refresh "></span> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                 <tr>
+
+                        <th style="width:110px; text-align: center">Período</th>
+                        <th style="width:200px;">Fecha registro</th>
+                       <th style="width:400px; text-align: center">Solicita</th>
+                        <th style="width:80px; text-align: center">Estado Aprobación</th>
+                        <th style="width:80px; text-align: center">Solicita Revisión</th>
+                        <th class="hidden-phone hidden-tablet " style="width:70px; text-align: center">Soporte</th>
+                        <th style="width:80px; text-align: center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for solici in solicitud %}
+                        <tr>
+                            <td data-title='Periodo' style="text-align: center"><b>{{ solici.periodo.anioejercicio }}</b></td>
+                            <td data-title='Fecha' style="text-align: center">{{ solici.fecharegistro|date:'d-m-Y' }}</td>
+                            <td data-title='Solicita' style="text-align: center">{{ solici.solicita.nombre_completo_inverso }}<br> <b>C.I: </b>{{ solici.solicita.cedula }}</td>
+                           <td  data-title='Estado' style="text-align: center"><b><span class="label label-{% if solici.estadoaprobacion == 1 %}info{% elif solici.estadoaprobacion == 2 %}warning{% elif solici.estadosolicitud == 5 %}inverse{% elif solici.estadoaprobacion == 3 %}success{% else %}important{% endif %}">{{ solici.get_estadoaprobacion_display }}</span></b></td>
+                            <td data-title='Solicita Revision' style="text-align: center">
+                                {% if solici.solicitarevision %}
+                                    <i class="fa fa-check" style="color: green"></i>
+                                {% else %}
+                                    <i class="fa fa-remove" style="color: red"></i>
+                                {% endif %}</td>
+                            <td class="hidden-phone hidden-tablet" style="text-align: center;">
+                                {% if solici.archivo %}
+                                    <a class="btn btn-success btn-mini mostrarview" url="{{ solici.archivo.url }}" style="margin:1px;" href="javascript:;"><i class="fa fa-download"></i> Descargar</a>
+                                {% endif %}
+
+                            </td>
+                        <td style="text-align: center">
+                            {% if solici.estadoaprobacion == 1 or solici.estadoaprobacion == 5 %}
+                                <a class="btn btn-mini btn-success mostrardetalle tu" href="javascript:;" idr="{{ solici.id }}"><i class="fa fa-edit"></i> Aprobar o Rechazar</a>
+                            {% else %}
+                                <a class="btn btn-mini btn-warning mostrardetalle_view tu" title="Ver Detalle" href="javascript:;" idr="{{ solici.id }}"><i class="fa fa-list"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="10">NO EXISTEN DATOS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/helpdesk_hdaprobar?page=1">1</a></li>
+                        <li><a href="/helpdesk_hdaprobar?page={{ paging.ellipsis_izquierda }}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/helpdesk_hdaprobar?page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/helpdesk_hdaprobar?page={{ paging.ellipsis_derecha }}" class="active">...</a></li>
+                        <li><a href="/helpdesk_hdaprobar?page={{ paging.num_pages }}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/helpdesk_hdaprobar?{% if search %}s={{ search }}&{% endif %}page={{ pagenumber }}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Mostrar detalles de la Solicitud</h3>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td id="aprobarcerrar"><a href="javascript:;" class="btn btn-aprobarcerrar btn-success"> Guardar</a></td>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="vistaprevia" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Vista previa</h3>
+        </div>
+        <div class="modal-body">
+            <iframe src="" align="center" height="380px" width="99%" id="pdfview_permi"></iframe>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-info cerrarview">Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

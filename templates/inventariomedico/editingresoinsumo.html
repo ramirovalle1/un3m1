@@ -1,0 +1,557 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $("#fechaingreso, #concepto, #detalleinsumos_aux").addClass("validate[required]");
+
+            let secuenciainsumo = {{ cantidaddetalles }};
+            let nf_insumo = {{ cantidaddetalles }};
+
+            lista_items1 = []; //insumos borrados del detalle
+
+            agregarFilaDefaultInsumo = function (){
+                $("#detalle_insumos").empty();
+                let filadefault = '<tr id="fila_default_insumos">'+
+                              ' <td colspan="10" style="text-align: center">NO EXISTEN DETALLES DE INSUMOS RECIBIDOS</td>'+
+                              '</tr>';
+                $("#detalle_insumos").append(filadefault);
+            };
+
+            borrarFilaDefaultInsumo = function (){
+                $("#fila_default_insumos").remove();
+                $("#detalleinsumos_aux").val("OK");
+            };
+
+            $(".guardar").click(function () {
+                envioformularioreg("/inventariomedico", "editingresoinsumo", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                $("#frmEditarIngreso").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmEditarIngreso").validationEngine('validate', { scroll: false });
+                let formdata;
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'editingresoinsumo'){
+                        formdata = new FormData($("#frmEditarIngreso")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                urlDestino = "/inventariomedico";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                location.href = "/inventariomedico";
+            });
+
+            agregarValidacionesCampos = function (){
+                $(".descripcion").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".tipo").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".lote").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".fechaelabora").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".fechavence").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".cantidad").each(function(){
+                    $(this).addClass("validate[required, min[1]]");
+                });
+
+                $(".costo").each(function(){
+                    $(this).addClass("validate[required, min[0.01]]");
+                });
+
+                $(".cantidad").blur(function () {
+                    numerico($(this), 0, 9999, 0);
+                    calcularCostoUnitario();
+                });
+
+            };
+
+            validarCantidades = function (){
+                numerico($(this), 0, 9999, 0);
+                calcularCostoUnitario();
+            };
+
+            calcularCostoUnitario = function (){
+                let acantidades = new Array();
+                let atotales = new Array();
+                let acostounitario = new Array();
+                let costounitario = 0.00;
+                let i = 0
+
+                $('.cantidad').each(function () {
+                    acantidades.push(parseFloat($(this).val()));
+                });
+
+                $('.total').each(function () {
+                    atotales.push(parseFloat($(this).val()));
+                });
+
+                for (i = 0; i < acantidades.length; i++) {
+                    costounitario = (acantidades[i] > 0) ? redondeo(atotales[i] / acantidades[i], 2) : redondeo(0, 2);
+                    acostounitario.push(costounitario);
+                }
+
+                i = 0;
+                $('input[name="costo[]"]').each(function () {
+                    $(this).val(acostounitario[i].toFixed(2));
+                    i++;
+                });
+            };
+
+            calcularTotalIngreso = function (){
+                let totalingreso = 0.0;
+
+                $('.total').each(function () {
+                    totalingreso += parseFloat($(this).val());
+                });
+
+                $("#totalingreso").val(totalingreso.toFixed(2))
+            };
+
+            $(".agregarinsumo").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/inventariomedico",
+                    data: {'action': 'addinsumo', 'ids': '{{ recepcioninsumo.egresobodega.id|encrypt }}'},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyinsumo").html(data.data);
+                            $(".paneltitleinsumo").html(data.title);
+                            $("#itemspanelinsumo").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelinsumo .agregar").click(function () {
+                $("#frmInsumo").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmInsumo").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarInsumo()){
+                        borrarFilaDefaultInsumo();
+
+                        idprod = $('#auxinsumo_select2').attr("idprod");
+                        producto = $('#auxinsumo_select2').attr("producto");
+                        descripcion = $('#auxinsumo_select2').attr("descripcion");
+                        valor = parseFloat($('#auxinsumo_select2').attr("valor")).toFixed(2);
+
+                        secuenciainsumo ++;
+                        nf_insumo ++;
+
+                        campoproducto = `<b>Producto:</b> ${producto}<br><b>Total: </b> $ ${valor}
+                                        <input type="hidden" id="idreg${nf_insumo}" name="idreg[]" value="0">
+                                        <input type="hidden" id="idproducto${nf_insumo}" name="idproducto[]" value="${idprod}">
+                                        <input type="hidden" id="total${nf_insumo}" name="total[]" value="${valor}" class="total" style="width: 100%;">`;
+
+                        campodescripcion = `<input type="text" autocomplete="off" maxlength="100" id="descripcion${nf_insumo}" name="descripcion[]" value="${descripcion}" class="descripcion" style="width: 100%; text-transform: uppercase">
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campotipo = `<select style="width: 100%;" class="tipo" id="tipo${nf_insumo}" name="tipo[]" >
+                                        <option value="" selected>---------</option>
+                                        <option value="1">MEDICAMENTOS</option>
+                                        <option value="2">MATERIALES</option>
+                                    </select>
+                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campolote = `<input type="text" autocomplete="off" maxlength="30" id="lote${nf_insumo}" name="lote[]" value="" class="lote" style="width: 100%; text-transform: uppercase">
+                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campofechaelabora = `<input type="date" autocomplete="off" maxlength="30" id="fechaelabora${nf_insumo}" name="fechaelabora[]" value="{{ fecha|date:'Y-m-d' }}" class="fechaelabora" style="width: 100%;">
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campofechavence = `<input type="date" autocomplete="off" maxlength="30" id="fechavence${nf_insumo}" name="fechavence[]" value="{{ fecha|date:'Y-m-d' }}" class="fechavence" style="width: 100%;">
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campocantidad = `<input type="text" autocomplete="off" maxlength="30" id="cantidad${nf_insumo}" name="cantidad[]" value="0" class="cantidad" style="width: 100%; text-align: right">
+                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        campocosto = `<input type="text" autocomplete="off" maxlength="30" id="costo${nf_insumo}" name="costo[]" value="0.00" class="costo" style="width: 100%; text-align: right" readonly>
+                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                        nueva_fila = `<tr class="detalleinsumos" id="filadetalle_${nf_insumo}" idprod="${idprod}" >`+
+                            '<td style="text-align: right"><b>'+secuenciainsumo.toString()+'</b></td>'+
+                            '<td style="text-align: justify">'+campoproducto+'</td>'+
+                            '<td style="text-align: left">'+campodescripcion+'</td>'+
+                            '<td style="text-align: left">'+ campotipo +'</td>'+
+                            '<td style="text-align: left">'+campolote+'</td>'+
+                            '<td style="text-align: center">'+campofechaelabora+'</td>'+
+                            '<td style="text-align: center">'+campofechavence+'</td>'+
+                            '<td style="text-align: center">'+campocantidad+'</td>'+
+                            '<td style="text-align: justify">'+campocosto+'</td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_insumo" idreg="0" idfila="'+nf_insumo.toString()+'" descripcion="'+descripcion+'" title="Borrar fila"><i class="fa fa-remove"></i></a></td>'+
+                            '</tr>';
+
+                        $("#detalle_insumos").append(nueva_fila);
+                        $("#descripcion"+nf_insumo.toString()).addClass("validate[required]");
+                        $("#tipo"+nf_insumo.toString()).select2();
+                        $("#tipo"+nf_insumo.toString()).addClass("validate[required]");
+                        $("#lote"+nf_insumo.toString()).addClass("validate[required]");
+                        $("#fechaelabora"+nf_insumo.toString()).addClass("validate[required]");
+                        $("#fechavence"+nf_insumo.toString()).addClass("validate[required]");
+                        $("#cantidad"+nf_insumo.toString()).addClass("validate[required, min[1]]");
+                        $("#costo"+nf_insumo.toString()).addClass("validate[required, min[0.01]]");
+
+                        $(".cantidad").unbind("blur.cantidad");
+                        $(".cantidad").bind("blur.cantidad", validarCantidades);
+                        $("#detalle_insumos").find(".eliminaritem_insumo").tooltip();
+                        $(".eliminaritem_insumo").unbind("click.eliminaritem_insumo");
+                        $(".eliminaritem_insumo").bind("click.eliminaritem_insumo", eliminarItemInsumo);
+
+                        calcularTotalIngreso();
+
+                        $('#itemspanelinsumo').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarInsumo = function (){
+                let idprod = $('#auxinsumo_select2').attr("idprod");
+                let descripcion = $('#auxinsumo_select2').attr("descripcion");
+                let repetido = false;
+
+                if($('.detalleinsumos[idprod="'+idprod+'"]').length > 0){
+                    repetido = true;
+                }
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "El insumo: <b>" + descripcion + "</b> ya ha sido agregado al detalle de insumos médicos recibidos");
+                    return false;
+                }
+
+                return true;
+            };
+
+            eliminarItemInsumo = function() {
+                let idfila = $(this).attr("idfila");
+                let idreg = $(this).attr("idreg");
+                let descripcion = $(this).attr("descripcion");
+                let titulo = "Borrar Insumo Médico recibido";
+                let mensaje = "¿Está seguro de borrar el insumo recibido: <b>"+descripcion+"</b>?";
+
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    html: mensaje,
+                    confirmButtonText: 'Aceptar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        $(this).tooltip('hide');
+                        $("#filadetalle_"+idfila).remove();
+
+                        if(idreg != '0'){
+                            let item = {
+                                idreg: idreg
+                            };
+                            lista_items1.push(item);
+                        }
+
+                        secuenciainsumo = 0;
+                        $("#tbdetalleinsumos tbody tr").each(function (index) {
+                            secuenciainsumo ++;
+                            $(this).children("td").each(function (index2) {
+                                if(index2 == 0)
+                                    $(this).html("<b>" + secuenciainsumo.toString() + "</b>");
+                            });
+                        });
+
+                        if(secuenciainsumo == 0){
+                            $("#detalleinsumos_aux").val("");
+                            agregarFilaDefaultInsumo();
+                        }
+
+                        calcularTotalIngreso();
+                    }
+                })
+            };
+
+            agregarValidacionesCampos();
+
+            $(".cantidad").unbind("blur.cantidad");
+            $(".cantidad").bind("blur.cantidad", validarCantidades);
+            $("#detalle_insumos").find(".eliminaritem_insumo").tooltip();
+            $(".eliminaritem_insumo").unbind("click.eliminaritem_insumo");
+            $(".eliminaritem_insumo").bind("click.eliminaritem_insumo", eliminarItemInsumo);
+
+            $("#concepto").css("padding", "3px");
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/inventariomedico{% endblock %}
+{% block canvas %}
+    <form name="frmEditarIngreso" id="frmEditarIngreso">{% csrf_token %}
+        <input type="hidden" name="action" value="editingresoinsumo">
+        <input type="hidden" name="id" value="{{ recepcioninsumo.id|encrypt }}">
+        <div class='row align-items-center justify-content-center'>
+            <div class='col-lg-12 col-sm-12 col-12'>
+                {# TITULO #}
+                <div class="row">
+                    <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                        <div class="headtitle">
+                            <h3 class="texto-blue">{{ title }}</h3>
+                            <h6>Recepción de Insumos Médicos desde Bodega</h6>
+                        </div>
+                    </div>
+                </div>
+                {# TITULO #}
+                {# CUERPO DEL FORMULARIO #}
+                <div class="card">
+                    <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-5">
+                        {# FILA DATOS COMPROBANTE EGRESO DE BODEGA #}
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbresolucion">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6">Datos Comprobante Egreso de Bodega</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 15%;"><b>N° Documento:</b></td>
+                                                <td style="width: 18%;">
+                                                    {{ recepcioninsumo.egresobodega.numerodocumento }}
+                                                </td>
+                                                <td style="width: 15%;"><b>Fecha Comprobante:</b></td>
+                                                <td style="width: 18%;">
+                                                    {{ recepcioninsumo.egresobodega.fechaoperacion|date:"d-m-Y" }}
+                                                </td>
+                                                <td style="width: 15%;"><b>Total</b></td>
+                                                <td style="width: 19%;">
+                                                    $ {{ recepcioninsumo.egresobodega.valor|floatformat:2|intcomma }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {# FILA DATOS COMPROBANTE EGRESO DE BODEGA #}
+                        {# FILA DATOS INGRESO DE INSUMOS #}
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbresolucion">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6">Datos del Ingreso de Insumos Médicos</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 15%;"><b>Fecha Ingreso:</b></td>
+                                                <td style="width: 18%;">
+                                                    <input type="date" id="fechaingreso" name="fechaingreso" value="{{ recepcioninsumo.fecha|date:'Y-m-d' }}" style="width: 75%;">
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 15%;"><b>Concepto:</b></td>
+                                                <td style="width: 52%;" colspan="2">
+                                                    <textarea name="concepto" rows="3" col="12" class="form-control" id="concepto" style="text-transform: uppercase">{{ recepcioninsumo.concepto }}</textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 15%;"><b>Total:</b></td>
+                                                <td style="width: 18%;">
+                                                    <input type="text" id="totalingreso" name="totalingreso" value="{{ recepcioninsumo.total|floatformat:2 }}" style="width: 75%;" readonly>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {# FILA DATOS INGRESO DE INSUMOS #}
+                        {# FILA DETALLE DE INSUMOS RECIBIDOS #}
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleinsumos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th colspan="10">Detalle de Insumos Médicos Recibidos</th>
+                                            </tr>
+                                            <tr>
+                                                <th style="width: 2%; text-align: center;">#</th>
+                                                <th style="width: 17%; text-align: center;">Producto Recibido</th>
+                                                <th style="width: 19%; text-align: center;">Descripción</th>
+                                                <th style="width: 14%; text-align: center;">Tipo</th>
+                                                <th style="width: 10%; text-align: center;">Lote</th>
+                                                <th style="width: 9%; text-align: center;">Elabora</th>
+                                                <th style="width: 9%; text-align: center;">Vence</th>
+                                                <th style="width: 9%; text-align: center;">Cantidad</th>
+                                                <th style="width: 9%; text-align: center;">Costo</th>
+                                                <th style="width: 2%; text-align: center;">
+                                                    <a href="javascript:;" id="btnagregarinsumo" class="btn btn-success btn-mini agregarinsumo" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Insumo"><i class="fa fa-plus"></i> </a>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_insumos">
+                                            {% for detalle in detalles %}
+                                                <tr id="filadetalle_{{ forloop.counter }}" class="detalleinsumos" idprod="{{ detalle.producto.id }}">
+                                                    <td style="text-align: right;"><b>{{ forloop.counter }}</b></td>
+                                                    <td style="text-align: justify">
+                                                        <b>Producto:</b> {{ detalle.producto.cuenta.cuenta }}.{{ detalle.producto.codigo }} - {{ detalle.producto.descripcion }}<br>
+                                                        <b>Total:</b> $ {{ detalle.costototal|floatformat:2 }}
+                                                        <input type="hidden" id="idreg{{ forloop.counter }}" name="idreg[]" value="{{ detalle.id }}">
+                                                        <input type="hidden" id="idproducto{{ forloop.counter }}" name="idproducto[]" value="{{ detalle.producto.id }}">
+                                                        <input type="hidden" id="total{{ forloop.counter }}" name="total[]" value="{{ detalle.costototal|floatformat:2 }}" class="total" style="width: 100%;">
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="text" autocomplete="off" maxlength="100" id="descripcion{{ forloop.counter }}" name="descripcion[]" value="{{ detalle.descripcion }}" class="descripcion" style="width: 100%; text-transform: uppercase">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: left">
+                                                        <select style="width: 100%;" class="tipo" id="tipo{{ forloop.counter }}" name="tipo[]" >
+                                                            <option value="" selected>---------</option>
+                                                            <option value="1" {% if detalle.tipo == 1 %}selected{% endif %}>MEDICAMENTOS</option>
+                                                            <option value="2" {% if detalle.tipo == 2 %}selected{% endif %}>MATERIALES</option>
+                                                        </select>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="text" autocomplete="off" maxlength="30" id="lote{{ forloop.counter }}" name="lote[]" value="{{ detalle.lote }}" class="lote" style="width: 100%; text-transform: uppercase">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="date" autocomplete="off" maxlength="30" id="fechaelabora{{ forloop.counter }}" name="fechaelabora[]" value="{{ detalle.fechaelabora|date:'Y-m-d' }}" class="fechaelabora" style="width: 100%;">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="date" autocomplete="off" maxlength="30" id="fechavence{{ forloop.counter }}" name="fechavence[]" value="{{ detalle.fechavence|date:'Y-m-d' }}" class="fechavence" style="width: 100%;">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="text" autocomplete="off" maxlength="30" id="cantidad{{ forloop.counter }}" name="cantidad[]" value="{{ detalle.cantidad|floatformat:0 }}" class="cantidad" style="width: 100%; text-align: right">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input type="text" autocomplete="off" maxlength="30" id="costo{{ forloop.counter }}" name="costo[]" value="{{ detalle.costo|floatformat:2 }}" class="costo" style="width: 100%; text-align: right" readonly>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_insumo" idreg="{{ detalle.id }}" idfila="{{ forloop.counter }}" descripcion="{{ detalle.producto.descripcion }}" title="Borrar fila"><i class="fa fa-remove"></i></a>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    <div>
+                                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="detalleinsumos_aux" value="OK">
+                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {# FILA DETALLE DE INSUMOS RECIBIDOS #}
+                        {# FILA DE LOS BOTONES #}
+                        <div class="row">
+                            <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                                <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                                <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                            </div>
+                        </div>
+                        {# FILA DE LOS BOTONES #}
+                    </div>
+                </div>
+                {# CUERPO DEL FORMULARIO #}
+            </div>
+        </div>
+    </form>
+
+    <div class="modal fade static"  id="itemspanelinsumo" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered  modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i> <span class="paneltitleinsumo">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyinsumo">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar"> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

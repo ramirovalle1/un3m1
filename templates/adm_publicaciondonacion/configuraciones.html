@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+
+    {#    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/dataTables.buttons.min.js"></script>#}
+    {#    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.bootstrap.min.js"></script>#}
+    {#    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.colVis.min.js"></script>#}
+    {#    <link href="https://gitcdn.github.io/bootstrap-toggle/2.2.2/css/bootstrap-toggle.min.css" rel="stylesheet">#}
+    {#    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/2.5.0/jszip.min.js"></script>#}
+
+    {#    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.flash.min.js"></script>#}
+    {#    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.5.6/js/buttons.html5.min.js"></script>#}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+
+
+    <style>
+
+        .tab-pane{
+            /*background-color: rgba(255,255,255,0.5);*/
+        }
+
+        .show {
+            right: 5px;
+        }
+
+        /* REMUEVE EL BACKGROUND-COLOR CHANGE ON BT-TABLES */
+        *:focus {
+            outline: 0 !important;
+        }
+
+        .table tbody tr.info td {
+            background-color: unset !important;
+            color: unset !important;
+        }
+
+        .tabla_paginada th {
+            background-color: transparent;
+            color: unset !important;
+        }
+
+        table.dataTable thead th, table.dataTable thead td {
+            padding: 2px;
+            border-bottom: 0;
+            background-color: #fff;
+        }
+
+        table.dataTable tbody th, table.dataTable tbody td {
+            padding: 2px;
+            border-bottom: 0;
+            background-color: #fff;
+        }
+
+    </style>
+    <script>
+
+        $(document).ready(function () {
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+        });
+
+        $(function () {
+
+            //See more
+            var tabhojavida = localStorage.getItem('tabhojavida');
+            if (!tabhojavida) {
+                tabhojavida = "#1";
+                localStorage.setItem("tabhojavida", tabhojavida);
+            }
+
+            $('.tabs').each(function () {
+                if ($(this).attr('href') == tabhojavida) {
+                    $(this).trigger('click');
+                }
+            }).click(function () {
+                localStorage.setItem("tabhojavida", $(this).attr('href'));
+            });
+
+
+        });
+
+        function soloNumeros(e) {
+            var key = window.Event ? e.which : e.keyCode
+            return (key >= 48 && key <= 57)
+        }
+
+        function eliminar(pk, nombre, accion) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar este registro:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.error === false) {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+
+
+                            location.reload();
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+
+        function formModal(id, text, action, footer = true) {
+            debugger;
+            $('.panelbodyform').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodalform').hide();
+                        } else {
+                            $('#footermodalform').show();
+                        }
+                        $('.panelbodyform').html(data.data);
+                        $('#itemspanel .paneltitleform').html(text);
+                        $("#itemspanel").modal({
+                            backdrop: 'static',
+                            width: '50%'
+                        }).modal('show').on('hidden.bs.modal', function (e) {
+                            $(".panelbodyform").empty();
+                        });
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    alertaDanger('Error de conexión');
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+
+            $('#id_nombre, #id_estadoaprobacion').addClass("validate[required]");
+
+            $("select").select2({minimumResultsForSearch: 5});
+
+            $(".select2hidden").each(function () {
+                var id = $(this).attr("id");
+                $("#" + id + "_select2").html('<option>' + $(this).attr("descripcion") + '</option>').trigger('change');
+            });
+
+
+        });
+
+        $(document).ready(function () {
+            const dataTable = $('.dataTable').DataTable({
+                responsive: true,
+                iDisplayLength: 25,
+                ordering: false,
+                paging: true,
+                searching: true,
+                bInfo: true,
+                dom: "<<'col-sm-12 col-md-3'f><'col-sm-12 col-md-3'l><'col-sm-12 col-md-12'B>>" +
+                    "<<'col-sm-12'tr>>" +
+                    "<<'col-md-6 col-sm-12'i><'col-md-4 col-sm-12'p>>",
+                buttons: [],
+                columnDefs: [
+                    {"width": "20%", "targets": 1},
+                ]
+            });
+            $('.dataTable tbody').on('click', 'tr', function () {
+                var data = dataTable.row(this).data();
+            });
+
+            const tabla_paginada = $('.tabla_paginada').DataTable({
+                responsive: true,
+                ordering: true,
+                paging: true,
+                searching: true,
+                language: {
+                    "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+                },
+                bInfo: true,
+                dom: 'Bfrtip',
+                buttons: []
+            });
+
+            $('.tabla_paginada tbody').on('click', 'tr', function () {
+                var data = tabla_paginada.row(this).data();
+            });
+        });
+
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_publicaciondonacion{% endblock %}
+{% block canvas %}
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="panelbodyform"></div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalform">
+                    <a href="javascript:;" class="btn btn-default" data-bs-dismiss="modal"><i
+                            class="fa fa-window-close"></i>Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración</h6>
+            </div>
+        </div>
+    </div>
+
+
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tipod-tab" data-bs-toggle="tab" data-bs-target="#tipod" type="button"
+                    role="tab" aria-controls="tipod" aria-selected="true">
+                <img src="/static/images/iconosmini/categorias.png" width="15px" alt="Tipo de donación"> Tipo de
+                donación
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tipop-tab" data-bs-toggle="tab" data-bs-target="#tipop" type="button"
+                    role="tab" aria-controls="tipop" aria-selected="false">
+                <img src="/static/images/iconosmini/equipo.png" width="15"> Tipo de producto
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="medida-tab" data-bs-toggle="tab" data-bs-target="#medida" type="button"
+                    role="tab" aria-controls="medida" aria-selected="false">
+                <img src="/static/images/iconosmini/categorias.png" width="15" alt="Unidad de medida"> Unidad de medida
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="poblacion-tab" data-bs-toggle="tab" data-bs-target="#poblacion" type="button"
+                    role="tab" aria-controls="poblacion" aria-selected="false">
+                <img src="/static/images/iconosmini/requisito.png" width="15" alt="Población"> Población
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="producto-tab" data-bs-toggle="tab" data-bs-target="#producto" type="button"
+                    role="tab" aria-controls="producto" aria-selected="false">
+                <img src="/static/images/iconosmini/suitcase.png" width="15" alt="Producto"> Producto
+            </button>
+        </li>
+    </ul>
+    <div class="tab-content" id="myTabContent">
+        <div class="tab-pane fade show active" id="tipod" role="tabpanel" aria-labelledby="tipod-tab">
+            <div class="row-fluid">
+                <div class="card mb-4 my-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a href="javascript:void(0)"
+                                   onclick="formModal('0','Adicionar tipo de donación','addtipodonacion')"
+                                   class="btn btn-success"><i class="fa fa-plus-circle"></i> Adicionar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='table table-bordered tabla_paginada'>
+                            <thead>
+                            <tr>
+                                <th style="text-align: center;">NOMBRE</th>
+                                <th style="text-align: center; width: 20%">ACCIONES</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in listatipodonacion %}
+                                    <tr>
+                                        <td style="text-align: start;">
+                                            {{ l.nombre|title }}
+                                        </td>
+                                        <td style="text-align: center">
+                                            <a href="javascript:void(0)" onclick="formModal('{{ l.id|encrypt }}','Editar tipo de donación','edittipodonacion')" class="btn btn-primary btn-mini tl">
+                                                <i class="fa fa-pencil"></i>
+                                            </a>
+                                            {% if not l.en_uso %}
+                                                <a class="btn btn-danger btn-mini tl" href="javascript:;" onclick="eliminar('{{ l.id }}', '{{ l.nombre }}', 'deletetipodonacion')">
+                                                    <i class="fa fa-trash"></i>
+                                                </a>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <td colspan="5">No existen registros</td>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="tipop" role="tabpanel" aria-labelledby="tipop-tab">
+            <div class="row-fluid">
+                <div class="card mb-4 my-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a href="javascript:void(0)" onclick="formModal('0','Adicionar tipo de producto','addtipoproducto')" class="btn btn-success"><i class="fa fa-plus-circle"></i> Adicionar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='table thead-light table-bordered tabla_paginada'>
+                            <thead>
+                            <tr>
+                                <th style="text-align: center;">NOMBRE</th>
+                                <th style="text-align: center; width: 9%">ACCIONES</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for l in listatipoproducto %}
+                                <tr>
+                                    <td>
+                                        {{ l.descripcion|title }}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <a href="javascript:void(0)" onclick="formModal('{{ l.id|encrypt }}','EDITAR TIPO DE PRODUCTO','edittipoproducto')" class="btn btn-primary btn-mini tl">
+                                            <i class="fa fa-pencil"></i>
+                                        </a>
+                                        {% if not l.en_uso %}
+                                            <a class="btn btn-danger btn-mini tl" href="javascript:;" onclick="eliminar('{{ l.id }}', '{{ l.descripcion }}', 'deletetipoproducto')">
+                                                <i class="fa fa-trash"></i>
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <td colspan="5">NO EXISTEN REGISTROS</td>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="medida" role="tabpanel" aria-labelledby="medida-tab">
+            <div class="row-fluid">
+                <div class="card mb-4 my-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a href="javascript:void(0);" onclick="formModal('0','Adicionar tipo de población','addunidadmedida')" class="btn btn-success"><i class="fa fa-plus-circle"></i> Adicionar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='table thead-light table-bordered tabla_paginada'>
+                            <thead>
+                                <tr>
+                                    <th style="width: 200px;text-align: center;">Nombre</th>
+                                    <th style="width: 20%;text-align: center;"><i class="fa fa-gears"></i>&nbsp;Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for l in listaunidadmedida %}
+                                <tr>
+                                    <td>
+                                        {{ l.nombre|title }} {% if l.abreviatura %}({{ l.abreviatura|title|default:"" }}){% endif %}
+
+                                    </td>
+                                    <td style="text-align: center">
+                                        <a href="javascript:void(0)" onclick="formModal('{{ l.id|encrypt }}','Editar unidad de medida','editunidadmedida')" class="btn btn-primary btn-mini tl">
+                                            <i class="fa fa-pencil"></i>
+                                        </a>
+                                        {% if not l.en_uso %}
+                                            <a class="btn btn-danger btn-mini tl" href="javascript:;" onclick="eliminar('{{ l.id|encrypt }}', '{{ l.nombre }}', 'deleteunidadmedida')">
+                                                <i class="fa fa-trash"></i>
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="11">
+                                        <label class="label label-info">
+                                            NO HAY REGISTROS
+                                        </label>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="poblacion" role="tabpanel" aria-labelledby="poblacion-tab">
+            <div class="row-fluid">
+                <div class="card mb-4 my-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a href="javascript:void(0);" onclick="formModal('0','Adicionar tipo de población','addpoblacion')" class="btn btn-success"><i class="fa fa-plus-circle"></i> Adicionar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='table thead-light table-bordered tabla_paginada'>
+                            <thead>
+                                <tr>
+                                    <th style="width: 200px;text-align: center;">NOMBRE</th>
+                                    <th style="width: 20px;text-align: center;">ACCIONES</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for l in listapoblaciondonacion %}
+                                <tr>
+                                    <td>
+                                        {{ l.nombre|title }}
+                                    </td>
+                                    <td style="text-align: center">
+                                        <a href="javascript:void(0)"
+                                           onclick="formModal('{{ l.id|encrypt }}','Editar tipo de población','editpoblacion')"
+                                           class="btn btn-primary btn-mini tl">
+                                            <i class="fa fa-pencil"></i>
+                                        </a>
+                                        {% if not l.en_uso %}
+                                            <a class="btn btn-danger btn-mini tl" href="javascript:;" onclick="eliminar('{{ l.id|encrypt }}', '{{ l.nombre }}', 'deletepoblacion')">
+                                                <i class="fa fa-trash"></i>
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="11">
+                                        NO HAY REGISTROS
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="producto" role="tabpanel" aria-labelledby="producto-tab">
+            <div class="row-fluid">
+                <div class="card mb-4 my-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a href="javascript:void(0);" onclick="formModal('0','Adicionar producto','addproducto')" class="btn btn-success"><i class="fa fa-plus-circle"></i> Adicionar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='table thead-light table-bordered tabla_paginada'>
+                            <thead class="refresh_body">
+                            <tr>
+                                <th width="100" class="txt_center">DESCRIPCIÓN</th>
+                                <th width="100" class="txt_center">TIPO PRODUCTO</th>
+                                <th width="100" class="txt_center">ACCIONES</th>
+                            </tr>
+                            </thead>
+                            <tbody class="refresh_body">
+                            {% for l in listaproducto %}
+                                <tr>
+                                    <td>
+                                        {{ l.descripcion|title }}
+                                    </td>
+                                    <td>
+                                       {{ l.tipoproducto|title }}
+                                    </td>
+                                    <td class="txt_center" style="width: 5%;  max-width: 5%;">
+                                        <a href="javascript:void(0)"
+                                           onclick="formModal('{{ l.id|encrypt }}','Editar producto','editproducto')" class="btn btn-primary btn-mini tl">
+                                            <i class="fa fa-pencil"></i>
+                                        </a>
+                                        {% if not l.en_uso %}
+                                            <a class="btn btn-danger btn-mini tl" href="javascript:;" onclick="eliminar('{{ l.id }}', '{{ l.descripcion }}', 'deleteproducto')">
+                                                <i class="fa fa-trash"></i>
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="11">
+                                        "NO HAY EL TEXTO"
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}

@@ -1,0 +1,226 @@
+{% load sga_extras %}
+<script>
+    $(function (e) {
+        $("select").select2({width: '100%'});
+        tooltips();
+        tabla_paginada = $('.verestudiantes_table').DataTable({
+            responsive: false,
+            ordering: false,
+            paging: true,
+            searching: true,
+            language: {
+                "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+            },
+            bInfo: false,
+            dom: 'Bfrtip',
+            buttons: [],
+        });
+
+        $('.verestudiantes_table tbody').on('click', 'tr', function () {
+            var data = tabla_paginada.row(this).data();
+        });
+
+        $(".btn-establecerorden").click(function (){
+                var orden = parseInt($('#cb_orden').val());
+                var texto_orden = $( "#cb_orden option:selected").text();
+                if (orden > 0){
+                   var question = `Al ejecutar el proceso de orden, se asignará de manera automática a todos los estudiantes pre inscritos en la prácticas pre profesionales {{ preinscripcion.motivo }} con el grupo de orden seleccionado: <span class="label label-warning">`+texto_orden+`</span><br>¿Está seguro de ejecutar la Asignacion de orden en la convocatoria?`;
+                   Confirm.question(question, function () {
+                        bloqueointerface();
+                        var aData = {"action": "{{ action }}", 'id': '{{ preinscripcion.id }}', 'orden':orden}
+                        $.ajax({
+                            type: "POST",
+                            url: '{{ request.path }}',
+                            data: aData,
+                            success: function(data) {
+                                if (data.result == 'ok') {
+                                    $.unblockUI();
+                                    Swal.fire({
+                                        title: `NOTIFICACIÓN`,
+                                        text: data.mensaje,
+                                        type: 'success',
+                                        icon: 'success',
+                                        showCancelButton: false,
+                                        allowOutsideClick: false,
+                                        confirmButtonColor: '#3085d6',
+                                        cancelButtonColor: '#d33',
+                                        confirmButtonText: 'Aceptar',
+                                        cancelButtonText: 'Cancelar'
+                                    }).then((result) => {
+                                        if (result.value) {
+                                            bloqueointerface();
+                                            location.reload();
+                                        }
+                                    }).catch(error => {
+                                        NotificationJG.error(error);
+                                        $.unblockUI();
+                                    });
+                                }
+                                else{
+                                    NotificationJG.error(data.mensaje);
+                                    $.unblockUI();
+                                }
+                            },
+                            error: function() {
+                                $.unblockUI();
+                                NotificationJG.error("Error al enviar los datos.");
+                            },
+                            dataType: "json",
+                        });
+                    }, function () {
+                        NotificationJG.info("Enhorabuena, NO se ha ejecutado el proceso.!");
+                   });
+                }else{
+                    NotificationJG.info('Por favor, seleccionar un GRUPO ORDEN para continuar.');
+                }
+
+            });
+    });
+    function generarexcelordenprioridad() {
+        openwindow('GET', '{{ request.path }}', {
+            action: 'estudiantes_ordenprioridad_excel',  band: 0, ids: JSON.stringify({{ listaestorden }})
+        }, '_blank');
+    }
+</script>
+<style>
+    table.table thead th, table.table thead td {
+        padding: 2px 4px 2px 4px;
+        border-bottom: 0;
+        vertical-align: middle;
+        text-align: center;
+        font-size: 13px;
+        text-transform: uppercase;
+    }
+
+    table.table tbody th, table.table tbody td {
+        padding: 1px 4px 1px 4px;
+        border-bottom: 0;
+        background-color: #fff;
+        vertical-align: middle;
+        font-size: 12px;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    /* Track */
+    ::-webkit-scrollbar-track {
+      box-shadow: inset 0 0 5px grey;
+      border-radius: 10px;
+    }
+
+    /* Handle */
+    ::-webkit-scrollbar-thumb {
+      background: silver;
+      border-radius: 10px;
+    }
+
+    .dataTables_paginate {
+        justify-content: center; !important;
+    }
+
+</style>
+
+<div class="card mb-6">
+    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+        <div class="table-responsive">
+            <table class='table table-borderless' id="tablelistado">
+                <thead>
+                    <tr>
+                        <th style="text-align: left; width: 200px">Periodo: </th>
+                        <td style="text-align: left;"><span class="text-success fw-bold">{{ preinscripcion.periodo }}</span></td>
+                    </tr>
+                    <tr>
+                        <th style="text-align: left; width: 200px">Carrera(s): </th>
+                        <td style="text-align: left;">
+                            {% for carr in preinscripcion.carrera.all %}
+                                <span class="fw-bold"><i class="fa fa-graduation-cap"></i> {{ carr }}</span><br>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th style="text-align: left; width: 200px">Grupo Orden: </th>
+                        <td style="text-align: left;">
+                            <select id="cb_orden" name="orden" class="form-control" style="width: 40%">
+{#                                <option value="5" selected="selected">TODOS</option>#}
+                                {% for dato in grupoorden %}
+                                    <option {% if idgo.grupoorden %}{% if idgo.grupoorden == dato.0 %}selected{% endif %}{% else %}{% if dato.0 == 5 %}selected{% endif %}{% endif %} value="{{ dato.0 }}">{{ dato.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                </thead>
+            </table>
+            {% if cantidad > 0 %}
+            <h5><i class="fa fa-users"></i> {{ cantidad }} ESTUDIANTES
+                <a class="btn btn-info btn-mini tu" title="DESCARGAR EXCEL" onclick="generarexcelordenprioridad();"><span class="fa fa-file-excel-o"></span></a>
+            </h5>
+            <table class='table table-bordered verestudiantes_table' >
+                <thead>
+                <tr>
+                    <th style="text-align: center; width: 20%">ORDEN-<span class="text-info fw-bold">{{ idgo.get_grupoorden_display }}</span></th>
+                    <th style="text-align: center; width: 20%">DOCUMENTO</th>
+                    <th style="text-align: center; width: 40%">NOMBRES</th>
+                    <th style="text-align: center; width: 20%">PROMEDIO GENERAL</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for l in listaestppp %}
+                    <tr>
+                        <td style="text-align: center; width: 20%">
+                            <span class="fw-bold">{{ l.0 }}</span>
+                        </td>
+                        <td style="text-align: center; width: 20%">
+                            <span class="fw-bold">{{ l.1 }}</span>
+                        </td>
+                        <td style="text-align: left; width: 40%">
+                            <span class="fw-bold">{{ l.2 }} {% if l.4 %}<span class="badge rounded-pill
+                            {% if l.4|splitcadena:' '|first == 'MÉRITO' %}
+                                bg-success
+                            {% elif l.4|splitcadena:' '|first == 'DISCAPACIDAD' %}
+                                bg-info
+                            {% elif l.4|splitcadena:' '|first == 'EMBARAZO' %}
+                                bg-primary
+                            {% elif l.4|splitcadena:' '|first == 'FAMILIAR' %}
+                                bg-default
+                            {% elif l.4|splitcadena:' '|first == 'NIÑOS/AS' %}
+                                bg-warning
+                            {% elif l.4|splitcadena:' '|first == 'ENFERMEDAD' %}
+                                bg-danger
+                            {% else %}
+                                bg-default
+                            {% endif %}
+                             text-white">{{ l.4|title }}</span>{% endif %}</span>
+                        {% if l.5 %}
+                            {% for p in l.5 %}
+                            <i class="far fa-check-circle text-success tu" title="{{ p.0 }} - {{ p.1|lower|title }} - {{ p.2 }}"></i>
+                            {% endfor %}
+                        {% endif %}
+                        </td>
+                        <td style="text-align: center; width: 20%">
+                            <span class="fw-bold">{{ l.3 }}</span>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr style="border: 0">
+                        <td style="border: 0;background-color: #EBF5FB">&nbsp;</td>
+                        <td style="text-align: center; background-color: #EBF5FB;border:0;"><b><i class="fa fa-info-circle"></i>
+                            NO EXISTEN REGISTROS</b></td>
+                        <td style="border: 0;background-color: #EBF5FB">&nbsp;</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div style="text-align: right; float: left; width: 100%">
+        {% if pensedientes_asignar > 0 %}
+        <a href="javascript:;" class="btn btn-establecerorden btn-success py-2 me-1"><i class="fa fa-gears"></i> Establecer Orden</a>
+        {% endif %}
+        <a href="javascript:;" class="btn btn-danger py-2" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</a>
+    </div>
+</div>

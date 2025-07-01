@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+        google.load("visualization", "1", {packages: ["corechart", 'bar']});
+        google.setOnLoadCallback(inicializar);
+
+        $(function () {
+            let subcategoria = $('#id_subcategoria').select2({width: '100%', minimumResultsForSearch: 10, placeholder: 'Seleccione una opción'});
+            let categoria = $('#id_categoria').select2({width: '100%', minimumResultsForSearch: 10})
+            let r_general = $('#reporte_general')
+            let r_resultados_encuestas = $('#reporte_resultados_encuesta')
+            cargarSubCategoria(categoria.val(), subcategoria)
+            categoria.on("select2:select", function (evt) {
+                cargarSubCategoria($(this).val(), subcategoria)
+            });
+            subcategoria.on("select2:select", function (evt) {
+                 inicializar()
+            });
+            r_general.on("click", function (){
+                let idencuesta = subcategoria.val() ?subcategoria.val():''
+                let url=`{{ request.path }}?action=segmentoencuantasatifacciongeneral_reporte_excel&idcategoria=${categoria.val()}&idencuesta=${idencuesta}`
+                window.open(url, '_blank');
+            });
+            r_resultados_encuestas.on("click", function (){
+                let idencuesta = subcategoria.val() ?subcategoria.val():''
+                let url=`{{ request.path }}?action=segmentoencuantasatifaccion_reporte_excel_resultados&idcategoria=${categoria.val()}&idencuesta=${idencuesta}`
+                window.open(url, '_blank');
+            });
+        });
+
+        function inicializar() {
+            bloqueointerface()
+            let id_categoria =  $('#id_categoria').val()
+            let id_subcategoria =  $('#id_subcategoria').val()
+            $.ajax({
+                url: '{{ request.path }}',
+                type: 'GET',
+                data: {'idcategoria': id_categoria, 'idsubcategoria': id_subcategoria, 'action': 'cargarestadistica'},
+                success: function (response) {
+                    $.unblockUI();
+                    dibujarGraficas(response)
+                },
+                error: function (xhr, status, error) {
+                    $.unblockUI();
+                    // Manejar el error de la consulta AJAX si es necesario
+                }
+            });
+        }
+
+        function dibujarGraficas(response) {
+            // Borra cualquier gráfico existente antes de dibujar nuevos gráficos
+            $("#graficos, #id_valoracion, #id_tbody").empty();
+            // Recorre los datos y crea una gráfica para cada conjunto de datos
+            if (response.data){
+                $('#id_tabla_registro').removeClass('d-none')
+                $('#id_title').text(response.title)
+                 for (let i = 1; i <= response.valoracion; i++) {
+                     $('#id_valoracion').append($('<th>', {'class':'text-center', 'text':i}))
+                 }
+                 $('#id_valoracion').append($('<th>', {'class':'text-center', 'text':'Total'}))
+                $.each(response.data, function (index, setDeDatos) {
+                    // Crea un elemento div para cada gráfica
+                    let id_tr = `pregunta_${setDeDatos.id}`
+                    let estadistica = setDeDatos.estadistica
+                    let total = 0
+                    for (var i = 0; i < estadistica.length; i++) {
+                        var lista = estadistica[i];
+                        if (i==0){
+                             $('#id_tbody').append($('<tr>', {'class':'text-center', 'id':id_tr}).append(
+                                $('<td>', {'class':'text-center', 'text':index}))
+                            );
+                        }else{
+                            total+=lista[1]
+                            $(`#${id_tr}`).append($('<td>', {'class':'text-center', 'text':lista[1]}))
+                        }
+                    }
+                    $(`#${id_tr}`).append($('<td>', {'class':'text-center', 'text':total}))
+
+                    var divId = "grafico" + index;
+                    var div = $("<div class='col-lg-4 col-md-6'>").attr("id", divId);
+                    $("#graficos").append(div);
+                    // Crea un objeto de datos para Google Charts
+                    var data = google.visualization.arrayToDataTable(estadistica);
+
+                    // Configura las opciones del gráfico
+                    var options = {
+                        sliceVisibilityThreshold: 0,
+                        title:index,
+                        width: 400,
+                        height: 300,
+                    };
+
+                    // Crea el gráfico y dibújalo en el elemento div correspondiente
+                    var chart = new google.visualization.PieChart(document.getElementById(divId));
+                    chart.draw(data, options);
+                });
+            }else{
+                $('#id_tabla_registro').addClass('d-none')
+                $("#graficos").append(`
+                <div class='col-lg-12 text-center p-6'>
+                    <h3 class="text-muted">Una vez seleccionado una sub categoría se procedera a visualizar la estadística <i class="fa fa-chart-pie"></i></h3>
+                </div>`);
+            }
+        }
+
+        function cargarSubCategoria(value, subcategoria){
+            bloqueointerface()
+            // Realizar la consulta AJAX utilizando el valor seleccionado
+            $.ajax({
+                    url: '{{ request.path }}',
+                    type: 'GET',
+                    data: {'id': value, 'action': 'cargarsubcategorias'},
+                    success: function (response) {
+                        $.unblockUI();
+                        // Limpiar el select secundario
+                        subcategoria.empty();
+                        // Llenar el select secundario con las opciones de la respuesta de la consulta AJAX
+                        $.each(response.data, function (index, option) {
+                            subcategoria.append($('<option>').text(option.text).val(option.value));
+                        });
+
+                        // Actualizar el select secundario con las nuevas opciones
+                        subcategoria.val('').trigger('change')
+                        inicializar()
+                    },
+                    error: function (xhr, status, error) {
+                        $.unblockUI();
+                        // Manejar el error de la consulta AJAX si es necesario
+                    }
+                });
+        }
+
+    </script>
+    <style>
+        .table_primary thead th:first-child, .table_primary thead td:first-child {
+            border-left: 0px solid #ffffff;
+        }
+    </style>
+{% endblock %}
+{% block atras %}/estadisticas{% endblock %}
+{% block canvas %}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="headtitle">
+                <h3 class="texto-blue">Encuesta de satisfacción</h3>
+                <h6>Resultados de encuestas de satisfaccion registrados</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-6 v-align-middle">
+
+                <div class="dropdown dropleft">
+                    <a href="javascript:void(0);"
+                       class="btn btn-default w-100 dropdown-toggle"
+                       data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                       aria-expanded="false"> Reportes <i class="fa fa-angle-down"></i>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a href="javascript:void(0)"
+                                   class="dropdown-item"
+                                    id="reporte_general">
+                                    <i class="fa fa-file-excel"></i>&nbsp;Reporte gráficas
+                            </a>
+                        </li>
+                        <li>
+                            <a href="javascript:void(0)"
+                                   class="dropdown-item"
+                                    id="reporte_resultados_encuesta">
+                                    <i class="fa fa-file-excel"></i>&nbsp;Resultados de encuestas
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+{#                <a class="btn btn-cian-opacity"#}
+{#                   href="{{ request.path }}?action=segmentoencuantasatifacciongeneral_reporte_excel"#}
+{#                   href="javascript:void(0)"#}
+{#                   id="reporte_general">#}
+{#                    <i class="fa fa-file-excel"></i> Reporte gráficas#}
+{#                </a>#}
+{#                <a class="btn btn-cian-opacity"#}
+{#                   href="{{ request.path }}?action=segmentoencuantasatifacciongeneral_reporte_excel&idproc={{ proceso_id|encrypt }}"#}
+{#                   target="_blank">#}
+{#                    <i class="fa fa-file-excel"></i> Reporte gráfica actual#}
+{#                </a>#}
+            </div>
+
+            <div class="col-lg-3">
+                <label for=""><i class="fa fa-circle-notch"></i> Categoría:</label>
+                <select name="categoria" id="id_categoria">
+                    {% for categoria in categorias %}
+                        <option value="{{ categoria.id|encrypt }}"
+                                {% if categoria.id == categoria_id %}selected{% endif %}>{{ categoria }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3">
+                <label for=""><i class="fa fa-circle-notch"></i> Sub categoria:</label>
+                <select name="" id="id_subcategoria" class="form-control">
+                    <option value=""></option>
+                </select>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body border-6 border-top rounded-3 border-dark-info">
+                <div class="row">
+                    <table class="table table_primary table-bordered d-none" id="id_tabla_registro">
+                        <thead>
+                            <tr>
+                                <th id="id_title" colspan="40" class="text-center"></th>
+                            </tr>
+                            <tr>
+                                <th rowspan="2" class="text-center align-middle">Criterio</th>
+                                <th colspan="39" class="text-center">Nivel de satisfacción</th>
+                            </tr>
+                            <tr id="id_valoracion">
+
+                            </tr>
+                        </thead>
+                        <tbody id="id_tbody">
+
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row" id="graficos">
+
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

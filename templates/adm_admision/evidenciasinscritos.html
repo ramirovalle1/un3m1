@@ -1,0 +1,267 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript">
+        $(function () {
+            busqueda = function () {
+                var term = $("#searchinput").val().toUpperCase().trim();
+                if (term.length > 0) {
+                    location.href = "/graduados?s=" + term;
+                }
+            };
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+
+        });
+        {#function mostrardiv(idrequisito){#}
+        {#    $(".divevidencias").each(function( index ) {#}
+        {#        var idevi = $(this).attr("idevi");#}
+        {#        $("#evidencia"+idevi).css("display", "none");#}
+        {#    });#}
+        {#alert($("#evidencia"+idrequisito).html())#}
+        {#    $("#evidencia"+idrequisito).css("display", "block");#}
+        function showAprobarMasivoButton(){
+            var todosRequisitosCompletos = true;
+            $(".allrequisitosrevisados").each(function() {
+              if ($(this).val() == 'false') {
+                todosRequisitosCompletos = false;
+                return false; // Detiene el bucle each si encuentra un requisito en estado false
+              }
+            });
+            if (todosRequisitosCompletos) {
+              // Mostrar el botón si todos los requisitos están en estado true
+              $('#aprovarMasivo').show();
+            } else {
+              // Ocultar el botón si algún requisito está en estado false
+              $('#aprovarMasivo').hide();
+            }
+        }
+        $(document).ready(function(){
+            $('#aprovarMasivo').hide();
+        });
+        function mostrardiv(idrequisito) {
+            $(`#revisado_${idrequisito}`).val(true);
+            $(`#check_revisado_${idrequisito}`).attr('checked',true);
+
+            showAprobarMasivoButton();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/adm_admision",
+                data: {'action': 'informeevidencias1', 'idrequisito': idrequisito, 'idinscripcioncohote': {{ inscripcioncohorte.id }}},
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $("#cuerporequisito").html(data.data);
+                        {% if not revisaevidencia and not perms.sga.puede_aprobar_requisitos_admision_dip %}
+                            $('#btnguardar').hide();
+                            $('#id_observacion').attr('readonly', true);
+                        {% endif %}
+
+                        {#                        {% if inscripcioncohorte.estado_emailevidencia != 1 %}#}
+                        {#                            $('#btnguardar').hide();#}
+                        {#                            $('#id_observacion').attr('readonly', true);#}
+                        {#                        {% endif %}#}
+                    }
+                    if (data.result == 'sin') {
+                        $.unblockUI();
+                        $("#cuerporequisito").html('<div style="text-align: center" class="alert alert-danger">' + data.mensaje + '</div>');
+                    } else {
+                        $.unblockUI();
+                        $("#cuerporequisito").html(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function aprobarRechazarMasivo(estado){
+            let id_requisitos = []
+            $(".checkallrequisitosrevisados").each(function() {
+                let idr = $(this).attr('idr');
+                if ($(this).is(":checked")) {
+                    id_requisitos.push(idr)
+                }
+            });
+            let mensaje = {
+                title: `${estado==2?'APROBAR':'RECHAZAR'} TODOS LOS REQUISITOS`,
+                text: `Estas seguro/a de ${estado==2?'aprobar':'rechazar'} todos los requisitos`,
+                type: 'warning',
+                icon: 'warning',
+                input:'textarea',
+                inputValue:`${estado==2?'APROBADO':''}`,
+                inputLabel: 'Observación',
+                inputPlaceholder: 'Ingrese una obsercación....',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#FE9900',
+                confirmButtonText: 'Si, seguro',
+                cancelButtonText: 'No, cancelar',
+                inputValidator: (input) => {
+                    return new Promise((resolve)=>{
+                        if(input=='' || input == null || input == undefined || input == 0){
+                            resolve("Debe ingresar una observación")
+                        }else{
+                            resolve()
+                        }
+                    });
+                }
+		    };
+            Swal.fire(mensaje)
+            .then((result)=>{
+                if(result.value){
+                    $.ajax({
+                        url:'{{ request.path }}',
+                        type: 'POST',
+                        data:{
+                            action:'aprovarrequisitosmasivo',
+                            id:'{{ inscripcioncohorte.id }}',
+                            id_requisitos:JSON.stringify(id_requisitos),
+                            estado:estado,
+                            obser:result.value
+                        },
+                        success: function(data) {
+                            if(data.result){
+                                location.reload();
+                            }else{
+                                NotificationJG.error(data.mensaje)
+                            }
+                        },
+                        error: function(){
+                            NotificationJG.error("Error de conexión")
+                        },
+                        dataType:'json'
+                    });
+                }
+            });
+        }
+    </script>
+    <style>
+        .alertmenos {
+            line-height: 15px;
+            padding: 4px 20px 4px 10px;
+            margin-bottom: 10px;
+            text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+            background-color: #fcf8e3;
+            border: 1px solid #fbeed5;
+            -webkit-border-radius: 4px;
+            -moz-border-radius: 4px;
+            border-radius: 4px
+        }
+
+        .alertmenos-info {
+            color: #3a87ad;
+            background-color: #d9edf7;
+            border-color: #bce8f1
+        }
+
+        .alertmenos-success {
+            color: #468847;
+            background-color: #dff0d8;
+            border-color: #d6e9c6
+        }
+
+        .alertmenos-danger, .alertmenos-error {
+            color: #b94a48;
+            background-color: #f2dede;
+            border-color: #eed3d7
+        }
+    </style>
+{% endblock %}
+{% block atras %}/adm_admision?action=listadoaspirantes&id={{ cohorte.id|encrypt }}&tipoestado={{ tipoestado }}{% if cant_requisitos != '' %}&cant_requisitos={{ cant_requisitos }}{% endif %}{% endblock %}
+{% block canvas %}
+    <div class="span4">
+        <a href="/adm_admision?action=listadorequisitosinscripcion&idinscripcioncohorte={{ inscripcioncohorte.id|encrypt }}&{% if comercia %}comercia=True&{% endif %}tipoestado={{ tipoestado }}{% if cantseleccionada != '' %}&cant_requisitos={{ cant_requisitos }}{% endif %}" class="btn btn-warning btn-mini bloqueo_pantalla"> <i class="fa fa-download"></i> Subir evidencia</a>
+        <h4>{{ inscripcioncohorte.inscripcionaspirante }}</h4>
+        <b>CÉDULA: {{ inscripcioncohorte.inscripcionaspirante.persona.cedula }}</b><br>
+        {{ inscripcioncohorte.cohortes }}
+{#        {% if not inscripcioncohorte.validar_boton %}#}
+{#            {% if perms.sga.puede_aprobar_requisitos_admision_dip %}#}
+{#                <br><a href="javascript:;" nhref="/adm_admision?action=aprobarrequisitos&idcohorte={{ cohorte.id|encrypt }}&aspirante={{ inscripcioncohorte.id|encrypt }}&tipoestado={{ tipoestado }}&cant_requisitos={{ cant_requisitos }}" class='btn btn-success confirmacionmodal'><span class="fa fa-thumbs-o-up"></span> Aprobar Requisitos</a>#}
+{#            {% endif %}#}
+{#        {% endif %}#}
+        <div style="text-align: justify">
+            {% for requisito in requisitos %}
+                {% with ingresoevidencias=requisito|args:inscripcioncohorte|call:'detalle_requisitosmaestriacohorte' %}
+                    <div class="listadoevi alertmenos alertmenos-{% if ingresoevidencias.archivo %}{% if ingresoevidencias.ultima_evidencia_aspirante.estado_aprobacion == 2 %}success{% else %}{% if ingresoevidencias.ultima_evidencia_aspirante.estado_aprobacion == 3 %}danger{% else %}info{% endif %}{% endif %}{% else %}warning{% endif %}" idr="{{ requisito.id }}">
+                    <input type="checkbox" class="form-control checkallrequisitosrevisados" id="check_revisado_{{ requisito.id }}" idr="{{ requisito.id }}" style="margin-top: -4px">
+                    {% if ingresoevidencias.archivo %}
+                        <i class="fa fa-check-circle tu" data-original-title="Si tiene requisito"></i>
+                    {% else %}
+                        <i class="fa fa-times-circle tu" data-original-title="No tiene requisito"></i>
+                    {% endif %}
+                {% endwith %}
+            <a href="#" onclick="mostrardiv({{ requisito.id }})">{{ requisito }}</a>
+            <input type="hidden" class="allrequisitosrevisados" id="revisado_{{ requisito.id }}" idr="{{ requisito.id }}" value="false">
+            </div>
+            {% endfor %}
+            {% if perms.sga.puede_aprobar_requisitos_admision_dip %}
+            <div class="text-center" id="aprovarMasivo">
+                <a href="#" class="btn btn-success" onclick="aprobarRechazarMasivo(2)"><span class="fa fa-check-circle" aria-hidden="true"></span> Aprobar</a>
+                <a href="#" class="btn btn-danger" onclick="aprobarRechazarMasivo(3)"><span class="fa fa-remove" aria-hidden="true"></span> Rechazar</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="span8" style="text-align: center;border: 1px solid #e3e3e3;padding: 5px;border-radius: 5px">
+        <div class='row-fluid' id="cuerporequisito">
+            {% if inscripcioncohorte.grupo %}
+                <div style="font-size: 12px;text-align: justify">
+                    <span style="font-weight: bold"> PERFIL DEL POSTULANTE:</span> {{ inscripcioncohorte.grupo }}
+                </div>
+            {% endif %}
+            <div style="font-size: 18px;font-weight: bold;text-align: left">
+                Para aprobar o rechazar, favor dar clic en el requisito.
+            </div>
+            <table border="0" width="100%">
+                <tr>
+                    <td style="width: 10%">
+                        <div style="text-align: center" class="alert alert-warning">&nbsp;</div>
+                    </td>
+                    <td style="width: 90%" valign="left">
+                        <div style="text-align: left">REQUISITO SIN EVIDENCIA</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="width: 10%">
+                        <div style="text-align: center" class="alert alert-info">&nbsp;</div>
+                    </td>
+                    <td style="width: 90%" valign="left">
+                        <div style="text-align: left">REQUISITO CON EVIDENCIA</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="width: 10%">
+                        <div style="text-align: center" class="alert alert-danger">&nbsp;</div>
+                    </td>
+                    <td style="width: 90%" valign="left">
+                        <div style="text-align: left">REQUISITO RECHAZADO</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="width: 10%">
+                        <div style="text-align: center" class="alert alert-success">&nbsp;</div>
+                    </td>
+                    <td style="width: 90%" valign="left">
+                        <div style="text-align: left">REQUISITO APROBADO</div>
+                    </td>
+                </tr>
+            </table>
+
+        </div>
+    </div>
+{% endblock %}

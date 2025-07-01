@@ -1,0 +1,516 @@
+{% extends "adm_solicitudpago/revisionpago/base.html" %}
+{% load sga_extras %}
+{% block extraJSHead %}
+
+    <script type="text/javascript">
+
+
+        $(document).ready(function () {
+            // Desmarcar todos los checkboxes con la clase .seleccionindividual
+            $('.seleccionindividual').prop('checked', false);
+            $('#id_seleccionmasivo').prop('checked', false);
+            $(".fancybox").fancybox();
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+        });
+
+        let pk_contratos = []
+
+         function busqueda() {
+            var term = $("#searchinput").val();
+            location.href = `/adm_solicitudpago?action=viewpersonalvalidopago&search=${term}`
+
+        }
+
+        function formModal(id, text, action, footer = true) {
+            $('.panelbody').empty();
+            $('.panelbodyproceso').empty();
+            $('.panelbodyform').empty();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: width}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalHis(id, text, action, footer = true) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result) {
+                        if (footer === true) {
+                            $('#footermodalformmodal').hide();
+                        }
+                        $('.panelbodyformmodal').html(data.data);
+                        $('#itemspanelformmodal .paneltitle').html(text);
+                        $("#itemspanelformmodal").modal({backdrop: 'static', width: 1500}).modal('show');
+                    } else {
+                        NotificationJG.error(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    NotificationJG.error("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function (e) {
+
+            $("#search").click(function () {
+                busqueda();
+            });
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("select").select2({width: '100%'});
+            $('#id_seleccionmasivo').click(function (e) {
+                if (this.checked) {
+                    $('.seleccionindividual:not([disabled])').prop('checked', true);
+                    $('.seleccionindividual:checked').each(function () {
+                        let pk = this.attributes.pk_contrato.value;
+                        if (this.checked && !pk_contratos.includes(pk)) {
+                            pk_contratos.push(pk);
+                        }
+                    });
+                } else {
+                    $('.seleccionindividual:not([disabled])').prop('checked', false);
+                    pk_contratos = [];
+                }
+
+            });
+            $('.seleccionindividual').change(function () {
+
+                pk_contratos = [];
+                $('.seleccionindividual:checked').each(function () {
+                    let pk = this.attributes.pk_contrato.value;
+                    if (this.checked && !pk_contratos.includes(pk)) {
+                        pk_contratos.push(pk);
+                    }
+                });
+
+            });
+
+        });
+
+        const generar_acta_pago = () => {
+            if (pk_contratos.length > 0) {
+                $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {
+                        'action': 'generar_acta_pago',
+                        'ids': pk_contratos,
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result === true || data.result === 'ok') {
+                            if (data.data) {
+                                $('#itemspanel .panelbody').html(data.data);
+                                $('#itemspanel .paneltitle').html('Generar acta de pagos');
+                                $("#itemspanel").modal({
+                                    backdrop: 'static',
+                                    width: '90%'
+                                }).modal('show').on('hidden.bs.modal', function (e) {
+                                    $(".panelbody").empty();
+                                });
+                            } else {
+                                location.reload();
+                            }
+                        } else {
+                            mensajeDanger(data.message + ' ' + data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+
+            } else {
+                mensajeDanger('Debe seleccionar al menos 1 personal válido.')
+            }
+
+        }
+
+        const descarga_individual= (pk) => {
+            Swal.fire({
+                title: "Descargar documentos ",
+                type: 'info',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonText: 'Descargar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    openwindow('GET', '{{ request.path }}', {
+                        action: 'descarga_individual_documentos',
+                        id: pk,
+                    }, '_blank');
+                }
+            })
+        }
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block contenido %}
+    <div class="modal fade static" id="itemspanelformmodal" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div class="" style="padding: 5px 5px">
+                        <button style="float: right;" type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbodyformmodal">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalformmodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static modal-xl" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+        </div>
+        <div class="modal-body">
+            <form autocomplete="off" method="post"
+                  enctype="multipart/form-data" action="{{ request.path }}">
+                {% csrf_token %}
+                <div class="row-fluid panelbody">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" id="footermodal">
+            <a href="javascript:;" class="btn btn-default" data-dismiss="modal"><i
+                    class="fa fa-window-close"></i>
+                Cerrar</a>
+        </div>
+    </div>
+
+
+    <div class="row mt-0 mb-2">
+        <div class="col-6 d-flex justify-content-start">
+            <div class="btn-group ">
+                <a onclick="generar_acta_pago()"
+                   href="javascript:;" class="btn btn-success btn-lg rounded-2 px-4 py-2" style="font-size: 14px;"><i
+                        class="fa fa-plus" style="font-size: 12px"></i>&nbsp;Generar acta de pago</a>
+            </div>
+
+        </div>
+        <div class="col-6 d-flex justify-content-end">
+            <div class="btn-group">
+                <div class="btn-group">
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div class="row">
+    <div class="col-lg-12 col-md-12 col-12">
+    <div class="card mb-4">
+        <!-- Card Header -->
+        <div class="card-header border-bottom-0">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12">
+                    <form class="form-search" onsubmit="return busqueda()">
+                        <div class="input-group mb-2">
+                                <span class="position-absolute ps-3 search-icon">
+                                    <i class="fa fa-search fs-6"></i>
+                                </span>
+                            <input type="search" name="searchinput" id="searchinput" class="form-control ps-5"
+                                   aria-describedby="button-addon2"
+                                   placeholder="Buscar por cèdula.."/>
+                            <a href="javascript:;" id='search' class='btn btn-info'><span class="fa fa-search "></span>
+                                Buscar</a>
+                            <div class="input-group-append">
+                                <div class="input-group-append">
+                                    <a title="Ver todo"
+                                       href="/adm_solicitudpago?action=viewpersonalvalidopago"
+                                       class="btn btn-default tr cleartext"><i
+                                            class="fas fa-sync-alt"></i></a>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+        <!-- Table  -->
+        <div class="border-0">
+            <table class="table mb-0" style="position: relative!important;z-index: 1!important;">
+                <thead class="table-light">
+                <tr>
+                    <th style="width: 5%;" scope="col" class="border-0 text-center"><input type="checkbox"  id="id_seleccionmasivo"></th>
+                    <th style="width: 15%;" scope="col" class="border-0">Solicitud</th>
+                    <th style="width: 35%;" scope="col" class="border-0">Persona</th>
+                    <th style="width: 25%;" scope="col" class="border-0 text-center">Fecha inicio -Fecha Fin</th>
+                    <th style="width: 25%;" scope="col" class="border-0 text-center">Estado solicitud</th>
+                    <th style="width: 10%;" scope="col" class="border-0 text-center">Archivo</th>
+                    <th style="width: 20%;" scope="col" class="border-0 text-center">Valor a pagar</th>
+                    <th style="width: 20%;" scope="col" class="border-0 text-center"></th>
+
+                    <th scope="col" class="border-0"></th>
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for eSolicitudPago in eSolicitudPagos %}
+                    <tr>
+                        <td class="text-center">
+                            <input type="checkbox"   class="seleccionindividual" {% if eSolicitudPago.0.solicitud_esta_en_acta_de_pago  %}disabled{% endif %} pk_contrato="{{ eSolicitudPago.0.pk }}">
+                        </td>
+                        <td >
+                            <b>Num.</b> #{{ eSolicitudPago.0.pk }}<br>
+                            <b>F.
+                                Creación:</b><br> {{ eSolicitudPago.0.fecha_creacion|date:"Y-m-d" }} {{ eSolicitudPago.0.fecha_creacion|date:"G:i" }}<br>
+                            <b>F.
+                                Actualización:</b><br> {{ eSolicitudPago.4 |date:"Y-m-d" }} {{eSolicitudPago.4|date:"G:i" }}
+                        </td>
+
+                        <td style="text-align:left ">
+                            <div class="mb-3" style="max-width: 540px;">
+                                <div class="row g-0">
+                                    <div class="col-md-3 text-center">
+                                        <img data-fancybox src="{{ eSolicitudPago.0.contrato.persona.get_foto }}" alt=""
+                                             class="img-fluid rounded-circle" width="40px">
+                                    </div>
+                                    <div class="col-md-9">
+                                        <div class="">
+                                            <small class="card-text"><i
+                                                    class="fa fa-user"></i> {{ eSolicitudPago.0.contrato.persona.nombre_completo_minus }}
+                                            </small><br>
+                                            <small class="card-text"><i
+                                                    class="fa fa-address-card"></i> {{ eSolicitudPago.0.contrato.persona.cedula }}
+                                            </small><br>
+                                            <small class="card-text">
+                                                {% if eSolicitudPago.0.contrato.persona.telefono %}
+                                                    <i class="fa fa-phone"></i>
+                                                    {{ eSolicitudPago.0.contrato.persona.telefono }}
+                                                    <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ eSolicitudPago.0.contrato.persona.telefono }}&text=Hola {{ eSolicitudPago.0.contrato.persona }}'
+                                                       target="_blank" class="btn btn-mini btn-success tu"
+                                                       title="Enviar mensaje por whatsapp">
+                                                        <i class="fa fa-whatsapp"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </small><br>
+                                            <small class="card-text">
+                                                <i class="fa fa-envelope"></i>
+                                                {% if eSolicitudPago.0.contrato.persona.emailinst %}
+                                                    {{ eSolicitudPago.0.contrato.persona.emailinst }}
+                                                {% else %}
+                                                    {{ eSolicitudPago.0.contrato.persona.email }}
+                                                {% endif %}
+                                            </small>
+                                            <br>
+                                            <small class="card-text">
+                                                <spam class="tu" title="Jefe inmediato">
+                                                    <b>{{ eSolicitudPago.0.contrato.gestion.responsable | title }} -
+                                                        CI: {{ eSolicitudPago.0.contrato.gestion.responsable.cedula }}</b>
+                                                </spam>
+                                            </small>
+                                            <br>
+                                            <small class="card-text">
+                                                <spam class="tu" title="revisor">
+                                                    <b>{{ eSolicitudPago.0.contrato.validadorgp | title }} -
+                                                        CI: {{ eSolicitudPago.0.contrato.validadorgp.cedula }}</b>
+                                                </spam>
+                                            </small>
+                                            <br>
+                                            <small class="card-text">
+
+                                                Tipo:
+                                                <spam class="tu" title="tipo grupo">
+                                                    <b>{{ eSolicitudPago.0.contrato.get_tipogrupo_display | title }}</b>
+                                                </spam>
+                                            </small>
+                                            <br>
+                                            <small class="card-text">
+                                                Tipo pago:
+                                                <spam class="tu" title="tipo pago">
+                                                    <b>{{ eSolicitudPago.0.contrato.get_tipopago_display  | title }}</b>
+                                                </spam>
+                                            </small>
+                                        <br>
+                                                <small class="card-text">
+                                                    RMU:
+                                                    <spam class="tu" title="tipo pago">
+                                                        <b>${{ eSolicitudPago.0.contrato.valortotal }}</b></spam>
+                                                </small>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td style="text-align: center">
+                            <b>{{ eSolicitudPago.0.get_str_meses_entre_fechas_inicio_fin |title2 }}</b> <br>
+                            <b>Inicio pago:</b> {{eSolicitudPago.0.fechainicio |date:"Y-m-d" }} <br>  <b>Fin pago: </b>{{ eSolicitudPago.0.fechaifin|date:"Y-m-d" }}
+                            <br>
+                            {% if eSolicitudPago.0.horas_ejecutadas_coordinador%}
+                                <b>Horas ejecutadas:</b> <b>{{ eSolicitudPago.0.horas_ejecutadas_coordinador}}/40 </b><br>
+                             {% else %}
+                                <b>Días transcurridos:</b>  <b>{{ eSolicitudPago.2.3}}</b><br>
+                            {% endif %}
+                                <b>Subtotal:</b> ${{eSolicitudPago.2.0 }}<br>
+                                <b>Iva 15%:</b> ${{eSolicitudPago.2.1 }} <br>
+
+
+
+                        </td>
+                        <td style="text-align: center">
+
+                            {% if eSolicitudPago.0.estadotramite == 0 %}
+                                <label class="{{ eSolicitudPago.0.color_estado|safe }}">{{ eSolicitudPago.0.get_estado_display }}</label>
+                                <br>
+                            {% endif %}
+
+                            {% if not eSolicitudPago.0.estadotramite == 0 %}
+                                <label class="{{ eSolicitudPago.0.color_estadotramite|safe }}">{{ eSolicitudPago.0.get_estadotramite_display }}</label>
+                                <br>
+                            {% endif %}
+                            {% if  not eSolicitudPago.0.estadotramitepago == 0 %}
+                                <label class="{{ eSolicitudPago.0.color_estadotramitepago|safe }}">{{ eSolicitudPago.0.get_estadotramitepago_display }}</label>
+                                <br>
+                            {% endif %}
+                        </td>
+
+
+                        <td style="text-align: center">
+                            {% if eSolicitudPago.0.traer_informe_actividades_firmado %}
+                                <a title="Visualizar archivo"
+                                   data-bs-toggle="tooltip"
+                                   data-width="2048" data-height="1380"
+                                   data-fancybox="archivo_last_{{ eSolicitudPago.0.traer_informe_actividades_firmado.id }}"
+                                   data-caption="Documento : {{ eSolicitudPago.0.traer_informe_actividades_firmado.archivo.name }}"
+                                   href="{{ eSolicitudPago.0.traer_informe_actividades_firmado.archivo.url }}"
+                                   class=""><i class="fa fa-file-pdf-o fs-4 text-danger"></i></a>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center">
+                            ${{eSolicitudPago.2.2}}<br>
+                        </td>
+
+                        <td style="text-align: center">
+                                <div class="dropdown dropstart">
+                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                       data-bs-toggle="dropdown" data-offset="-140"
+                                       aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-ellipsis-v"></i>
+                                    </a>
+                                    <ul class="dropdown-menu" x-placement="right-start">
+                                        <li class="dropdown-item">
+                                            <a href="javascript:;"
+                                               onclick="formModalHis('{{ eSolicitudPago.0.traer_file_firmado_colaborador.requisito.pk|encrypt }}','{{ eSolicitudPago.0.traer_file_firmado_colaborador }}','viewhistorialrequisito',false)">
+                                                <span class="fa fa-eye dropdown-item-icon"></span> Historial informe
+                                            </a>
+                                        </li>
+                                        <li class="dropdown-item">
+                                            <a href="javascript:void(0);"
+                                               onclick="formModalHis('{{ eSolicitudPago.0.id|encrypt }}','{{ eSolicitudPago.0 }}','loadhisotryobser', false)">
+                                                <i class="fa fa-eye dropdown-item-icon"></i> Ver seguimiento
+                                            </a>
+                                        </li>
+
+                                        <li class="dropdown-item">
+                                            <a  target="_blank" href="{{ request.path }}?action=viewrevisionrequisitossolicitudpago&id={{ eSolicitudPago.0.pk }}&tipo=1">
+                                                <i class="fa fa-file dropdown-item-icon "></i>
+                                                Revisión de requisitos
+                                            </a>
+                                        </li>
+                                        {% if eSolicitudPago.0.solicitud_esta_en_acta_de_pago %}
+
+                                            <li class="dropdown-item ">
+                                                <a class="{% if not eSolicitudPago.0.solicitud_esta_en_acta_de_pago %}disabled{% endif %} "
+                                                   target="_blank"
+                                                   href="?action=configuraractapago&id={{ eSolicitudPago.0.solicitud_esta_en_acta_de_pago.actapagoposgrado.pk }}"><i
+                                                        class="fa fa-link fs-6 dropdown-item-icon"></i>Ir al acta</a>
+
+                                            </li>                                            {% endif %}
+                                        <li class="dropdown-item ">
+                                              <a   href="javascript:;" onclick="descarga_individual('{{ eSolicitudPago.0.pk }}')"><i class="bi bi-download dropdown-item-icon"></i>&nbsp;Descargar documentos</a>
+                                        </li>
+                                       <li class="dropdown-item">
+                                            <a href="Javascript:void(0);"
+                                               onclick="historial_de_pago_contrato_posgrado({{ eSolicitudPago.0.contrato.pk }})"><i class="fa fa-calendar  dropdown-item-icon"></i> Pagos del contrato </a>
+                                        </li>
+
+
+
+                                    </ul>
+                                </div>
+                            </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4">No existen solicitudes de pagos pendientes de realizar pagos</td> </tr>
+                {% endfor %}
+
+
+                </tbody>
+
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+{% endblock %}

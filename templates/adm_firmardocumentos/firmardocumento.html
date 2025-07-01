@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <style>
+        .texto_alerta {
+            color: #FC7E00;
+            margin-bottom: -9px;
+        }
+
+        .caja-fixed {
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+    </style>
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <script type="text/javascript">
+        $(function () {
+            $("#verificar").on('click', function () {
+                var formulario = $("#formverificar")
+                var archivo = $("#id_archivo_verificar")[0].files[0];
+                if (!archivo) {
+                    alertaDanger('Seleccione un documento.')
+                } else {
+                    bloqueointerface()
+                    var _form = new FormData(formulario[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: `{{ request.path }}`,
+                        data: _form,
+                        processData: false,
+                        contentType: false,
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result === true) {
+                                ActualizarTabla(data.context)
+                            } else {
+                                mensajeDanger(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeDanger("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+        })
+
+        function formModal(id, text, action, ajax = true, dimension = 'modal-lg', footer = true) {
+            if (ajax) {
+                bloqueointerface()
+                $.ajax({
+                    type: "GET",
+                    url: `{{ request.path }}`,
+                    data: {
+                        'action': action,
+                        'id': id
+                    },
+                    success: function (data) {
+                        $.unblockUI();
+                        footer ? $('#footermodal').hide() : $('#footermodal').show();
+                        $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                        if (data.result === true) {
+                            $('#itemspanel .panelbody').html(data.data);
+                            $('#itemspanel .paneltitle').html(`<i class="fa fa-list-ol"></i> ${text.toUpperCase()}`);
+                            $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                        } else {
+                            mensajeDanger(data.message);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeDanger("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            } else {
+                limpiar()
+                footer ? $('#footermodal').hide() : $('#footermodal').show();
+                $("#id_action").val(action)
+                $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                $('#itemspanel .paneltitle').html(`<i class="fa fa-signature"></i> ${text.toUpperCase()}`);
+                $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+            }
+        }
+
+        function ActualizarTabla(data) {
+            $('#tabla_verify tbody tr').empty()
+            if (data.certificado) {
+                data.certificado.forEach(function (dato) {
+                    $('.tabla_paginada tbody').prepend($('<tr>', {
+                        'id': `box_${dato.cedula}`,
+                        'rol': 'row',
+                        'class': 'odd'
+                    }).append(
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.cedula}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.emitidoPara}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.emitidoPor}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append($('<p>', {
+                            'class': 'text-secondary',
+                            'text': `${dato.fechaFirma}`,
+                        })),
+                        $('<td>', {'class': 'text-center'}).append(function () {
+                            if (dato.certificadoDigitalValido) {
+                                return $('<p>', {
+                                    'class': 'text-valido',
+                                    'text': 'Válido',
+                                });
+                            } else {
+                                return $('<p>', {
+                                    'class': 'text-invalido',
+                                    'text': 'Inválido',
+                                });
+                            }
+                        }),
+                    ));
+                });
+            } else {
+                $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_`, 'rol': 'row', 'class': 'odd'}).append(
+                    $('<td>', {'class': 'text-center align-middle', 'colspan': '6'}).append($('<h4>', {
+                        'class': 'text-secondary text-danger',
+                        'text': `${data.error}`,
+                    }))
+                ));
+            }
+
+        }
+
+        function limpiar() {
+            $('#tabla_verify tbody tr').empty()
+            $('.tabla_paginada tbody').prepend($('<tr>', {'id': `box_`, 'rol': 'row', 'class': 'odd'}).append(
+                $('<td>', {'class': 'text-center align-middle', 'colspan': '6'}).append($('<p>', {
+                    'class': 'text-secondary',
+                    'text': `Seleccione su documento y verifique.`,
+                }))
+            ));
+            $('#id_archivo_verificar').val('')
+        }
+    </script>
+{% endblock %}
+
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Firma y verificación de documentos electrónicos. (Firma EC)</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <a href="javascript:void(0)"
+                   onclick="formModal('','Verificar firmas en documento','verificarfirmas',false)"
+                   class="btn btn-primary-old"><i class="fa fa-search"></i> Verificar documentos firmados</a>
+            </div>
+            <div class="col-4">
+                <div class="caja-fixed">
+                    <div class="card" id="cajaAccion">
+                        <div class="card-body">
+                            <div class="row mb-1">
+                                <div class="col-12 mx-0 pr-0 text-center">
+                                    <div class="my-1 texto_alerta" role="alert">
+                                        <i class="fa fa-bookmark"></i> <b>Recuerda:</b> Puedes <b>firmar más de una
+                                        vez</b>, <b>deslizar
+                                        / mover</b> la estampa y <b>doble clic para quitarla</b>.
+                                    </div>
+                                </div>
+                                <div class="col-6 mx-0 pr-0">
+                                    <div class="input-group">
+                                        <button type="button"
+                                                class="btn btn-primary-old w-100" id="bntPegarFirma">
+                                            <i class="fa fa-tag"></i> Estampar aquí
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-6 mx-0 pl-0">
+                                    <select id="current_page" class=" text-center">
+                                        <option value="">
+
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="col-12 mx-0 pl-0">
+                                    <h6 id="firmasInfo">
+                                    </h6>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="card mt-2" id="formularioSubmit">
+                        <div class="card-body">
+                            <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                                  enctype="multipart/form-data" action="{{ request.path }}">
+                                {% csrf_token %}
+                                <div class="row">
+                                    <input type="hidden" name="action" value="firmardocumento">
+                                    <div id="fieldset_archivo" class="col-lg-12">
+                                        <label class="control-label pr-2" for="id_archivo"><b>Archivo<span
+                                                style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                        <input type="file" name="archivo" class="form-control" required id="id_archivo"
+                                               accept=".pdf" style="padding: 12px 6px !important;">
+                                        <p class="help-text">Tamaño máximo permitido 4Mb, en formato .pdf</p>
+                                    </div>
+                                    <div id="fieldset_firma" class="col-lg-12">
+                                        <label class="control-label pr-2" for="id_firma"><b>Firma Electrónica<span
+                                                style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                        <input type="file" name="firma" class="form-control" required id="id_firma"
+                                               accept=".p12,.pfx" style="padding: 12px 6px !important;">
+                                        <p class="help-text">Formato permitido .p12 y .pfx </p>
+                                    </div>
+                                    <div id="fieldset_pass" class="col-lg-12" style="float: left; padding-right: 10px;">
+                                        <label class="control-label pr-2" for="id_archivo"><b>Contraseña<span
+                                                style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                        <input type="password" name="palabraclave" class="form-control" required
+                                               id="id_palabraclave" placeholder="Contraseña">
+                                    </div>
+                                    <input autocomplete="False" type='hidden' id="id_txtFirmas" name='txtFirmas'
+                                           value=''/>
+                                    <div class="col-lg-12">
+                                        <div class="mt-2 text-center">
+                                            <a href="{{ request.path }}" class="btn btn-cian-secondary"><i
+                                                    class="fa fa-times-circle" aria-hidden="true"></i> Cancelar</a>
+                                            <button type="submit" class="btn btn-orange" id="btnFirmar"><i
+                                                    class="fa fa-check-circle"></i> Firmar Documento
+                                            </button>
+                                            <br><br><a href="javascript:void(0)" class="texto_alerta"><b>Nota:</b> Para
+                                            proteger a nuestros usuarios le recordamos que ninguna firma usada en
+                                            nuestras palataformas quedará guardada.</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-8">
+                <div class="card mt-2" id="cajaRender">
+                    <div class="card-body">
+                        <div class="row mb-1">
+                            <div class="col text-center">
+                                <div id="fileContainer" style="width: 100%;">
+                                    <div id="fileViewer" style="width: 100%;">
+                                        <canvas id="fileRendered"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+{% block moreblock %}
+    <script src="/static/firmaec/pdf.js"></script>
+    <script src="/static/firmaec/pdf.worker.js"></script>
+    <script src="/static/firmaec/konva.min.js"></script>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content" style="border-radius: 17px!important;">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5 cerrar" data-toggle="modal"
+                            data-bs-dismiss="modal" aria-label="Close">X
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal" id="formverificar" autocomplete="off" method="post"
+                          enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                            <div class="card-body pt-0">
+                                <div class="row">
+                                    <input type="hidden" name="action" value="verificarfirmas">
+                                    <div id="fieldset_firma" class="col-12" style="float: left;">
+                                        <label class="control-label pr-2" for="id_archivo_verificar"><b>Documento
+                                            firmado<span
+                                                    style="color:red;margin-left:2px;"><strong>*</strong></span>&nbsp;:</b></label>
+                                        <input type="file" name="archivo_verificar" class="form-control w-100" required
+                                               id="id_archivo_verificar" accept=".pdf,"
+                                               style="padding: 5px 6px !important;" required>
+                                        <p class="help-text text-secondary">Formato permitido .pdf</p>
+                                    </div>
+                                    <div class="col-12">
+                                        <table class="table table-bordered tabla_paginada" id="tabla_verify">
+                                            <thead class="table-light">
+                                            <tr>
+                                                <th colspan="6" class="text-center">RESULTADOS DE LA VERIFICACIÓN DE
+                                                    ARCHIVO FIRMADO ELECTRÓNICAMENTE
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th>Cédula</th>
+                                                <th>Nombres</th>
+                                                <th>Entidad Certificadora</th>
+                                                <th>Fecha Firmado</th>
+                                                <th>Firma</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr>
+                                                <td colspan="6" class="text-center">Seleccione su documento y
+                                                    verifique.
+                                                </td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 text-end">
+                                        <button type="button" id="verificar" class="btn btn-orange fs-5"><i
+                                                class="fa fa-check"></i> Verificar
+                                        </button>
+                                        <a href="javascript:void(0)" class="btn btn-cian-secondary fs-5"
+                                           data-bs-dismiss="modal"> <i
+                                                class="fa fa-close"></i> Cancelar</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default cerrar" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% include 'adm_firmardocumentos/script.html' %}
+    <script>
+        $('#formularioSubmit').submit(function (e) {
+            bloqueointerface();
+            var funcfirma = funcionAntesDeGuardarFirma();
+            if (!funcfirma) {
+                e.preventDefault();
+                $.unblockUI();
+                return false;
+            } else {
+                $.unblockUI();
+            }
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,490 @@
+{% extends "basebs.html" %}
+{% load humanize %}
+{% block heading %}
+    <script>
+        $(function() {
+
+            $("#id_fecha_inicio, #id_fecha_fin").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+
+            $(".busporfecha").click(function () {
+                $("#itemspanel3").modal({backdrop:'static', width: '290'}).modal('show');
+            });
+
+            $("#itemspanel_cerrar_3").click(function () {
+                $("#itemspanel3").modal('hide');
+                $(".invalidofechas").hide();
+            });
+
+            $("#itemspanel_adicionar_3").click(function () {
+                $(".invalidofechas").hide();
+                var p = $("#tipo").val();
+                var ini = $("#id_fecha_inicio").val();
+                var fin = $("#id_fecha_fin").val();
+                if (ini && fin && ini<=fin){
+                    $("#itemspanel3").modal('hide');
+                    {#openwindow('POST' ,'/adm_hdagente', {action: 'informeincidente', 'ini':ini, 'fin':fin, 'g':1},'_blank');#}
+                    location.href = "/af_activofijo?action=mantenimientos&tipo="+p+"&fini="+ini+"&ffin="+fin;
+                }
+                else{
+                    $(".invalidofechas").show();
+                }
+            });
+
+            $("#id_fechainicio").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fechafin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_fechainicio, #id_fechafin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#fecha_dep").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#detalledificiomodal_aceptar").click(function(){
+                $("#detalledificiomodal").modal("hide");
+            });
+            busqueda = function(){
+                var term = $("#searchinput").val().trim().toUpperCase();
+                var p = $("#tipo").val();
+                if (term.length>0){
+                    location.href = "/af_activofijo?action=mantenimientos&s="+term;
+                }else{
+                    bloqueointerface();
+                    location.href = "/af_activofijo?action=mantenimientos&tipo="+p;
+                }
+                return false;
+            };
+
+            $("#tipo").change(function(){
+                busqueda();
+            });
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $(".tl").tooltip({position:"center up"});
+
+            $(".detalledificio").click(function() {
+                var id = $(this).attr("ide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'detalle_mantenimientopreven', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            $("#detalledificiomodal_body").html(data.html);
+                            $("#detalledificiomodal").modal({"backdrop":"static", "width": "1200px"}).modal("show");
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+            $("#adicionar").click(function () {
+                var id = $(this).attr("ide");
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'validar_conf'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            location.href = '/af_activofijo?action=addedificio';
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+            $(".reporte").click(function(){
+                $('#reporte_edificio').modal({backdrop:'static', width: '470px'}).modal('show');
+            });
+            $('.btn-cerrar').click(function (){
+                $('#reporte_edificio').modal('hide');
+            });
+
+            $('#id_reporteedificio').click(function () {
+                var fechainicio = $('#id_fechainicio').val();
+                var fechafin = $('#id_fechafin').val();
+                var cuenta = 843;
+                $("#id_reporteedificio").attr({"nhref": "/reportes?action=run&n={{ reporte_0.nombre }}&id_cuentacontable="+cuenta+"&fecha_inicio="+fechainicio+"fecha_fin="+fechafin});
+                $("#itemspanelreporte").modal('hide');
+            });
+            $("#cerrarpanel_cerrar").click(function () {
+                $("#cerrarpanel").modal("hide");
+            });
+
+            $("#cerrarpanel_depreciar").click(function () {
+                empezar_depreciacion();
+                $("#fecha_dep").attr({'disabled': 'disabled'});
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").hide();
+            });
+            function terminar(){
+                $("#cerrarpanelprogresshint").html("Finalizando Depreciación");
+                $("#progressbar").css({'width': '100%'});
+                intentos = 0;
+                $("#cerrarpanel").modal("hide");
+                bloqueointerface();
+                location.href = "/af_activofijo?action=edificios";
+            }
+            function fallo(){
+                $.unblockUI();
+                $("#cerrarpanel").modal("hide");
+                smoke.alert("Fallo al depreciar");
+                $("#fecha_dep").removeAttr('disabled');
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+            }
+            function depreciacion(lista, elemento, cantidad){
+                var edificio = lista[elemento];
+                var cp = (100 / (cantidad+1)) * elemento + '%';
+                var fecha = $("#fecha_dep").val();
+                if (elemento>cantidad){
+                    $("#cerrarpanel").modal("hide");
+                    bloqueointerface();
+                    location.href = "/af_activofijo?action=edificios";
+                } else {
+                    $("#cerrarpanelprogresshint").html(edificio.descripcion);
+                    $("#progressbar").css({'width': cp});
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "depreciandoedificio", "id": edificio.id, "fecha": fecha },
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                intentos = 0;
+                                depreciacion(lista, elemento+1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos>=100){
+                                    fallo();
+                                } else {
+                                    depreciacion(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function() {
+                            intentos += 1;
+                            if (intentos>=100){
+                                fallo();
+                            } else {
+                                depreciacion(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+            empezar_depreciacion = function () {
+                var fecha = $("#fecha_dep").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action':'depreciaredificio', 'fecha': fecha},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result=='ok'){
+                            edificios = data.edificios;
+                            cantidad = edificios.length;
+                            indice = 0;
+                            depreciacion(edificios, indice, (cantidad-1));
+                        } else {
+                            smoke.alert(data.mensaje);
+                            $("#fecha_dep").removeAttr('disabled');
+                            $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                        $("#fecha_dep").removeAttr('disabled');
+                        $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                    },
+                    dataType: "json"
+                });
+            };
+            $("#depreciar").click(function() {
+                $("#cerrarpanel").modal({keyboard: false, backdrop: 'static'}).modal("show");
+            });
+
+            conectar_reporte();
+            $("#id_fechaini, #id_fechafinn").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); })
+            $("#modal_autoregistro").click(function() {
+                $("#id_fechaini").val('');
+                $("#id_fechafinn").val('');
+                $("#idoperativoadd").val('');
+                $("#idoperativoadd").val(5);
+                $("#alertaingresoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletoaddindicador").hide();
+                $("#itemspaneladdaciones .incompletovaloresaddindicador").hide();
+                $("#generar_reporte").show();
+                $("#guardar").hide();
+                $("#modaladdindicadores").modal({backdrop:'static', width: '250px'}).modal('show');
+            });
+            $("#generar_reporte").click(function() {
+                var id_fini = $("#id_fechaini").val();
+                var id_ffin = $("#id_fechafinn").val();
+                var id_tipo = $("#tpact").val();
+                if (id_fini==''){
+                    smoke.alert("Ingrese fecha de inicio");
+                    return false;
+                }
+                if (id_ffin==''){
+                    smoke.alert("Ingrese fecha fin");
+                    return false;
+                }
+
+                openwindow('GET' ,'/af_activofijo', {action:'excelmanpreventivos',fechainicio:id_fini,fechafin:id_ffin,tact:id_tipo}, '_blank');
+                $("#modaladdindicadores").modal("hide");
+            });
+            $("#cerrarindicadoresadd").click(function() {
+                $("#modaladdindicadores .incompletoaddindicadores").hide();
+                $("#modaladdindicadores .incompletovaloindicadores").hide();
+                $("#modaladdindicadores").modal("hide");
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/af_activofijo{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h3>{{ title }} <span style="font-size: 15px;" class="label label-success">TOTAL:{{ totalact }}</span></h3>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        <div class='span6'>
+            <a class="btn btn-success" href="/af_activofijo?action=addmantenimiento"><span class="fa fa-plus " ></span> Adicionar</a>
+{#            <a class="btn btn-success" href="/af_activofijo?action=tareasmantenimiento"><span class="fa fa-list " ></span> Tareas de mantenimientos</a>#}
+            {#            <a class="btn btn-success" href="/af_activofijo?action=garantiamantenimiento"><span class="fa fa-list " ></span> Mantenimientos por garantía</a>#}
+            <a href="#" id="modal_autoregistro" class="btn btn-warning tu"><span class="fa fa-file-excel-o " ></span> Descargar</a>
+            <div class="btn-group ">
+                <a class="btn dropdown-toggle btn-default" data-toggle="dropdown" href="#">Listado de Tareas de
+                    Mantenimiento <span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    <li><a href="/af_activofijo?action=tareasmantenimiento"><i class="fa fa-list-alt"></i>
+                        Mant. en tareas de limpieza</a></li>
+                    <li><a href="/af_activofijo?action=tareasmantenimientosgdanio"><i class="fa fa-list-alt"></i>
+                        Mant. en tareas de daños</a></li>
+                </ul>
+            </div>
+            <select name="tipo" id="tipo">
+                {% for tipo in tipos %}
+                    <option {% if tipo.id == idtipo %}selected{% endif %} value="{{ tipo.id }}">{{ tipo.descripcion }}</option>
+                {% endfor %}
+            </select>
+            <a href="javascript:;" id="" class="btn btn-info busporfecha"><span class="fa fa-search" ></span> Buscar por Fecha</a>
+        </div>
+        <div class='span6' style="text-align: right">
+            <form class="form-search" onsubmit="return busqueda()">
+                <input class='searchinput' placeholder="BUSCAR POR ACTIVO" type='text' id='searchinput' value='{{ search }}' autocomplete="off"/>
+                <a href="javascript:;" id='search' class='btn btn-info'><i class="fa fa-search "></i> Buscar</a>
+                {% if search or ids or id %}
+                    <a href="/af_activofijo?action=mantenimientos" class='btn btn-info'><i class="fa fa-refresh "></i> Todos</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <table class='table table-bordered' cellpadding="0" cellspacing="0">
+                <thead>
+                <tr>
+                    <th style="width: 80px; text-align: center">Activo</th>
+                    <th style="width: 60px;">Fecha </th>
+                    <th style="width: 60px; text-align: justify">Observación</th>
+                    <th style="width: 60px; text-align: justify">Código Interno</th>
+                    <th style="width: 30px; text-align: center">Detalle</th>
+                    <th style="width: 30px; text-align: center">Usuario</th>
+                    <th style="width: 50px"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for mante in mantenimientosactivos %}
+                    <tr>
+                        <td>{{ mante.activofijo }}</td>
+                        <td>{{ mante.fecha|date:"Y-m-d" }}</td>
+                        <td>{{ mante.observaciones }}</td>
+                        <td>{{ mante.activofijo.codigointerno }}</td>
+                        <td style="text-align: center">
+                            <a class="btn btn-info btn-mini detalledificio tu" title="Detalles" href='javascript:;' ide="{{ mante.id }}"> <i class='fa fa-list'></i> </a>
+                        </td>
+                        <td style="text-align: center">{{ mante.personacreador }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <a class="btn btn-mini dropdown-toggle" data-toggle="dropdown" href="javascript:;">Acciones<span class="caret"></span></a>
+                                <ul class="dropdown-menu pull-right list-group">
+                                    <li><a  href="/af_activofijo?action=editmantenimiento&idman={{ mante.id }}"><i class="fa fa-edit"></i> Editar</a></li>
+                                    <li><a class="eliminacionmodal tu" href="javascript:;" nhref="/af_activofijo?action=delmantenimiento&id={{ mante.id }}"><i class="fa fa-remove"></i> Eliminar</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="11" STYLE="text-align: center">
+                            NO EXISTEN MANTENIMIENTOS REGISTRADOS EN EL SISTEMA
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {% if paging.num_pages > 20 %}
+            <div class='pagination'>
+                <ul>
+                    {% if paging.primera_pagina %}
+                        <li><a href="/af_activofijo?action=mantenimientos&page=1{% if search %}&s={{ search }}{% endif %}">1</a></li>
+                        <li><a href="/af_activofijo?action=mantenimientos&page={{ paging.ellipsis_izquierda }}{% if search %}&s={{ search }}{% endif %}" class="active">...</a></li>
+                    {% endif %}
+                    {% for pagenumber in paging.paginas %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=mantenimientos&page={{ pagenumber }}{% if search %}&s={{ search }}{% endif %}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                    {% if paging.ultima_pagina %}
+                        <li><a href="/af_activofijo?action=mantenimientos&page={{ paging.ellipsis_derecha }}{% if search %}&s={{ search }}{% endif %}" class="active">...</a></li>
+                        <li><a href="/af_activofijo?action=mantenimientos&page={{ paging.num_pages }}{% if search %}&s={{ search }}{% endif %}">{{ paging.num_pages }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% else %}
+            <div class='pagination'>
+                <ul>
+                    {% for pagenumber in paging.page_range %}
+                        <li {%  if pagenumber == page.number %}class='active'{% endif %}><a href="/af_activofijo?action=mantenimientos&page={{ pagenumber }}{% if search %}&s={{ search }}{% endif %}">{{ pagenumber }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+    <div class="modal fade static" id="detalledificiomodal" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Detalles Mantenimiento Preventivo</h3>
+        </div>
+        <div class="modal-body" id="detalledificiomodal_body"></div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="detalledificiomodal_aceptar" class="btn btn-info btn-aceptar"> Aceptar</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="reporte_edificio" style="width: 100px; display: none">
+        <div class="modal-header" >
+            <h4>Reporte de Edificio</h4>
+        </div>
+        <div class="modal-body">
+            <div style="height: 35px">
+                <div style="width: 80px; padding-right: 5px; float: left">
+                    Fecha Inicio:
+                </div>
+                <div>
+                    <input type="text" class="selectorfecha" id="id_fechainicio" value="{{ hoy|date:'d-m-Y' }}" style="width: 80px">
+                </div>
+            </div><br>
+            <div style="height: 35px">
+                <div style="width: 80px; padding-right: 5px; float: left">
+                    Fecha Fin:
+                </div>
+                <div>
+                    <input type="text" class="selectorfecha" id="id_fechafin" value="{{ hoy|date:'d-m-Y' }}" style="width: 80px">
+                </div>
+            </div>
+        </div>
+        <div >
+            <div class="modal-footer" id="pie_calculo">
+                <a id="id_reporteedificio" href="javascript:;" tipos="{{ reporte_0.tiporeporte }}" nhref="" class="reportedirecto btn btn-success tu"> <i class='fa fa-print'></i> Imprimir</a>
+                <a href="javascript:;" class="btn btn-cerrar btn-info" id="reportepanel_cerrar">Cerrar</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block moreblock %}
+    <div class="modal static" id="cerrarpanel" style="display: none;">
+        <div class="modal-header">
+            <h3 id="cerrarpanelpaneltitle">Depreciando Edificio</h3>
+        </div>
+        <div class="modal-body" id="cerrarpanelpanelbody">
+            <div style="margin-bottom: 10px">
+                Fecha: <input type="text" id="fecha_dep" class="selectorfecha" value="{{ fecha|date:'d-m-Y' }}">
+            </div>
+            Progreso de depreciaci&oacute;n:
+            <div class="progress progress-striped active">
+                <div class="bar" style="width: 0;" id="progressbar"></div>
+            </div>
+            <div id="cerrarpanelprogresshint">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <div style="float: right">
+                <a href="javascript:;" id="cerrarpanel_depreciar" class="btn btn-danger"> Depreciar</a>
+                <a href="javascript:;" id="cerrarpanel_cerrar" class="btn btn-info"> Cerrar</a>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="modaladdindicadores" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Mant. Preventivos</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info incompletoaddindicadores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-danger" id="incompletovaloresaddindicadores" style="display: none;">
+                <i class="fa fa-info-sign"></i> Revise los valores, la fecha/hora DESDE no debe ser mayor a la fecha/hora HASTA
+            </div>
+            <div class="alert alert-danger" id="alertaingresoaddindicadores" style="display: none;"> FECHAS YA FUERON INGRESADAS</div>
+            <div class="row-fluid">
+                <form id="formulario2" class='form-vertical' action="" method="POST" >
+                    Fecha Inicio.:<br><input type="text" name="id_fechaini" id="id_fechaini" placeholder="Fecha Inicio">
+                    <br>Fecha Fin.:<br><input type="text" name="id_fechafinn" id="id_fechafinn" placeholder="Fecha Fin">
+                </form>
+                Tipo de Activo:
+                <select name="tpact" id="tpact">
+                    {% for tipo in tipos %}
+                        <option {% if tipo.id == idtipo %}selected{% endif %} value="{{ tipo.id }}">{{ tipo.descripcion }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-success" id="generar_reporte"><i class="fa fa-table"></i> Generar Reporte</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-danger" id="cerrarindicadoresadd">Cerrar</a>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel3" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Busqueda por rango de fecha</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!
+            </div>
+            <div style="text-align: center;">
+                <input placeholder="Fecha desde" type="text" value="" name="fini" id="id_fecha_inicio" style="width: 100px">
+                <input placeholder="Fecha hasta" type="text" value="" name="ffin" id="id_fecha_fin" style="width: 100px"><br><br>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: center">
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_adicionar_3"><i class="fa fa-search"></i> Buscar</a>
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_cerrar_3"> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}

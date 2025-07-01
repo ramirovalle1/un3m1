@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        .alertmenos {
+            line-height: 15px;
+            padding: 4px 20px 4px 10px;
+            margin-bottom: 10px;
+            text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+            background-color: #fcf8e3;
+            border: 1px solid #fbeed5;
+            -webkit-border-radius: 4px;
+            -moz-border-radius: 4px;
+            border-radius: 4px
+        }
+
+        .alertmenos-info {
+            color: #3a87ad;
+            background-color: #d9edf7;
+            border-color: #bce8f1
+        }
+
+        .alertmenos-success {
+            color: #468847;
+            background-color: #dff0d8;
+            border-color: #d6e9c6
+        }
+
+        .alertmenos-danger, .alertmenos-error {
+            color: #b94a48;
+            background-color: #f2dede;
+            border-color: #eed3d7
+        }
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript">
+        function mostrardiv(idcontrato, action, formapago) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/comercial",
+                data: {'action': action, 'idcontrato': idcontrato, 'idinscripcioncohote': {{ inscripcioncohorte.id }}},
+                success: function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $("#cuerpocontrato").html(data.data);
+                        {% if not revisaevidencia and not perms.posgrado.puede_aprobar_requisitos_financiamiento %}
+                            $('#btnguardar').hide();
+                            $('#id_observacion').attr('readonly', true);
+                        {% endif %}
+                        if(action.toString()=='informeevidenciaspagare'){
+{#                            {% if not inscripcioncohorte.genero_rubro_matricula and not inscripcioncohorte.genero_rubro_programa %}#}
+                            {% if contrato.ultima_evidencia_aspirantepagare and contrato.ultima_evidencia_aspirantepagare.estado_aprobacion != 2 %}
+                                $('#cambiartipofinanciamiento').show();
+                                $('#cuerpoc,#cuerporubrovstabla').removeAttr('class');
+                                $('#cuerpoc,#cuerporubrovstabla').attr('class', 'span12');
+                                existe_rubros_ajustar(idcontrato);
+                            {% else %}
+                                $('#cambiartipofinanciamiento').hide();
+                                $('#cuerpoc').removeAttr('class');
+                                $('#cuerpoc').attr('class', 'span8');
+                            {% endif %}
+                        } else if(action.toString()=='informeevidenciascontrato' && formapago == '1') {
+                            {% if contrato.ultima_evidencia_aspirante and contrato.ultima_evidencia_aspirante.estado_aprobacion != 2 %}
+                                $('#cuerpoc,#cuerporubrovstabla').removeAttr('class');
+                                $('#cuerpoc,#cuerporubrovstabla').attr('class', 'span12');
+                                existe_rubros_ajustar(idcontrato);
+                            {% else %}
+                                $('#cuerpoc').removeAttr('class');
+                                $('#cuerpoc').attr('class', 'span8');
+                            {% endif %}
+                        } else{
+                            $('#cambiartipofinanciamiento').hide();
+                            $("#cuerpocomparacionrubros").hide();
+                            $('#cuerpoc,#cuerporubrovstabla').removeAttr('class');
+                            $('#cuerpoc,#cuerporubrovstabla').attr('class', 'span8');
+                        }
+                    }
+                    if (data.result == 'sin') {
+                        $.unblockUI();
+                        $("#cuerpocontrato").html('<div style="text-align: center" class="alert alert-danger">' + data.mensaje + '</div>');
+                    } else {
+                        $.unblockUI();
+                        $("#cuerpocontrato").html(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}{% if sign == "1" %}/comercial?action=leadsmatriculados&s={{ inscripcioncohorte.inscripcionaspirante.persona.cedula }}{% else %}{% if inscripcioncohorte.formapagopac.id == 2 %}/comercial?s={{ inscripcioncohorte.inscripcionaspirante.persona.cedula }}{% else %}/comercial?action=prospectoscontado&s={{ inscripcioncohorte.inscripcionaspirante.persona.cedula }}{% endif %}{% endif %}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ inscripcioncohorte.inscripcionaspirante.persona.nombre_completo_inverso|title }}</h3>
+                <h6>{{ inscripcioncohorte.cohortes|lower|capfirst }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class="col-lg-4 col-md-3 col-sm-12">
+            <div class="card-body border-dark-info ms-2">
+                {% if contrato and contrato.contratolegalizado %}
+                    <div class="alert alert-warning alert-dismissible">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        <b>No puede cambiar el estado de este contrato dado que ya fue legalizado.</b>
+                    </div>
+                {% endif %}
+                <h4>Instrumentos legales
+                    {% if inscripcioncohorte.estado_aprobador == 2 %}
+                    {% if inscripcioncohorte.cumple_con_requisitos_comercializacion or inscripcioncohorte.formapagopac.id == 1 %}
+                        <a href="/comercial?action=adm_subirevidenciacontrato&idinscripcioncohorte={{ inscripcioncohorte.id|encrypt }}"
+                           class="btn btn-info btn-mini tu" title="Subir contratos/pagarés"><i
+                                class="fa fa-upload"></i></a>
+                    {% endif %}
+                {% endif %}</h4>
+
+
+                <div class="listadoevi alertmenos alertmenos-{% if contrato.archivocontrato %}{% if contrato.ultima_evidencia_aspirante.estado_aprobacion == 2 %}success{% else %}{% if contrato.ultima_evidencia_aspirante.estado_aprobacion == 3 %}danger{% else %}info{% endif %}{% endif %}{% else %}warning{% endif %}" idr="{{ contrato.id }}">
+                    {% if contrato.archivocontrato %}
+                        <i class="fa fa-check-circle tu" data-original-title="Si tiene contrato"></i>
+                    {% else %}
+                        <i class="fa fa-times-circle tu" data-original-title="No tiene contrato"></i>
+                    {% endif %}
+                    {% if contrato.inscripcion.formapago == 1 %}
+                        <a href="#"
+                           onclick="mostrardiv('{{ contrato.id }}','informeevidenciascontrato', '{{ contrato.inscripcion.formapagopac.id }}')">
+                            Contrato de contado</a>
+                    {% else %}
+                        <a href="#"
+                           onclick="mostrardiv('{{ contrato.id }}','informeevidenciascontrato', '{{ contrato.inscripcion.formapagopac.id }}')">
+                            Contrato de {% if inscripcioncohorte.formapagopac %}{{ inscripcioncohorte.formapagopac|title }}{% endif %} </a>
+                    {% endif %}
+                </div>
+                {% if inscripcioncohorte.formapagopac.id == 2 %}
+                    <div style="text-align: justify">
+                        <div class="listadoevi alertmenos alertmenos-{% if contrato.archivopagare %}{% if contrato.ultima_evidencia_aspirantepagare.estado_aprobacion == 2 %}success{% else %}{% if contrato.ultima_evidencia_aspirantepagare.estado_aprobacion == 3 %}danger{% else %}info{% endif %}{% endif %}{% else %}warning{% endif %}" idr="{{ contrato.id }}">
+                            {% if contrato.archivopagare %}
+                                <i class="fa fa-check-circle tu" data-original-title="Si tiene pagaré"></i>
+                            {% else %}
+                                <i class="fa fa-times-circle tu" data-original-title="No tiene pagaré"></i>
+                            {% endif %}
+                            <a href="#"
+                               onclick="mostrardiv('{{ contrato.id }}','informeevidenciaspagare', '{{ contrato.inscripcion.formapagopac.id }}')">
+                                Pagaré </a>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if inscripcioncohorte.convenio %}
+                    {% if inscripcioncohorte.convenio.suberequisito %}
+                        <div style="text-align: justify">
+                        <div class="listadoevi alertmenos alertmenos-{% if evidenciaconvenio %}{% if evidenciaconvenio.ultima_evidencia.estado_aprobacion == 2 %}success{% else %}{% if evidenciaconvenio.ultima_evidencia.estado_aprobacion == 3 %}danger{% else %}info{% endif %}{% endif %}{% else %}warning{% endif %}" idr="{{ evidenciaconvenio.id }}">
+                            {% if evidenciaconvenio %}
+                                <i class="fa fa-check-circle tu" data-original-title="Si tiene comprobante convenio"></i>
+                            {% else %}
+                                <i class="fa fa-times-circle tu" data-original-title="No tiene comprobante convenio"></i>
+                            {% endif %}
+                            <a href="#"
+                               onclick="mostrardiv('{{ evidenciaconvenio.id }}','informeevidenciasconvenio', '{{ contrato.inscripcion.formapagopac.id }}')">
+                                Convenio </a>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-lg-8 col-md-3 col-sm-12">
+            <div class="card-body border-dark-info" id="cuerpocontrato">
+                {% if inscripcioncohorte.grupo %}
+                    <div style="font-size: 12px;text-align: justify">
+                        <span style="font-weight: bold"> PERFIL DEL POSTULANTE:</span> {{ inscripcioncohorte.grupo }}
+                    </div>
+                {% endif %}
+                <div style="font-size: 18px;font-weight: bold;text-align: left">
+                    Para aprobar o rechazar, favor dar clic en el contrato.
+                </div>
+                <table border="0" width="100%">
+                    <tr>
+                        <td style="width: 10%">
+                            <div style="text-align: center" class="alert alert-warning">&nbsp;</div>
+                        </td>
+                        <td style="width: 90%" valign="left">
+                            <div style="text-align: left">Contrato sin evidencia</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 10%">
+                            <div style="text-align: center" class="alert alert-info">&nbsp;</div>
+                        </td>
+                        <td style="width: 90%" valign="left">
+                            <div style="text-align: left">Contrato con evidencia</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 10%">
+                            <div style="text-align: center" class="alert alert-danger">&nbsp;</div>
+                        </td>
+                        <td style="width: 90%" valign="left">
+                            <div style="text-align: left">Contrato rechazado</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="width: 10%">
+                            <div style="text-align: center" class="alert alert-success">&nbsp;</div>
+                        </td>
+                        <td style="width: 90%" valign="left">
+                            <div style="text-align: left">Contrato aprobado</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

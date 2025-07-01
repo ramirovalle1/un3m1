@@ -1,0 +1,410 @@
+{% extends 'serviciosvinculacion/baseservicios.html' %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript">
+
+        $(function () {
+            {#showAlertModal()#}
+
+            CargarCalendario('cargarcalendario', '{{ servicio.id|encrypt }}')
+
+            $("#submit").click(function () {
+                if (!$('#compromiso').is(':checked')) {
+                    Swal.fire("Debes aceptar los términos y condiciones", '', 'warning');
+                    return; // Detener el envío del formulario
+                }
+                //pantallaespera();
+                var form = $("#form2");
+                var formData = form.serializeArray();
+                var otroMotivo = $("#otro_motivo_input").val();
+                var motivo = $("#motivos_cita_select").val();
+                //console.log(motivo)
+                formData.push({name: 'descripcionmotivo', value: otroMotivo});
+                formData.push({name: 'idmotivo', value: motivo});
+                //formData.push({name: 'descripcionmotivo', value: otroMotivo});
+                $.ajax({
+                    type: "POST",
+                    url: form.attr('action'),
+                    data: formData,
+                    success: function (response) {
+                        $.unblockUI();
+                        if (response.result) {
+                            showAlertModal();
+                            $('#accept-modal-btn').click(function () {
+                                window.location.href = response.to; // Redirigir a la URL de respuesta
+                            });
+
+                        } else {
+                            if (response.msg) {
+                                Swal.fire(response.msg, '', 'warning');
+                            } else {
+                                Swal.fire("Error al guardar", '', 'warning');
+                            }
+                        }
+                    },
+                    error: function (xhr, textStatus, errorThrown) {
+                        $.unblockUI();
+                        console.error("Error al guardar:", textStatus);
+                        Swal.fire("Ocurrió un error al guardar. Por favor, inténtalo de nuevo.", '', 'warning');
+                    }
+                })
+
+
+            });
+
+        });
+
+
+        function CargarCalendario(action, id, movimiento, mes, anio, diasreserva) {
+            var control = $(this);
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}?sistema={{ tiposistema }}",
+                data: {
+                    'action': action,
+                    'idservicio':{{ servicioid }},
+                    'mover': movimiento,
+                    'mes': mes,
+                    'anio': anio,
+                    'diasreserva': diasreserva
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $('.calendario').html(data.data);
+                    } else {
+                        control.val(0).trigger("change");
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    control.val(0).trigger("change");
+                    alertaDanger("Error de conexion.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function CargarDatos(lista, fecha, box) {
+            console.log('entro perro')
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            bloqueointerface()
+            $.ajax({
+                type: "GET",
+                url: "{{ request.path }}?sistema={{ tiposistema }}",
+                data: {
+                    'action': 'addcita',
+                    'idservicio': '{{ servicioid }}',
+                    {#'idservicio':{{ servicioid }},#}
+                    'listaid[]': lista,
+                    'fecha': fecha,
+
+                },
+                success: function (data) {
+                    $.unblockUI()
+                    if (data.result === true) {
+                        $('.box-content-reserva').html(data.data);
+                        $('.form-box').show()
+                        $('.box-reserva').hide()
+                    } else if (data.agendado === true) {
+                        RemplazarTexto('', '', '', box, data.mensaje)
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI()
+                    alertaDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function RemplazarTexto(fecha_actual, fecha_selec, numdias, box, mensaje = false) {
+            let text = "Fecha no está disponible para reservar. Puede reservar máximo hasta " + numdias + " días posteriores a la primera fecha disponible."
+            $(".calendar__disponible").removeClass('calendar__disponible-active')
+            $('.btn_extra').empty()
+            $("#cal" + box).addClass('calendar__disponible-active')
+            $(".box-content-reserva").empty()
+            $('.box-reserva').show().addClass('card').css('border', '0px')
+            if (mensaje == true) {
+                text = "Turnos agotados en fecha seleccionada"
+            } else if (mensaje != false) {
+                text = mensaje
+                $('.btn_extra').html(`<a class="btn btn-orange" href="/perfil_usuario?action=miscitas?sistema={{ tiposistema }}&action=miscitas" target="_blank">Ver citas agendadas</a>`)
+                {#$('.btn_extra').html(`<a class="btn btn-orange" href="/serviciosvinculacion/gestionarperfilvin/miscitas.html/?sistema={{ tiposistema }}&action=miscitas" target="_blank">Ver citas agendadas</a>`);#}
+            } else {
+                if (fecha_actual == fecha_selec) {
+                    text = "Los turnos de esta fecha ya se han inicializado o finalizado."
+                }
+            }
+            $('.mensaje').html(`<div class="swal2-icon swal2-info swal2-animate-info-icon mt-0 mb-1" style="display: flex;"></div><h2 class="text-secondary"><strong>Alerta!</strong></h2><p class="text-secondary lh-1 p-4 py-0">${text}</p>`)
+        }
+
+    </script>
+    <style type="text/css">
+        .sin__horario:before {
+            content: " ";
+            position: absolute;
+            z-index: 2;
+            left: 0;
+            width: 15px;
+            height: 15px;
+            bottom: 1px;
+            -moz-border-radius: 50%;
+            -webkit-border-radius: 50%;
+            border-radius: 30%;
+            border: 1.5px solid #517E95;
+            opacity: .6;
+        }
+
+        .sin__horario {
+            margin-right: 17px;
+            position: relative;
+        }
+
+        .disponible:before {
+            content: " ";
+            position: absolute;
+            z-index: 2;
+            left: 0;
+            width: 15px;
+            height: 15px;
+            bottom: 1px;
+            -moz-border-radius: 50%;
+            -webkit-border-radius: 50%;
+            border-radius: 30%;
+            box-shadow: 0 2px 5px #999;
+            -webkit-box-shadow: 0 2px 5px #999;
+            -moz-box-shadow: 0 2px 5px #999;
+        }
+
+        .disponible {
+            margin-right: 17px;
+            position: relative;
+        }
+
+        .agotados:before {
+            content: " ";
+            position: absolute;
+            z-index: 2;
+            left: 0;
+            width: 15px;
+            height: 15px;
+            bottom: 0px;
+            -moz-border-radius: 50%;
+            -webkit-border-radius: 50%;
+            border-radius: 30%;
+            background: #517E95;
+        }
+
+        .agotados {
+            margin-right: 17px;
+            position: relative;
+        }
+
+        .arrow-rigth {
+            position: relative;
+            margin-right: 70%;
+            margin-left: 30%;
+        }
+
+        .arrow-rigth:before {
+            content: " ";
+            position: absolute;
+            z-index: 2;
+            left: 0;
+            width: 10px;
+            height: 10px;
+            bottom: 10px;
+            -webkit-transform: rotate(45deg);
+            transform: rotate(45deg);
+            border-top: 3px solid #1B5082;
+            border-right: 3px solid #1B5082;
+            background: transparent;
+        }
+
+        .arrow-left {
+            position: relative;
+            margin-right: 50%;
+            margin-left: 50%;
+        }
+
+        .arrow-left:before {
+            content: " ";
+            position: absolute;
+            z-index: 2;
+            left: 0;
+            width: 10px;
+            height: 10px;
+            bottom: 10px;
+            -webkit-transform: rotate(-140deg);
+            transform: rotate(-140deg);
+            border-top: 3px solid #1B5082;
+            border-right: 3px solid #1B5082;
+            background: transparent;
+        }
+
+        /* CSS personalizado para redondear los bordes del modal */
+        .modal-content.rounded-3 {
+            border-radius: 1rem; /* Puedes ajustar este valor según lo redondeado que quieras los bordes */
+        }
+
+
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var selectElement = document.getElementById('motivos_cita_select');
+            var otroMotivoContainer = document.getElementById('otro_motivo_container');
+            var descripcionmotivo = document.getElementById('descripcionmotivo');
+
+            selectElement.addEventListener('change', function () {
+                if (selectElement.value === 'otro') {
+                    otroMotivoContainer.style.display = 'block';
+                   descripcionmotivo.required = true;
+                } else {
+                    otroMotivoContainer.style.display = 'none';
+                    descripcionmotivo.required = false;
+                }
+            });
+        });
+    </script>
+
+{% endblock %}
+{% block section_top %}
+    {% include 'core/header_top.html' %}
+{% endblock %}
+{% block section_center %}
+    <section class="section-sm py-6">
+        <div class="container">
+            <div class="row">
+                <div class="col-xl-5 col-lg-7 col-md-6 text-blue-opacity mb-4 mb-md-0">
+                    <h3 class="text-orange my-0">DATOS DEL SOLICITANTE</h3>
+                    <p class="text-black"><strong>Nombre del
+                        solicitante:</strong> {{ persona.nombre_completo_minus|title }}</p>
+{#                    <p class="text-black"><strong>Atención al Área:#}
+{#                        </strong> {{ persona.serviciocita|title }}</p>#}
+                    <p class="text-black"><strong>Email:</strong> {{ persona.email }}</p>
+                    <p class="text-black"><strong>Teléfono :</strong> {{ persona.telefono }} </p>
+                    <p class="text-black"><strong>Ciudad:</strong> {{ persona.canton|title }} </p>
+                    <p class="text-black"><strong>Dirección:</strong> {{ persona.direccion|title }}
+                        entre {{ persona.direccion2|title }}</p>
+                </div>
+                <div class="col-xl-7 col-lg-5 col-md-6">
+                    <div class="card p-4">
+                        <h3 class="text-orange my-0">MOTIVO DE CITA</h3>
+                        <p class="text-black"><strong>Seleccionar los siguientes motivos:</strong></p>
+                        <select name="motivos_cita" class="form-select" id="motivos_cita_select" REQUIRED>
+                            <option value="">Seleccionar motivo</option> <!-- Opción por defecto -->
+                            {% for motivo in listadomotivo %}
+                                <option value="{{ motivo.id }}">{{ motivo.descripcion }}</option>
+                            {% endfor %}
+{#                            <option value="otro">Otro</option> <!-- Opción "Otro" -->#}
+                        </select>
+                        <div id="otro_motivo_container" style="display: none; margin-top: 10px;">
+                            <label for="descripcionmotivo">Por favor, detallar el motivo:</label>
+                            <input type="textarea" name="descripcionmotivo" id="otro_motivo_input" class="form-control"
+                                   placeholder="Describa su motivo">
+                        </div>
+                    </div>
+                </div>
+{#                <div class="col-xl-7 col-lg-5 col-md-6">#}
+{#                    <div class="card p-4">#}
+{#                        <h3 class="text-orange my-0">MOTIVO DE CITA</h3>#}
+{#                        <p class="text-black"><strong>Seleccionar los siguientes motivos:</strong></p>#}
+{#                        <select name="motivos_cita" class="form-select">#}
+{#                            <option value="">Seleccionar motivo</option>  <!-- Opción por defecto -->#}
+{#                            {% for motivo in listadomotivo %}#}
+{#                                <option value="{{ motivo.id }}">{{ motivo.descripcion }}</option>#}
+{#                            {% endfor %}#}
+{#                        </select>#}
+{#                    </div>#}
+{#                </div>#}
+            </div>
+
+            <!-- Sección de disponibilidad -->
+            <div class="row my-4">
+                <div class="col-12">
+                    <h3 class="text-orange my-0">DISPONIBILIDAD</h3>
+                    <p class="text-muted">Seleccionar día y hora de su cita</p>
+                </div>
+                <!-- Calendario menú -->
+                <div class="col-md-12 col-lg-5 mb-4 mb-md-0">
+                    <div class="calendario menu"></div>
+                </div>
+                <div class="col-md-12 col-lg-6">
+                    <div class="menu">
+                        <div class="box-cabecera mb-3">
+                            <h5 class="text-dark"><b>Detalles de cita</b></h5>
+                            <p class="text-muted small">Si el servicio requiere de requisitos con archivos estos tendrán
+                                que ser subidos antes de agendar la cita.</p>
+                        </div>
+                        <form id="form2" class="form-box" autocomplete="off" method="POST" enctype="multipart/form-data"
+                              action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="box-content-reserva">
+                                <!-- Contenido de la reserva -->
+                            </div>
+                        </form>
+                        <div class="box-reserva text-center" style="height: 370px;">
+                            <div class="mensaje p-4 py-0">
+                                <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una fecha
+                                    de reserva</h4>
+                            </div>
+                            <div class="btn_extra pt-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Checkbox y términos y condiciones -->
+            <div class="row">
+                <div class="col-12 d-flex align-items-center justify-content-center mb-3">
+                    <input type="checkbox" required="" name="compro" id="compromiso" data-bs-toggle="tooltip">
+                    <p class="ms-2 mb-0 texto-blue fs-6 lh-1"> He leído y he aceptado los <a href="#"
+                                                                                             class="btn-link text-primary"
+                                                                                             data-bs-toggle="modal"
+                                                                                             data-bs-target="#myModal">términos
+                        y condiciones</a> de uso de los servicios.</p>
+                </div>
+                <!-- Modal -->
+                <div class="modal fade" id="myModal" tabindex="-1" aria-labelledby="myModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content rounded-3">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="myModalLabel">Términos y Condiciones</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body" style="height: 500px">
+                                {{ termino.descripcion|safe }}
+                            </div>
+                            <div class="modal-footer d-flex justify-content-center">
+                                <button type="button" class="btn btn-orange-1 px-6 fs-5 mt-1" data-bs-dismiss="modal">
+                                    Aceptar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="row">
+                <div class="col-12 text-center pt-2">
+                    <a href="{{ request.path }}?action=planificacions" class="btn btn-primary-old fs-5 px-6 mt-1">Cancelar</a>
+                    <button type="submit" id="submit" class="btn btn-orange-1 px-6 fs-5 mt-1">Agendar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}

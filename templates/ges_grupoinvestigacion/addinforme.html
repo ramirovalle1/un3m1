@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1" data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        $(function() {
+            $(".fancybox").fancybox();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            let nf_evidencia = secuenciaevidencia = 0;
+            lista_items1 = [];
+            let fechaactual = '{{ fecha|date:"Y-m-d" }}';
+            let nueva;
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('motivaciontecnica', 'motivaciontecnica', true);
+            configurarChkEditor('conclusion', 'conclusion', true);
+            configurarChkEditor('recomendacion', 'recomendacion', true);
+
+            CKEDITOR.instances['motivaciontecnica'].on('change', function() {
+                if(CKEDITOR.instances['motivaciontecnica'].getData().length > 0)
+                    $("#motivaciontecnica_aux").val("OK");
+                else
+                    $("#motivaciontecnica_aux").val("");
+            });
+
+            CKEDITOR.instances['conclusion'].on('change', function() {
+                if(CKEDITOR.instances['conclusion'].getData().length > 0)
+                    $("#conclusion_aux").val("OK");
+                else
+                    $("#conclusion_aux").val("");
+            });
+
+            CKEDITOR.instances['recomendacion'].on('change', function() {
+                if(CKEDITOR.instances['recomendacion'].getData().length > 0)
+                    $("#recomendacion_aux").val("OK");
+                else
+                    $("#recomendacion_aux").val("");
+            });
+
+            $(".guardar").click(function () {
+                envioformularioreg("/ges_grupoinvestigacion", "addinforme", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmInforme").validationEngine('attach',{ scroll: true });
+                valido = $("#frmInforme").validationEngine('validate', { scroll: true });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'addinforme'){
+                        try {
+                            for ( instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmInforme")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/ges_grupoinvestigacion?action=solicitudesgrupo&ids="+data.id;
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Informe sin haber guardado la información?", false, "/ges_grupoinvestigacion", "", "", "/ges_grupoinvestigacion?action=solicitudesgrupo");
+            });
+
+            $(".agregaevidencia").click(function() {
+                if(datos_evidencia_completo()){
+                    nf_evidencia += 1;
+                    secuenciaevidencia += 1;
+
+                    borrar_fila_default_evidencia();
+
+                    nueva = '<tr class="detalleevidencias" id="filaevidencia_' + nf_evidencia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaevidencia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="'+nf_evidencia.toString()+'">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia'+nf_evidencia.toString()+'" name="descripcion_evidencia[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_'+nf_evidencia.toString()+'" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="'+nf_evidencia.toString()+'" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc'+nf_evidencia.toString()+'" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><input type="date" id="fecha_genera_'+nf_evidencia.toString()+'" name="fecha_genera[]" value="'+fechaactual+'" />  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>'+
+                        '<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia" idf="' + nf_evidencia.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+                    $("#detalle_evidencias").append(nueva);
+                    $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#fecha_genera_"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#detalle_evidencias").find(".eliminaritem_evidencia").tooltip();
+                    $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                    $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItem_evidencia);
+
+                    conectar_change_fileinput_evidencia();
+                }
+            });
+
+            eliminarItem_evidencia = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaevidencia_"+id).remove();
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                if(secuenciaevidencia == 0)
+                    agregar_fila_default_evidencia();
+
+                actualizar_lista_evidenciaarchivo();
+            };
+
+            actualizar_lista_evidenciaarchivo = function (){
+                lista_items1 = [];
+                let cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf++;
+                });
+            };
+
+            conectar_change_fileinput_evidencia=function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizar_lista_evidenciaarchivo();
+                });
+            };
+
+            agregar_fila_default_evidencia = function (){
+                let filadefault = '<tr id="fila_default_evidencia">'+
+                              '<td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS ADICIONALES</td>'+
+                              '</tr>';
+                $("#detalle_evidencias").append(filadefault);
+            };
+
+            borrar_fila_default_evidencia = function (){
+                $("#fila_default_evidencia").remove();
+            };
+
+            datos_evidencia_completo = function (){
+                let c1e = true, c2e = true;
+
+                $('input[name="descripcion_evidencia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/ges_grupoinvestigacion?action=solicitudesgrupo{% endblock %}
+{% block canvas %}
+    <form name="frmInforme" id="frmInforme">{% csrf_token %}
+        <input type="hidden" name="action" value="addinforme">
+        <input type="hidden" name="id" value="{{ grupo.id|encrypt }}">
+        <div class='col-lg-12 col-sm-12 col-12'>
+            {# TITULO #}
+            <div class="row">
+                <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                    <div class="headtitle">
+                        <h3 class="texto-blue">{{ title }}</h3>
+                        <h6>Postulación del docente</h6>
+                    </div>
+                </div>
+            </div>
+            {# TITULO #}
+            {# CUERPO DEL FORMULARIO #}
+            <div class="card">
+  	            <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-1">
+                    <div class="row">
+                        {# PESTAÑAS #}
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#informe">Informe Técnico</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#postulacion">Datos de la Solicitud</a>
+                            </li>
+                        </ul>
+                        {# PESTAÑAS #}
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                        <div class="tab-content px-0">
+                            <div id="informe" class="container tab-pane active"><br>
+                                {# CABECERA DEL INFORME #}
+                                <div class="row">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table-bordered table-striped" id="tbcabecera">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th colspan="6">Encabezado del informe</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Fecha:</strong></td>
+                                                    <td style="width: 10%;">{{ fecha|date:"d-m-Y" }}</td>
+                                                    <td style="width: 10%;"><strong>Para:</strong></td>
+                                                    <td style="width: 30%;">{% if director %}{{ director.nombre_completo_inverso }}{% endif %}</td>
+                                                    <td style="width: 10%;"><strong>De:</strong></td>
+                                                    <td style="width: 30%;">{% if coordinador %}{{ coordinador.nombre_completo_inverso }}{% endif %}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Objeto:</strong></td>
+                                                    <td colspan="5" style="text-align: justify">
+                                                        Solicitud de creación de {{ grupo.nombre }} {% if grupo.acronimo %}({{ grupo.acronimo }}){% endif %}.
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {# CABECERA DEL INFORME #}
+                                {# MOTIVACIÓN TÉCNICA, CONCLUSIONES Y RECOMENDACIONES #}
+                                <div class="row">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table-bordered table-striped" id="tbconclusion">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th colspan="2">Motivación Técnica, Conclusiones y Recomendaciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Motivación Técnica:</strong></td>
+                                                    <td style="width: 90%;">
+                                                        <textarea name="motivaciontecnica" id="motivaciontecnica"></textarea>
+                                                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="motivaciontecnica_aux" value="">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Conclusiones:</strong></td>
+                                                    <td style="width: 90%;">
+                                                        <textarea name="conclusion" id="conclusion"></textarea>
+                                                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="conclusion_aux" value="">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 10%;"><strong>Recomendaciones:</strong></td>
+                                                    <td style="width: 90%;">
+                                                        <textarea name="recomendacion" id="recomendacion"></textarea>
+                                                        <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="recomendacion_aux" value="">
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {# ANTECEDENTES, CONCLUSIONES Y RECOMENDACIONES #}
+                                {# ANEXOS #}
+                                <div class="row">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table-bordered table-striped" id="tbdetalleevidencias">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th colspan="5">Anexos Adicionales</th>
+                                                </tr>
+                                                <tr>
+                                                    <th style="width: 3%; text-align: center;">#</th>
+                                                    <th style="width: 59%; text-align: center;">Descripción</th>
+                                                    <th style="width: 20%; text-align: center;">Archivo</th>
+                                                    <th style="width: 15%; text-align: center;">Fecha Generación</th>
+                                                    <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaevidencia" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Anexo"><i class="fa fa-plus"></i> </a></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="detalle_evidencias">
+                                                <tr id="fila_default_evidencia">
+                                                    <td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS ADICIONALES</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {# ANEXOS #}
+                                {# FILA DE LOS BOTONES #}
+                                <div class="row">
+                                    <div class="col-sm-12 px-0" style="text-align: right; float: left; width: 100%">
+                                        <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                                        <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                                    </div>
+                                </div>
+                                {# FILA DE LOS BOTONES #}
+                            </div>
+                            <div id="postulacion" class="container tab-pane fade"><br>
+                                {# FILA DATOS DE LA POSTULACION #}
+                                <div class="row">
+                                    <div class="table-responsive-xxl">
+                                        <table class="table table-bordered table-striped" id="tbdatossolicitud">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th colspan="4">Datos de la Propuesta</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>N° Solicitud:</strong></td>
+                                                    <td style="text-align: justify; width: 35%;"><span class="label label-info">{{ grupo.numero|stringformat:"05d" }}</span></td>
+                                                    <td style="width: 15%;"><strong>Fecha:</strong></td>
+                                                    <td style="width: 35%;">{{ grupo.fechasolicitud|date:"d-m-Y" }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Profesor:</strong></td>
+                                                    <td style="text-align: justify; width: 35%;">{{ grupo.profesor.persona.nombre_completo_inverso }}</td>
+                                                    <td style="width: 15%;"><strong>Estado:</strong></td>
+                                                    <td style="width: 35%;"><span class="{{ grupo.estado.clase }} tu" title="{{ grupo.estado.observacion }}">{{ grupo.estado.descripcion }}</span></td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Facultad:</strong></td>
+                                                    <td style="text-align: justify; width: 35%;">{{ grupo.coordinacion.nombre }}</td>
+                                                    <td style="width: 15%;"><strong>Carrera:</strong></td>
+                                                    <td style="width: 35%;">{{ grupo.carrera_grupo }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Nombre del Grupo:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">{{ grupo.nombre }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Acrónimo:</strong></td>
+                                                    <td style="text-align: justify; width: 35%;">{{ grupo.acronimo }}</td>
+                                                    <td style="width: 15%;"><strong>Logotipo:</strong></td>
+                                                    <td style="width: 35%;">
+                                                        {% if grupo.logotipo %}
+                                                            <a href="{{ grupo.logotipo.url }}" class="fancybox tu" title="Mostrar Logotipo"><i class="fa fa-eye text-warning"></i></a>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Descripción:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">{{ grupo.descripcion }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Objetivo General:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">{{ grupo.objetivogeneral }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Objetivos Específicos:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">
+                                                        <table class="table table-bordered table-striped mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th style="width: 3%; text-align: center;">#</th>
+                                                                    <th style="width: 97%; text-align: center;">Objetivo</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for objetivo in objetivos %}
+                                                                    <tr>
+                                                                        <td style="text-align: right">{{ forloop.counter }}</td>
+                                                                        <td style="text-align: justify">{{ objetivo.descripcion }}</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Líneas de Investigación:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">
+                                                        {% for linea in lineasinvestigacion %}
+                                                            {{ linea.nombre }}
+                                                            {% if not forloop.last %}, {% endif %}
+                                                        {% endfor %}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Miembros del Grupo:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">
+                                                        <table class="table table-bordered table-striped mb-0">
+                                                            <thead class="table-light">
+                                                                <th style="width: 2%; text-align: center; text-transform: none">#</th>
+                                                                <th style="width: 10%; text-align: center; text-transform: none">Tipo</th>
+                                                                <th style="width: 30%; text-align: center; text-transform: none">Nombres</th>
+                                                                <th style="width: 10%; text-align: center; text-transform: none">Tipo/Dedicación</th>
+                                                                <th style="width: 15%; text-align: center; text-transform: none">Función</th>
+                                                                <th style="width: 10%; text-align: center; text-transform: none">Filiación</th>
+                                                                <th style="width: 13%; text-align: center; text-transform: none">Trayectoria</th>
+                                                                <th style="width: 10%; text-align: center; text-transform: none">Justificación</th>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for integrante in integrantes %}
+                                                                    <tr>
+                                                                        <td style="text-align: right">{{ forloop.counter }}</td>
+                                                                        <td style="text-align: center">{{ integrante.get_tipo_display }}</td>
+                                                                        <td style="text-align: justify">
+                                                                            {{ integrante.persona.nombre_completo_inverso }}<br>
+                                                                            <span class="label label-info">{{ integrante.coordinacion.alias }}</span>
+                                                                            <span class="label label-success">{{ integrante.carrera.alias }}</span>
+                                                                        </td>
+                                                                        <td style="text-align: center">
+                                                                            {% if integrante.tipodocente %}
+                                                                                {{ integrante.tipodocente.nombre }} / {{ integrante.dedicacion.nombre }}
+                                                                            {% endif %}
+                                                                        </td>
+                                                                        <td style="text-align: center">{{ integrante.get_funcion_display }}</td>
+                                                                        <td style="text-align: center">{{ integrante.get_filiacion_display }}</td>
+                                                                        <td style="text-align: justify">
+                                                                            {{ integrante.trayectoriaprevia|substraerconpunto:100 }}
+                                                                            {% if integrante.trayectoriaprevia|contarcaracter:100 %}
+                                                                                <a href="javascript:;" data-bs-toggle="popover" data-bs-trigger="focus" title="Trayectoria de {{ integrante.persona.nombre_completo_inverso }}" data-bs-content="{{ integrante.trayectoriaprevia }}"><i class="fa fa-eye text-info tu" title="Ver Trayectoria completa"></i></a>
+                                                                            {% endif %}
+                                                                        </td>
+                                                                        <td style="text-align: justify">{{ integrante.justificacion }}</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Tecnologías que domina:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">
+                                                        <table class="table table-bordered table-striped mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th style="width: 3%; text-align: center;">#</th>
+                                                                    <th style="width: 97%; text-align: center;">Tecnología</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for tecnologia in tecnologias %}
+                                                                    <tr>
+                                                                        <td style="text-align: right">{{ forloop.counter }}</td>
+                                                                        <td style="text-align: justify">{{ tecnologia.descripcion }}</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Colaboración con otros grupos de investigación:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">{{ grupo.colaboracion }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>Requisitos Director:</strong></td>
+                                                    <td colspan="3" style="text-align: justify;">
+                                                        <table class="table table-bordered table-striped mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th style="width: 2%; text-align: center;">#</th>
+                                                                    <th style="width: 68%; text-align: center;">Requisito</th>
+                                                                    <th style="width: 10%; text-align: center;">Director</th>
+                                                                    <th style="width: 10%; text-align: center;">Decano</th>
+                                                                    <th style="width: 10%; text-align: center;">Analista</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for requisito in requisitos %}
+                                                                    <tr>
+                                                                        <td style="text-align: center">{{ forloop.counter }}</td>
+                                                                        <td style="text-align: justify">{{ requisito.requisito.descripcion }}</td>
+                                                                        <td style="text-align: center">
+                                                                            {% if requisito.cumpledir %}
+                                                                                <i class="fa fa-check text-success" aria-hidden="true"></i>
+                                                                            {% else %}
+                                                                                <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                                            {% endif %}
+                                                                        </td>
+                                                                        <td style="text-align: center">
+                                                                            {% if requisito.cumpledec %}
+                                                                                <i class="fa fa-check text-success" aria-hidden="true"></i>
+                                                                            {% else %}
+                                                                                <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                                            {% endif %}
+                                                                        </td>
+                                                                        <td style="text-align: center">
+                                                                            {% if requisito.cumpleanl %}
+                                                                                <i class="fa fa-check text-success" aria-hidden="true"></i>
+                                                                            {% else %}
+                                                                                <i class="fa fa-remove text-danger" aria-hidden="true"></i>
+                                                                            {% endif %}
+                                                                        </td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {# FILA DATOS DE LA POSTULACION #}
+                                {# FILA RESOLUCIÓN CONSEJO DE FACULTAD #}
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <div class="table-responsive-xxl">
+                                            <table class="table table-bordered table-striped" id="tbresolucion">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th colspan="6">Resolución Consejo Directivo de Facultad</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style="width: 15%;"><b>N° Resolución:</b></td>
+                                                        <td style="width: 18%;">{{ resolucion.numero }}</td>
+                                                        <td style="width: 15%;"><b>Fecha Resolución:</b></td>
+                                                        <td style="width: 18%;">{{ resolucion.fecha|date:"d-m-Y" }}</td>
+                                                        <td style="width: 15%;"><b>Archivo Resolución Consejo:</b></td>
+                                                        <td style="width: 19%;">
+                                                            <a href="{{ resolucion.archivo.url }}" data-width="2048" data-height="1380" data-fancybox="resolucion{{ grupo.id }}" data-caption="Resolución Consejo Directivo de Facultad" data-bs-toggle="tooltip" data-placement="top" title="Ver Resolución"><i class="fa fa-eye text-warning"></i> </a>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                {# FILA RESOLUCIÓN CONSEJO DE FACULTAD #}
+                            </div>
+                        </div>
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                    </div>
+                </div>
+            </div>
+            {# CUERPO DEL FORMULARIO #}
+        </div>
+    </form>
+{% endblock %}

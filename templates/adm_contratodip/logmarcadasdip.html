@@ -1,0 +1,274 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% block atras %}{%  if not destino %}/adm_marcadas_dip?action=detallejornadatrabajador&id={{ personaadminis.id|encrypt }}{% else %}{{ destino }}{% endif %}{% endblock %}
+{% block heading %}
+    <script>
+        $(function() {
+            $("#id_fini, #id_ffin, #dia1").addClass("validate[required]").datepicker({format:"yyyy-mm-dd"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#time").timepicker({minuteStep: 1,appendWidgetTo: 'body', showSeconds: false, showMeridian: false, defaultTime: true});
+            $("#mestrabajado").html('').append('<option selected="selected" value="">---------</option>');
+            $("#aniotrabajado").val(0);
+            $("#aniotrabajado").change(function(){
+                $("#mestrabajado").html('').append('<option selected="selected" value="">---------</option>');
+                var anio = $(this).val();
+                var id = $(this).attr("idt");
+                $("#itemsbody").empty();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_marcadas_dip",
+                        data: {"action": "meses_anio_log", "id": id, "anio": anio},
+                        success: function(data) {
+                            $.unblockUI();
+                            if (data.result=='ok'){
+                                for (x=0; x < data.lista.length; x++){
+                                    elemento = data.lista[x];
+                                    $("#mestrabajado").append('<option value="'+elemento[0]+'">'+elemento[1]+'</option>');
+                                }
+                                if (data.lista.length == 1){
+                                    $("#mestrabajado").prop("selectedIndex", 1).trigger("change");
+                                }
+                            } else {
+                                $("#mestrabajado").val(0).trigger("change");
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#mestrabajado").val(0).trigger("change");
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+
+            $("#mestrabajado").change(function(){
+                $("#itemsbody").empty();
+                var id = $(this).attr("idt");
+                var anio = $("#aniotrabajado").val();
+                var mes = $(this).val();
+                if (id){
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_marcadas_dip",
+                        data: {"action": "detalle_jornda_trab_log", "id": id, "anio": anio, "mes": mes, "pued_modificar":{{ pued_modificar }}},
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                $("#datosmarcada").html(data.data);
+                                $('.confirmacionmodal').bind('click.conectar_confirmacion', conectar_confirmacion);
+                                tooltips();
+                            } else {
+                                $("#mestrabajado").val(0);
+                            }
+                            $.unblockUI();
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            $("#mestrabajado").val(0);
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $(".informemarcadas").click(function () {
+                $("#itemspanel_marcada").modal({backdrop:'static', width: '300'}).modal('show');
+            });
+
+            $("#itemspanel_cerrar_marcada").click(function () {
+                $("#itemspanel_marcada").modal("hide");
+            });
+
+            $("#itemspanel_generarinforme_marcada").click(function () {
+                $("#itemspanel_marcada").modal('hide');
+                openwindow('POST' ,'/adm_marcadas_dip', {action: 'informemarcada', 'fini': $('#id_fini').val(), 'ffin': $('#id_ffin').val(),'idpersona':'{{ personaadminis.id }}'},'_blank');
+            });
+
+            $(".addmaracada").click(function () {
+                /*var dia = $(this).attr("dia");
+                var marc = $(this).attr("marc");
+                var jor = $(this).attr("jor");
+                $("#dia").val("");
+                $("#marc").val("");
+                $("#jor").val("");
+                $("#dia").val(dia);
+                $("#marc").val(marc);
+                $("#jor").val(jor);*/
+                $("#modalAddMarcada").modal({backdrop: 'static', width: '250px'}).modal('show');
+            });
+
+            $("#cancelar", $("#modalAddMarcada")).click(function () {
+                $("#modalAddMarcada").modal("hide");
+                return false;
+            });
+
+            $("#guardar", $("#modalAddMarcada")).click(function () {
+                bloqueointerface();
+                var dia = $("#dia1", $("#modalAddMarcada")).val();
+                var marc = $("#marc1", $("#modalAddMarcada")).val();
+                var time = $("#time1", $("#modalAddMarcada")).val();
+                //var mestrabajado = $("#mestrabajado").val();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_marcadas_dip",
+                    data: {"action": "addmarcada2", "dia": dia, "marc": marc, "time": time},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#modalAddMarcada").modal("hide");
+                            //$("#mestrabajado").val(mestrabajado).trigger("change");
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+
+{% endblock %}
+{% block canvas %}
+    <div class='row-fluid'>
+        <div class='span12'>
+            <h4>{{ title }}</h4>
+            <h5>Trabajador: {{ personaadminis }}</h5>
+            <h5>Cédula: {{ personaadminis.cedula }} - Índice biométrico: {{ personaadminis.identificacioninstitucion}}</h5>
+        </div>
+    </div>
+    <div class='row-fluid'>
+        {#        <form class='well' style="width: 600px">#}
+        Año: <select id='aniotrabajado' idt="{{ personaadminis.id }}" style="width: 100px">
+        <option value=''>------------</option>
+        {% for anio in anios %}
+            <option value='{{ anio }}'>{{ anio }}</option>
+        {% endfor %}
+    </select>
+        Mes: <select id='mestrabajado' idt="{{ personaadminis.id }}" style="width: 100px">
+        <option value=''>------------</option>
+    </select>
+        <a href="javascript:;" class="btn btn-warning informemarcadas"><i class="fa fa fa-print"></i> Imprimir </a>
+        {% if puede_crear_marcada %}
+            <a href="javascript:;" class="btn btn-large btn-success addmaracada"><i class="fa fa-plus"></i> </a>
+        {% endif %}
+    </div>
+    <div class="row-fluid">
+        <div class='span12'>
+            <div id="datosmarcada"></div>
+            {#            <table class='table table-bordered' cellpadding="0" cellspacing="0">#}
+            {#                <thead>#}
+            {#                <tr>#}
+            {#                    <th style="width: 100px; text-align: center">Día</th>#}
+            {#                    <th style="text-align: center">Jornada</th>#}
+            {#                    <th style="text-align: center">Estado</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 1</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 2</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 3</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 4</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 5</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 6</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 7</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 8</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 9</th>#}
+            {#                    <th  style="width: 60px; text-align: center">Marc. 10</th>#}
+            {#                    <th  style="width: 80px; text-align: center"></th>#}
+            {#                </tr>#}
+            {#                </thead>#}
+            {#                <tbody id="itemsbody" class="datatable">#}
+            {#                <tr>#}
+            {#                    <td colspan="10">NO EXISTEN DATOS</td>#}
+            {#                </tr>#}
+            {#                </tbody>#}
+            {#            </table>#}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel_marcada" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitle">Informe de marcadas</h4>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-danger invalidofechas1" style="display: none">
+                <i class="fa fa-info-sign"></i> Seleccione un rango de fechas valida para continuar...!!!
+            </div>
+            <div style="text-align: center;">
+                <input placeholder="Fecha desde" type="text" value="" name="id_fini" id="id_fini" style="width: 100px">
+                <input placeholder="Fecha hasta" type="text" value="" name="id_ffin" id="id_ffin" style="width: 100px"><br>
+            </div>
+        </div>
+        <div class="modal-footer" style="text-align: center">
+            <a href="javascript:;" class="btn btn-danger" id="itemspanel_generarinforme_marcada"><i class="fa fa-plus"></i> Procesar</a>
+            <a href="javascript:;" class="btn btn-info" id="itemspanel_cerrar_marcada"> Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none" >
+        <div class="modal-header">
+            <h4 id="paneltitle">Agregar Marcada</h4>
+        </div>
+        <div class="modal-body" style="min-height: 90px">
+            <form id="form2" class="form-horizontal form-modal" style="width: 870px; margin-bottom: 0">
+                <input style="text-align: center" type="text" id="time" class="imp-moneda" value="{{ hora }}">
+                <input type="text" id="dia" class="imp-moneda" style="display: none">
+                <input type="text" id="marc" class="imp-moneda" style="display: none">
+                <input type="text" id="jor" class="imp-moneda" style="display: none">
+            </form>
+
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="guardar" onclick="guardarmarcada()" class='btn btn-success'> Guardar</a>
+                <a href="javascript:;" id="cancelar" class="btn btn-danger"> Cancelar</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="modalAddMarcada" style="display: none" >
+        <div class="modal-header">
+            <h4 id="paneltitle">Agregar Marcada</h4>
+        </div>
+        <div class="modal-body" style="min-height: 90px">
+            <form id="form2" class="form-horizontal form-modal" style="width: 870px; margin-bottom: 0">
+                <input style="text-align: center" type="text" id="dia1" class="imp-moneda" value="">
+                <input style="text-align: center" type="text" id="time1" class="imp-moneda" value="{{ hora }}">
+                <input type="text" id="marc1" class="imp-moneda" style="display: none">
+                <input type="text" id="jor1" class="imp-moneda" style="display: none">
+            </form>
+
+        </div>
+        <div class="modal-footer">
+            <p style="text-align: right; margin-bottom: 0">
+                <a href="javascript:;" id="guardar"  class='btn btn-success'> Guardar</a>
+                <a href="javascript:;" id="cancelar" class="btn btn-danger"> Cancelar</a>
+            </p>
+        </div>
+    </div>
+
+
+
+    <div class="modal fade static" id="itemspanel2" style="display: none;">
+    <div class="modal-header">
+        <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+    </div>
+    <div class="modal-body">
+        <form class="form-horizontal form-modal" autocomplete="off" method="post"
+              enctype="multipart/form-data" action="{{ request.path }}">
+            {% csrf_token %}
+            <div class="row-fluid panelbody2">
+            </div>
+        </form>
+    </div>
+</div>
+
+
+{% endblock %}

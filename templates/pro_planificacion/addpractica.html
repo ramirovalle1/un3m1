@@ -1,0 +1,317 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <meta charset=UTF-8">
+    <script type="text/javascript">
+    var lista_items1 = [];
+    var itemsact =1;
+    var lista_items2 = [];
+    var itemspro =1;
+        $(function() {
+            $("#id_temapractica, #id_objetvopactica, id_instruccionobservacion, #id_actividaddesarrollar,#id_rubica").css({'text-transform': 'none'});
+            $("#id_temapractica, #id_numeropractica,#id_tiempoactividad,#id_cantidadalumnogrupo,#id_objetvopactica, #id_instruccionobservacion, #id_actividaddesarrollar,#id_rubica").addClass("validate[required]");
+            $("#id_fechaelaboracion").addClass("validate[required]");
+            $("#id_fechaelaboracion").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); });
+            $("#id_numeropractica").prop( "disabled", true );
+            $("#id_laboratorio").prop( "disabled", true );
+            $('#fieldset_subtemapractica').hide();
+            $("#id_cantidadalumnogrupo").blur(function(){
+                numerico($(this), 0, 100, 0);});
+            $("#id_tiempoactividad").timepicker({minuteStep: 1,appendWidgetTo: 'body', showSeconds: false, showMeridian: false, defaultTime: true});
+            $("#id_cantidadalumnogrupo").prop( "disabled", true );
+            $("#id_individual").prop("checked",false);
+            $("#id_grupo").prop("checked",false);
+            $("#id_individual").click(function () {
+                $("#id_grupo").prop("checked",false);
+                $("#id_cantidadalumnogrupo").attr({"value":0});
+                $("#id_cantidadalumnogrupo").prop( "disabled", true );
+            });
+            $("#id_grupo").click(function () {
+                if (document.getElementById('id_grupo').checked==true){
+                    $("#id_individual").prop("checked",false);
+                    $("#id_cantidadalumnogrupo").prop( "disabled", false );
+                }
+                else{
+                    $("#id_cantidadalumnogrupo").attr({"value":0});
+                    $("#id_cantidadalumnogrupo").prop( "disabled", true );
+                }
+            });
+            $("#id_numeropractica").blur(function(){
+                numerico($(this), 0, 100, 0);});
+
+            $("#id_temapractica").change(function () {
+                var tema =$(this).val();
+                if (tema > 0) {
+                    $.post("/pro_planificacion", {'action': 'mis_subtemas_semanales','ids': {{silabo.id}},'idt': tema}, function (data) {
+                        if (data.result == 'ok') {
+                            {#$('#id_subtemapractica').empty();#}
+                            $('#id_subtemapractica').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                            for (elemento in data.lista) {
+                                $('#id_subtemapractica').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                            }
+                            if (data.lista.length > 0){
+                                $('#fieldset_subtemapractica').show();
+                            }else{
+                               $('#fieldset_subtemapractica').hide();
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    }, 'json');
+                }else{
+                    $('#fieldset_subtemapractica').hide();
+                }
+            });
+
+{#            $("#id_laboratorio").change(function () {#}
+{#                id = $(this).val();#}
+{#                if (id>0)#}
+{#                {#}
+{#                    request = $.get("/pro_planificacion", {#}
+{#                        'action': 'recursopractica',#}
+{#                        'id': id#}
+{#                    }, function (data) {#}
+{#                        if (data.results)#}
+{#                        {#}
+{#                            for (elemento in data.listaactivo) {#}
+{#                                $('#id_equipo').append('<option value="' + data.listaactivo[elemento][0] + '">' + data.listaactivo[elemento][1] + '</option>');#}
+{#                            }#}
+{#                            for (elemento in data.listaproducto) {#}
+{#                                $('#id_producto').append('<option value="' + data.listaproducto[elemento][0] + '">' + data.listaproducto[elemento][1] + '</option>');#}
+{#                            }#}
+{#                        }#}
+{#                    }, 'json');#}
+{#                }#}
+{#            });#}
+            $("#id_producto").change(function () {
+                id = $(this).val();
+                if (id>0)
+                {
+                    $('#id_cantidadpro').prop( "disabled", false );
+                    request = $.get("/pro_planificacion", {
+                        'action': 'cantidadrecurso',
+                        'id': id
+                    }, function (data) {
+                        if (data.results)
+                        {
+                            for (elemento in data.lista) {
+                                $('#id_cantidadpro').append('<option>' + data.lista[elemento][0] + '</option>');
+                            }
+                        }
+                    }, 'json');
+                }
+                else{
+                    $("#id_cantidadpro").prop( "disabled", true );
+                }
+            });
+            $("#adicionaractivo").click(function () {
+                id = $("#id_equipo").val();
+                if (id>0) {
+                    request = $.get("/pro_planificacion", {
+                        'action': 'consultaractivo',
+                        'id': id
+                    }, function (data) {
+                        if (data.results) {
+                            if (leer_lista_equipo(id)==0) {
+                                $("#contenidoactivo").append('<tr class="elementosact"  id="fila_' + itemsact + '">' +
+                                    '<td style="text-align: center ; display:none" class="idequipo">' + id + '</td>' +
+                                    '<td colspan="7" class="equipo">' + data.recurso + '</td>' +
+                                    '<td style="text-align:center width: 10px;"><a class="btn btn-tini btn-danger tu eliminaractivo" title="Eliminar"><i class="fa fa-remove"></i></a></td>' +
+                                    '</tr>');
+                                itemsact += 1;
+                                actualizar_lista_activo();
+                                eliminar_activo();
+                            }else{
+                                smoke.alert("El equipo ya ha sido seleccionado");
+                            }
+                        }
+                    }, 'json');
+                }else {
+                    smoke.alert("No Cuenta con activo seleccionados");
+                }
+            });
+            actualizar_lista_activo = function () {
+                lista_items1 = [];
+                $(".elementosact").each(function () {
+                    var item = {
+                        idequipo: $(this).find(".idequipo").html(),
+                        equipo: $(this).find(".equipo").html()
+                    };
+                    lista_items1.push(item);
+                });
+            };
+            eliminar_activo = function () {
+                $(".eliminaractivo").unbind();
+                $(".eliminaractivo").click(function () {
+                    var padre = $(this).parent().parent();
+                    padre.remove();
+                    actualizar_lista_activo();
+                });
+
+            };
+            $("#adicionarproducto").click(function () {
+                id = $("#id_producto").val();
+                cantidad = $("#id_cantidadpro").val();
+                if (id >0) {
+                    if (cantidad>0) {
+                        request = $.get("/pro_planificacion", {
+                            'action': 'consultarproducto',
+                            'id': id
+                        }, function (data) {
+                            if (data.results) {
+                                if (leer_lista_producto(id) == 0) {
+                                    $("#contenidoproducto").append('<tr class="elementospro"  id="fila_' + itemspro + '">' +
+                                        '<td style="text-align: center ; display:none" class="idproducto">' + id + '</td>' +
+                                        '<td style="text-align: center;" class="cantidad">' + cantidad + '</td>' +
+                                        '<td style="text-align: center;" class="unidad">' + data.unidad + '</td>' +
+                                        '<td colspan="5" class="producto">' + data.producto + '</td>' +
+                                        '<td style="text-align:center width: 10px;"><a class="btn btn-tini btn-danger tu eliminarproducto" title="Eliminar"><i class="fa fa-remove"></i></a></td>' +
+                                        '</tr>');
+                                    itemspro += 1;
+                                    actualizar_lista_poducto();
+                                    eliminar_producto();
+                                }else{
+                                    smoke.alert("El producto ya se seleccionó");
+                                }
+                            }
+                        }, 'json');
+                    }else {
+                        smoke.alert("No Cuenta con Cantidad del Insumo");
+                    }
+                }else {
+                    smoke.alert("No Cuenta con el Insumo  o Material");
+                }
+            });
+            actualizar_lista_poducto = function () {
+                lista_items2 = [];
+                $(".elementospro").each(function () {
+                    var item = {
+                        idproducto: $(this).find(".idproducto").html(),
+                        cantidad: $(this).find(".cantidad").html(),
+                        unidad: $(this).find(".unidad").html(),
+                        producto: $(this).find(".producto").html()
+                    };
+                    lista_items2.push(item);
+                });
+            };
+            eliminar_producto = function () {
+                $(".eliminarproducto").unbind();
+                $(".eliminarproducto").click(function () {
+                    var padre = $(this).parent().parent();
+                    padre.remove();
+                    actualizar_lista_poducto();
+                });
+
+            };
+            actualizar_lista_activo();
+            actualizar_lista_poducto();
+
+        });
+        function leer_lista_equipo(id) {
+            var ban=0;
+            for (i=0;i<lista_items1.length;i++){
+                if (id==(lista_items1[i]['idequipo'])){
+                    ban = 1;
+                }else {
+                    ban = 0;
+                }
+            }
+            return ban;
+        }
+        function leer_lista_producto(id) {
+            var ban=0;
+            for (i=0;i<lista_items2.length;i++){
+                if (id==(lista_items2[i]['idproducto'])){
+                    ban = 1;
+                }else {
+                    ban = 0;
+                }
+            }
+            return ban;
+        }
+    </script>
+
+{% endblock %}
+{% block atras %}/pro_planificacion?action=practicas&ids={{ silabo.id|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/pro_planificacion?action=practicas&ids={{ silabo.id|encrypt }}{% endblock %}
+{% block formaction %}/pro_planificacion{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formsuffix %}
+    <fieldset class="control-group nomargins">
+        <div class="controls">
+{#            <input style="width: 78%; " type="text" class="input-" id="drecurso" value="" placeholder="BUSQUE POR CEDULA, APELLIDO, NOMBRE">#}
+            <table style="width: 795px; " class="table table-bordered table-condensed">
+                <thead>
+                <tr>
+                    <th colspan="8" style="text-align: center">Equipos o Instrumentos</th>
+                </tr>
+                <tr>
+                    <th colspan="7">
+                        <form class="form-search">
+                            <select id="id_equipo">
+                                <option value="0" selected hidden>Seleccione Equipo/Instrumento</option>
+                                {% for activo in activos %}
+                                    <option value="{{ activo.id }}">{{ activo.activo.descripcion }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </th>
+
+                    <th style="text-align: right"><a class="btn btn-mini btn-success tu" title="Adicionar Equipo/Instrumento" id="adicionaractivo"><span class="fa fa-plus " ></span></a></th>
+                </tr>
+                <tr>
+                <th colspan="7" >Equipo/Instrumento</th>
+                <th style="width: 10px"></th>
+                </tr>
+                </thead>
+                <tbody id="contenidoactivo" style="margin: 0px;overflow-y:auto;height:100px;" >
+                </tbody>
+            </table>
+        <br>
+        <table style="width: 795px; margin: 0px;overflow-y:auto;height:100px;" class="table table-bordered table-condensed" >
+                <thead>
+                <tr>
+                    <th colspan="8" style="text-align: center;">Materiales o Insumos</th>
+                </tr>
+                <tr>
+                    <th colspan="6">
+                        <form class="form-search">
+                            <select id="id_producto">
+                                <option value="0" selected hidden>Seleccione Material/Insumo</option>
+                                {% for producto in productos %}
+                                    <option value="{{ producto.id }}">{{ producto.producto.descripcion }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </th>
+                    <th width="10%">
+                        <form class="form-search">
+                            <select id="id_cantidadpro">
+                                <option value="0" selected hidden>Cantidad</option>
+
+                            </select>
+                        </form>
+                    </th>
+                    <th style="text-align: right"><a class="btn btn-mini btn-success tu" title="Adicionar Material/Insumo" id="adicionarproducto"><span class="fa fa-plus " ></span></a></th>
+                </tr>
+                <tr>
+                <th style="width: 15px;">Cantidad</th>
+                <th style="width: 15px;">Unidad</th>
+                <th colspan="5">Material/Insumo</th>
+                <th style="width: 10px"></th>
+                </tr>
+                </thead>
+                <tbody id="contenidoproducto">
+                </tbody>
+            </table>
+        </div>
+    </fieldset>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addpractica'/>
+    <input type='hidden' name='id' value='{{ silabo.id|encrypt }}'/>
+    <input type='hidden' name='npractica' value='{{ npractica|encrypt }}'/>
+{% endblock %}
+{% block formback %}/pro_planificacion?action=practicas&ids={{ silabo.id|encrypt }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

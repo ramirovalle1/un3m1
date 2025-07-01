@@ -1,0 +1,373 @@
+{% extends "poa_periodos/base_poa.html" %}
+{% load sga_extras %}
+{% block heading_ext %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            let fechaapertura = $(".selectorfechafin");
+            let table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "paging": false,
+                "ordering": true,
+                "info": false,
+                "order": [[0, 'asc']],
+                language: {
+                    "decimal": "",
+                    "emptyTable": "No hay información",
+                    "info": "Mostrando _START_ a _END_ de _TOTAL_ Registros",
+                    "infoEmpty": "Mostrando 0 to 0 of 0 Registros",
+                    "infoFiltered": "(Filtrado de _MAX_ total Registros)",
+                    "infoPostFix": "",
+                    "thousands": ",",
+                    "lengthMenu": "Mostrar _MENU_ Registros",
+                    "loadingRecords": "Cargando...",
+                    "processing": "Procesando...",
+                    "search": "Buscar",
+                    "zeroRecords": "Sin resultados encontrados",
+                    "paginate": {
+                        "first": "Primero",
+                        "last": "Ultimo",
+                        "next": "Siguiente",
+                        "previous": "Anterior"
+                    }
+                },
+
+             });
+            table.columns.adjust().draw();
+
+            fechaapertura.daterangepicker({
+                singleDatePicker: true,
+                showDropdowns: true,
+                autoUpdateInput: false,// Evita que se precargue una fecha
+                locale: {
+                    format: 'YYYY-MM-DD',
+                    applyLabel: 'Aplicar',
+                    cancelLabel: 'Cancelar',
+                    fromLabel: 'Desde',
+                    toLabel: 'Hasta',
+                    customRangeLabel: 'Personalizado',
+                    daysOfWeek: ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'],
+                    monthNames: [
+                        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+                    ],
+                    firstDay: 1
+                }
+            }).on('apply.daterangepicker', function(ev, picker) {
+                let idobjetivo = $(this).attr("idobjetivo");
+                let fechaactual = picker.startDate.format('YYYY-MM-DD');
+
+                bloqueointerface();
+
+                $.post("{{ request.path }}", {
+                    'action': 'addfechaaperturaevidencia',
+                    'idobjetivo': idobjetivo,
+                    'fecha': fechaactual
+                }, function (data) {
+                    if (data.result) {
+                        location.reload();
+                    } else {
+                        $.unblockUI();
+                        mensajeDanger(data.mensaje);
+                    }
+                }).fail(function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión!");
+                });
+            });
+        });
+
+        function monitoreo(idd) {
+            var ancho = $(window).width() - 100;
+            var alto = '530px';
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: "/poa_revisaevidencia",
+                data: {'action': 'monitoreo', 'idd': idd, 'idp':{{ periodo}}},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        $(".panelbody").html(data.data);
+                        $("#itemspanel").modal({backdrop: 'static', width: ancho, height: alto}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function imprimirmatrizevaluacion(iddepartamento, idevaluacionperiodo, idtotaldesempeno) {
+            openwindow('POST', '/poa_revisaevidencia', {
+                action: 'matrizevaluacion_pdf',
+                idd: iddepartamento,
+                idevaluacionperiodo: idevaluacionperiodo,
+                totalpromediodesempeno: idtotaldesempeno
+            }, '_blank');
+        }
+
+        function imprimirinforme(iddepartamento, idevaluacionperiodo, idtotaldesempeno, idtotalobjetivo) {
+            openwindow('POST', '/poa_revisaevidencia', {
+                action: 'informematrizevaluacion_pdf',
+                idd: iddepartamento,
+                idevaluacionperiodo: idevaluacionperiodo,
+                totalpromediodesempeno: idtotaldesempeno,
+                id_totalobjetivo: idtotalobjetivo
+            }, '_blank');
+        }
+    </script>
+    <style>
+        table.dataTable thead .sorting_desc:after {
+            content: "\2193"!important;
+            opacity: 0;
+         }
+        table.dataTable thead .sorting_asc:after {
+            content: "\2193"!important;
+        }
+        table.dataTable thead .sorting:after {
+            opacity: 0.2;
+            content: "\2193"!important;
+        }
+    </style>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block subtitle %}
+<h6>Periodo: {{ periodopoa.descripcion }}</h6>
+{% endblock %}
+{% block content %}
+    <h4><i class="bi bi-exclamation-circle-fill"></i> Iconos informativos de archivos</h4>
+    <table class='table'>
+        <thead class="table-light">
+        <tr>
+            <td>
+                <a href="#" class="btn btn-default btn-xs"><i
+                        class="bi bi-filetype-pdf fs-4"></i></a>  No generado
+            </td>
+            <td>
+                <a href="#" class="btn btn-primary-old btn-xs"><i
+                        class="bi bi-filetype-pdf fs-4"></i></a>  Generado
+            </td>
+            <td>
+                <a href="#" class="btn btn-cian-opacity btn-xs"><i
+                        class="bi bi-filetype-pdf fs-4"></i></a>  En proceso de legalización
+            </td>
+            <td>
+                <a href="#" class="btn btn-success btn-xs"><i
+                        class="bi bi-filetype-pdf fs-4"></i></a>  Legalizado
+            </td>
+        </tr>
+        </thead>
+    </table>
+{#    <div class="row">#}
+{#        <div class="col-6">#}
+{#            <label for=""><i class="bi bi-filter"></i> Tipo</label>#}
+{#            <select name="" id=""></select>#}
+{#        </div>#}
+{#        <div class="col-6">#}
+{#            <label for=""><i class="fa fa-search"></i> Criterio</label>#}
+{#            <input  placeholder="Buscar por descripción..." class="form-control" type="text">#}
+{#        </div>#}
+{#    </div>#}
+    <table class='table table-bordered table_primary' id="example">
+        <thead class="cabecera-fija">
+        <tr>
+            <th rowspan="2" class="{% if periodopoa.solo_informe %}w-55{% else %}w-35{% endif %}">Descripción</th>
+            {% for evalper in evaluacionperiodopoa %}
+                <th colspan="{{ tipomatrizarchivo|length }}" class="text-center {% if periodopoa.solo_informe %}w-20{% else %}w-30{% endif %}">
+                    {{ evalper.descripcion|title2 }}
+                </th>
+            {% endfor %}
+            <th class="w-3" rowspan="2"></th>
+        </tr>
+        <tr>
+            {% for evalper in evaluacionperiodopoa %}
+                {% for tip in tipomatrizarchivo %}
+                    <th class="w-10 text-center">
+                        {{ tip.1|title2 }}
+                    </th>
+                {% endfor %}
+            {% endfor %}
+        </tr>
+        </thead>
+        <tbody>
+        {% for obj in objetivos %}
+            <tr>
+                <td style="vertical-align: middle; text-align: left;" data-title='DESCRIPCIÓN'>
+                    <h6>{{ obj.nombre_registro }} <b>({% if obj.carrera %}CARRERA{% elif obj.gestion %}GESTIÓN{% else %}DIRECCIÓN{% endif %})</b></h6>
+                    {% with misfechasapertura=periodopoa|args:obj|call:'informe_generado_objetivos' %}
+                        <p class="mb-0 fw-semi-bold"><i class="bi bi-calendar-week"></i> Fecha máxima de subir evidencia: </p>
+                        {% if periodopoa.activo %}
+                        <input href="javascript"  type="text"
+                               idobjetivo='{{ obj.id }}'
+                               id="fechaapertura_{{ obj.id }}"
+                               class='selectorfechafin input-small w-100 w-md-100 w-lg-60 w-xl-40'
+                               value='{{ misfechasapertura.fechamax|date:'Y-m-d' }}'
+                               style="text-align: center; "/>
+                        {% else %}
+                            <p class="ms-3">{{ misfechasapertura.fechamax|date:'Y-m-d' }}</p>
+                        {% endif %}
+                    {% endwith %}
+                </td>
+                {% for evalper in evaluacionperiodopoa %}
+                    {% for tip in tipomatrizarchivo %}
+                        <td style="vertical-align: middle; text-align: center;">
+                            {% with misarchivosevaluacion=evalper|args:tip.0|args:obj|call:'archivos_matriz' %}
+                                {% if misarchivosevaluacion %}
+                                    {% for archi in misarchivosevaluacion %}
+                                        {% if tip.0 == 2 %}
+                                            <div class="btn-group" role="group" >
+                                                {% if not archi.archivo %}
+                                                    <button type="button" class="btn btn-warning" onclick="imprimirmatrizevaluacion({{ d.departamento__id }},{{ evalper.id }},{{ archi.totaldesempeno|default_if_none:"0" }})">
+                                                        <i class="bi bi-filetype-pdf fs-4"></i>
+                                                    </button>
+                                                {% endif %}
+                                                {% if archi.archivo %}
+                                                    <a type="button" href="{{ archi.download_link }}"
+                                                        data-width="2048" data-height="1380"
+                                                           data-fancybox="informe_{{ archi.numeroacta }}"
+                                                           data-placement="top"
+                                                           class="btn btn-success"
+                                                           data-toggle="tooltip"
+                                                           title="Matriz {{ numeroacta }}">
+                                                            <i class="bi bi-filetype-pdf fs-4"></i>
+                                                    </a>
+                                                {% else %}
+                                                    <a type="button" class="btn btn-danger tips"
+                                                       data-toggle="tooltip"
+                                                       title="Sin matriz de evaluación">
+                                                        <i class="bi bi-filetype-pdf fs-4"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                        {% if tip.0 == 3 %}
+                                            <div class="btn-group" role="group" >
+                                                {% if evalpar.periodopoa.anio < 2024 %}
+                                                    {% if archi.archivo %}
+                                                        <a type="button" href="{{ archi.download_link }}"
+                                                           target="_blank"
+                                                           class="btn btn-success tips"
+                                                           data-toggle="tooltip" title="Informe firmado"
+                                                           href="#"><i class="bi bi-filetype-pdf"></i></a>
+                                                    {% else %}
+                                                        <a class="btn btn-default tips"
+                                                           data-toggle="tooltip" title="Sin informe"
+                                                           href="#"><i class="bi bi-filetype-pdf fs-4"></i></a>
+                                                    {% endif %}
+                                                {% elif archi.archivo %}
+                                                     <a type="jvascript:void(0)" href="{{ archi.archivo.url }}"
+                                                            class="btn btn-{{ archi.color_estado_btn }} tips btn-xs px-2"
+                                                           data-width="2048" data-height="1380"
+                                                           data-fancybox="Informe_{{ archi.numeroinforme }}"
+                                                           data-placement="top"><i class="bi bi-filetype-pdf fs-4"></i>
+                                                     </a>
+                                                {% else %}
+                                                      <a class="btn btn-default tips"
+                                                           data-toggle="tooltip" title="Sin informe"
+                                                           href="#"><i class="bi bi-filetype-pdf fs-4"></i>
+                                                      </a>
+                                                {% endif %}
+                                                <button type="button" class="btn btn-default" style="font-weight: bold">
+                                                    {% if evalper.informeanual %}
+                                                        <div class="progress">
+                                                            <div class="progress-bar progress-bar-striped bg-{% if archi.totalobjetivo < 31 %}danger{% endif %}{% if archi.totalobjetivo > 30 and archi.totalobjetivo < 61 %}warning{% endif %}{% if archi.totalobjetivo > 60 %}success{% endif %}" role="progressbar" style="font-weight: bold;width: {{ archi.totalobjetivo|default_if_none:"0" }}%" aria-valuenow="{{ archi.totalobjetivo|default_if_none:"0" }}" aria-valuemin="0" aria-valuemax="100">{{ archi.totalobjetivo|default_if_none:"0"|floatformat:"2" }} %</div>
+                                                        </div>
+                                                    {% else %}
+                                                        {{ archi.totaldesempeno|default_if_none:"--.--"|floatformat:"2" }}
+                                                    {% endif %}
+                                                </button>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    {% if tip.0 == 2 %}
+                                        <div class="btn-group" role="group" >
+                                            <a type="button" class="btn btn-default tips" data-toggle="tooltip" title="Matriz evaluación">
+                                                <i class="bi bi-filetype-pdf fs-4"></i>
+                                            </a>
+                                            <a type="button" class="btn btn-default tips">
+                                                <i class="bi bi-filetype-pdf fs-4"></i>
+                                            </a>
+                                        </div>
+                                    {% endif %}
+                                    {% if tip.0 == 3 %}
+                                        <div class="btn-group" role="group" >
+                                            <a type="button" class="btn btn-default tips"
+                                               data-toggle="tooltip" title="Informe sin generar">
+                                                <i class="bi bi-filetype-pdf fs-4"></i>
+                                            </a>
+                                            <a type="button" class="btn btn-default tips">
+                                                <i class="bi bi-filetype-pdf fs-4"></i></a>
+                                        </div>
+                                    {% endif %}
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                    {% endfor %}
+                {% endfor %}
+                <td class="text-center align-middle">
+                    <div class="dropdown">
+                        <button class="btn-icon btn btn-ghost btn-sm rounded-circle dropdown-toggle"
+                                type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{{ request.path }}?action=poadepartamentodos&new=True&id={{ obj.id|encrypt }}">
+                                    <i class="bi bi-clipboard-check dropdown-item-icon fs-5"></i>  Revisar POA
+                                </a>
+                            </li>
+                            {% if es_validador %}
+                                <li>
+                                    <a class="dropdown-item"
+                                       href="{{ request.path }}?action=validarvidencias&id={{ obj.id|encrypt }}">
+                                        <i class="bi bi-patch-check dropdown-item-icon fs-5"></i>  Validar POA
+                                    </a>
+                                </li>
+                            {% endif %}
+                            <li>
+                                <a href="{% if periodopoa.anio < 2024 %}/poa_revisaevidencia?action=periodosevaluacion&idp={{ periodopoa.id }}&idd={{ obj.departamento.id }}{% else %}{{ request.path }}?action=periodosevaluacion&id={{ obj.id|encrypt }}{% endif %}"
+                                   class="dropdown-item">
+                                    <i class="bi bi-ui-checks dropdown-item-icon"></i> Evaluación semestral</a>
+                            </li>
+                            <li>
+                                <a href="{{ request.path }}?action=seguimientopoa&id={{ obj.id|encrypt }}"
+                                   class="dropdown-item">
+                                    <i class="bi bi-clipboard-data dropdown-item-icon"></i> Seguimiento</a>
+                            </li>
+                        </ul>
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
+{% block moreblock_ext %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <table border="0" width="100%" style="background-color: transparent">
+                <tr>
+                    <td style="width: 80%"><h3 class="paneltitle">Hoja de monitoreo</h3></td>
+                    <td>
+                        <a href="javascript:;" id="cerrarpanel"
+                           data-bs-dismiss="modal"
+                           class="btn btn-danger btn-mini pull-right"><i
+                            class="fa fa-remove"></i>
+                        </a>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal-body panelbody">
+        </div>
+    </div>
+{% endblock %}

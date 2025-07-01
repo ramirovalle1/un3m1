@@ -1,0 +1,2481 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/ckeditor/ckeditor-init.js?v=1.0.1" data-ckeditor-basepath="/static/ckeditor/ckeditor/" id="ckeditor-init-script"></script>
+    <script type="text/javascript" src="/static/ckeditor/ckeditor/ckeditor.js?v=1.0.1"></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <style>
+        .select2-container .select2-selection--multiple .select2-selection__choice {
+            max-width: 100%;
+            box-sizing: border-box;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function() {
+            $("#adenda, #prorroga, #fechafin, #aplicacapacitacion, #aplicadisemresultado, #productopatentable").addClass("validate[required]");
+            $("#objetivoproyecto").addClass("validate[required]");
+
+            let fechaactual = '{{ fecha|date:"Y-m-d" }}';
+            let nf_evidencia = secuenciaevidencia = 0;
+            let nf_resultado = secuenciaresultado = {{ proyecto.resultados_compromisos|length }};
+            let nf_capacitacion = secuenciacapacitacion = 0;
+            let nf_publicacion = secuenciapublicacion = 0;
+            let nf_evento = secuenciaevento = 0;
+            let nf_otroproducto = secuenciaotroproducto = 0;
+            let nf_persona = secuenciapersona = {{ proyecto.integrantes_proyecto_informe|length }};
+            let nf_institucion = secuenciainstitucion = 0;
+            let nf_cambio = secuenciacambio = 0;
+            let nf_problema = secuenciaproblema = 0;
+            let nf_equipo = secuenciaequipo = 0;
+            let nf_indicador = secuenciaindicador = 0;
+
+            lista_items1 = []; // Filas que tienen archivos de presupesto
+            lista_items2 = []; // Filas que tienen archivos de capacitaciones
+            lista_items3 = []; // Filas que tienen archivos de publicaciones
+            lista_items4 = []; // Filas que tienen archivos de eventos
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("select").select2({minimumResultsForSearch: 5 });
+            $('textarea').css({'resize':'none'});
+            $("#mesesprorroga").prop('readonly', true);
+            $("#detallecapacitacion").prop('readonly', true);
+            $("#detalledisemresultado").prop('readonly', true);
+            $("#detalleproductopatentable").prop('readonly', true);
+            $("#btnagregarcapacitacion").hide();
+
+            configurarChkEditor = function (nombreCampo, nombreCampo2, obligatorio){
+                CKEDITOR.replace(nombreCampo, {
+                    language: 'es',
+                    width: '100%',
+                    height: 200,
+                    resize_enabled: false,
+                    toolbarGroups: [
+                        { name: 'styles' },
+                        { name: 'basicstyles' },
+                        { name: 'undo' },
+                        { name: 'listindentalign',  groups: [ 'list', 'indent', 'align' ] },
+                        { name: 'links' },
+                        { name: 'insert' },
+                        { name: 'tools' },
+                        { name: 'mode' }
+                    ],
+                    removeButtons: 'Image,Flash'
+                });
+
+                if(obligatorio) $("#"+nombreCampo+"_aux").addClass("validate[required]");
+            };
+
+            configurarChkEditor('conclusion', 'conclusion', false);
+            configurarChkEditor('continuacion', 'continuacion', false);
+            configurarChkEditor('lineabase', 'lineabase', false);
+
+            CKEDITOR.instances['conclusion'].on('change', function() {
+                if(CKEDITOR.instances['conclusion'].getData().length > 0)
+                    $("#conclusion_aux").val("OK");
+                else
+                    $("#conclusion_aux").val("");
+            });
+
+            CKEDITOR.instances['continuacion'].on('change', function() {
+                if(CKEDITOR.instances['continuacion'].getData().length > 0)
+                    $("#continuacion_aux").val("OK");
+                else
+                    $("#continuacion_aux").val("");
+            });
+
+            CKEDITOR.instances['lineabase'].on('change', function() {
+                if(CKEDITOR.instances['lineabase'].getData().length > 0)
+                    $("#lineabase_aux").val("OK");
+                else
+                    $("#lineabase_aux").val("");
+            });
+
+
+            $('#prorroga').change(function(){
+                $("#mesesprorroga").val("");
+                $("#mesesprorroga").removeClass("validate[required, min[1]]");
+
+                if($(this).val() == '1'){
+                    $("#mesesprorroga").prop('readonly', false);
+                    $("#mesesprorroga").addClass("validate[required, min[1]]");
+                }else{
+                    $("#mesesprorroga").prop('readonly', true);
+                }
+            });
+
+            $("#mesesprorroga").blur(function(){
+                numerico($(this), 0, 24, 0);
+            });
+
+            $(".porcentajeejecucion").blur(function () {
+                numerico($(this), 0, 100, 2);
+                calcularPromedioEjecucionObjetivos();
+            });
+
+            validarCantidadesPersonas = function (){
+                numerico($(this), 1, 500, 0);
+            };
+
+            validarCodigosBarra = function (){
+                numerico($(this), 1, 9999999999, 0);
+            };
+
+            $('#aplicacapacitacion').change(function(){
+                nf_capacitacion = secuenciacapacitacion = 0;
+                $("#detallecapacitacion").val("");
+                $("#detallecapacitacion").removeClass("validate[required]");
+                $("#btnagregarcapacitacion").hide();
+                $("#detalle_capacitaciones").empty();
+                agregarFilaDefaultCapacitacion();
+
+                if($(this).val() == '1'){
+                    $("#detallecapacitacion").prop('readonly', false);
+                    $("#detallecapacitacion").addClass("validate[required]");
+                    $("#btnagregarcapacitacion").show();
+                }else{
+                    $("#detallecapacitacion").prop('readonly', true);
+                }
+            });
+
+            $('#aplicadisemresultado').change(function(){
+                $("#detalledisemresultado").val("");
+                $("#detalledisemresultado").removeClass("validate[required]");
+
+                if($(this).val() == '1'){
+                    $("#detalledisemresultado").prop('readonly', false);
+                    $("#detalledisemresultado").addClass("validate[required]");
+                }else{
+                    $("#detalledisemresultado").prop('readonly', true);
+                }
+            });
+
+            $('#productopatentable').change(function(){
+                $("#detalleproductopatentable").val("");
+                $("#detalleproductopatentable").removeClass("validate[required]");
+
+                if($(this).val() == '1'){
+                    $("#detalleproductopatentable").prop('readonly', false);
+                    $("#detalleproductopatentable").addClass("validate[required]");
+                }else{
+                    $("#detalleproductopatentable").prop('readonly', true);
+                }
+            });
+
+            calcularPromedioEjecucionObjetivos = function (){
+                let aporcentajes = new Array();
+                let cant, i = 0;
+                let promedio = 0.00;
+                let suma = 0;
+
+                $('.porcentajeejecucion').each(function () {
+                    aporcentajes.push(parseFloat($(this).val()));
+                });
+
+                cant = aporcentajes.length;
+
+                for (i = 0; i < aporcentajes.length; i++) {
+                    suma += aporcentajes[i];
+                }
+
+                $("#promediocumpl").val(redondeo(suma/cant, 2).toFixed(2));
+            };
+
+            $("#montoejecutado").blur(function(){
+                numerico($(this), 0, {{ proyecto.montototal|floatformat:2 }}, 2);
+                calcularEjecucionPresupuesto();
+            });
+
+            calcularEjecucionPresupuesto = function (){
+                let porcentaje = redondeo((parseFloat($("#montoejecutado").val()) * 100) / parseFloat($("#montoaprobado").val()), 2);
+                $("#porcentajepresup").val(porcentaje.toFixed(2));
+            };
+
+            $(".agregaevidenciapresupuesto").click(function() {
+                if(datosEvidenciaPresupuestoCompleto()){
+                    nf_evidencia += 1;
+                    secuenciaevidencia += 1;
+
+                    borrarFilaDefaultEvidencia();
+
+                    nueva = `<tr class="detalleevidencias" id="filaevidencia_${nf_evidencia.toString()}">`+
+                            `<td style="text-align: center">${secuenciaevidencia.toString()}</td>`+
+                            `<td> <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="${nf_evidencia.toString()}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_evidencia${nf_evidencia.toString()}" name="descripcion_evidencia[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_${nf_evidencia.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia" idf="${nf_evidencia.toString()}" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc${nf_evidencia.toString()}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evidencia" idf="${nf_evidencia.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_evidencias").append(nueva);
+                    $("#detalle_evidencias").find(".eliminaritem_evidencia").tooltip();
+                    $("#descripcion_evidencia"+nf_evidencia.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_evidencia.toString()).addClass("validate[required]");
+                    $(".eliminaritem_evidencia").unbind("click.eliminaritem_evidencia");
+                    $(".eliminaritem_evidencia").bind("click.eliminaritem_evidencia", eliminarItemEvidencia);
+
+                    conectarChangeFileinputEvidencia();
+                }
+            });
+
+            eliminarItemEvidencia = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaevidencia_"+id).remove();
+
+                secuenciaevidencia = 0;
+                $("#tbdetalleevidencias tbody tr").each(function (index) {
+                    secuenciaevidencia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevidencia.toString());
+                    });
+                });
+
+                if(secuenciaevidencia == 0)
+                    agregarFilaDefaultEvidencia();
+
+                actualizarListaEvidenciaArchivo();
+            };
+
+            actualizarListaEvidenciaArchivo = function (){
+                lista_items1 = [];
+                cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputEvidencia = function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizarListaEvidenciaArchivo();
+                });
+            };
+
+            agregarFilaDefaultEvidencia = function (){
+                filadefault = '<tr id="fila_default_evidencia">'+
+                              '<td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS DE EJECUCIÓN DEL PRESUPUESTO</td>'+
+                              '</tr>';
+                $("#detalle_evidencias").append(filadefault);
+            };
+
+            borrarFilaDefaultEvidencia = function (){
+                $("#fila_default_evidencia").remove();
+            };
+
+            datosEvidenciaPresupuestoCompleto = function (){
+                let c1e = true, c2e = true;
+
+                $('input[name="descripcion_evidencia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+            $(".agregaresultado").click(function() {
+                if(datosResultadoCompleto()){
+                    nf_resultado += 1;
+                    secuenciaresultado += 1;
+
+                    nueva = `<tr class="detalleresultados" id="filaresultado_${nf_resultado.toString()}">`+
+                            `<td style="text-align: center">${secuenciaresultado.toString()}</td>`+
+                            `<td style="text-align: left"><input type="hidden" id="agregado${nf_resultado.toString()}" name="agregado[]" value="S"><textarea style="width: 99%; text-transform: none;" cols="40" id="resultado${nf_resultado.toString()}" name="resultado[]" rows="3" ></textarea><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><textarea style="width: 99%; text-transform: none;" cols="40" id="descripcionresultado${nf_resultado.toString()}" name="descripcionresultado[]" rows="3" ></textarea></td>`+
+                            `<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_resultado" idf="${nf_resultado.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_resultados").append(nueva);
+                    $("#detalle_resultados").find(".eliminaritem_resultado").tooltip();
+                    $("#resultado"+nf_resultado.toString()).addClass("validate[required]");
+                    $(".eliminaritem_resultado").unbind("click.eliminaritem_resultado");
+                    $(".eliminaritem_resultado").bind("click.eliminaritem_resultado", eliminarItemResultado);
+                }
+            });
+
+            eliminarItemResultado = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaresultado_"+id).remove();
+
+                secuenciaresultado = 0;
+                $("#tbdetalleresultados tbody tr").each(function (index) {
+                    secuenciaresultado ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaresultado.toString());
+                    });
+                });
+            };
+
+            datosResultadoCompleto = function (){
+                let c1e = true, c2e = true;
+
+                $('textarea[name="resultado[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('textarea[name="descripcionresultado[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+            $(".agregacapacitacion").click(function() {
+                if(datosCapacitacionCompleto()){
+                    nf_capacitacion += 1;
+                    secuenciacapacitacion += 1;
+
+                    borrarFilaDefaultCapacitacion();
+
+                    nueva = `<tr class="detallecapacitaciones" id="filacapacitacion_${nf_capacitacion.toString()}">`+
+                            `<td style="text-align: center">${secuenciacapacitacion.toString()}</td>`+
+                            `<td><input type="hidden" id="nfila_capacitacion[]" name="nfila_capacitacion[]" value="${nf_capacitacion.toString()}"> <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_capacitacion${nf_capacitacion.toString()}" name="descripcion_capacitacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><input type="date" id="fecha_inicio${nf_capacitacion.toString()}" name="fecha_inicio[]" value="${fechaactual}" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><input type="date" id="fecha_fin${nf_capacitacion.toString()}" name="fecha_fin[]" value="${fechaactual}" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="lugar_capacitacion${nf_capacitacion.toString()}" name="lugar_capacitacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input class="personascapacitadas" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="5" id="personas_capacitadas${nf_capacitacion.toString()}" name="personas_capacitadas[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgacapacitacion_${nf_capacitacion.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivoscapacitacion" idf="${nf_capacitacion.toString()}" id="archivo_capacitacion[]" name="archivo_capacitacion[]" hidden></label> <input style="visibility: hidden; width: 0px; height: 0px;" type="text" id="archivoselecccap${nf_capacitacion.toString()}" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_capacitacion" idf="${nf_capacitacion.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_capacitaciones").append(nueva);
+                    $("#detalle_capacitaciones").find(".eliminaritem_capacitacion").tooltip();
+                    $("#descripcion_capacitacion"+nf_capacitacion.toString()).addClass("validate[required]");
+                    $("#fecha_inicio"+nf_capacitacion.toString()).addClass("validate[required]");
+                    $("#fecha_fin"+nf_capacitacion.toString()).addClass("validate[required]");
+                    $("#lugar_capacitacion"+nf_capacitacion.toString()).addClass("validate[required]");
+                    $("#personas_capacitadas"+nf_capacitacion.toString()).addClass("validate[required, min[1], max[500]]");
+                    $(".personascapacitadas").unbind("blur.personascapacitadas");
+                    $(".personascapacitadas").bind("blur.personascapacitadas", validarCantidadesPersonas);
+                    $("#archivoselecccap"+nf_capacitacion.toString()).addClass("validate[required]");
+                    $(".eliminaritem_capacitacion").unbind("click.eliminaritem_capacitacion");
+                    $(".eliminaritem_capacitacion").bind("click.eliminaritem_capacitacion", eliminarItemCapacitacion);
+
+                    conectarChangeFileinputCapacitacion();
+                }
+            });
+
+            eliminarItemCapacitacion = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filacapacitacion_"+id).remove();
+
+                secuenciacapacitacion = 0;
+                $("#tbdetallecapacitaciones tbody tr").each(function (index) {
+                    secuenciacapacitacion ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciacapacitacion.toString());
+                    });
+                });
+
+                if(secuenciacapacitacion == 0)
+                    agregarFilaDefaultCapacitacion();
+            };
+
+            datosCapacitacionCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true;
+
+                $('input[name="descripcion_capacitacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="lugar_capacitacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="personas_capacitadas[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_capacitacion[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e);
+            };
+
+            actualizarListaEvidenciaCapacitacion = function (){
+                lista_items2 = [];
+                cf = 1;
+                $('input[name="archivo_capacitacion[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items2.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputCapacitacion = function() {
+                $(".archivoscapacitacion").unbind();
+                $(".archivoscapacitacion").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgacapacitacion_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecccap"+idf).val("SI");
+                    else
+                        $("#archivoselecccap"+idf).val("");
+
+                    actualizarListaEvidenciaCapacitacion();
+                });
+            };
+
+            agregarFilaDefaultCapacitacion = function (){
+                filadefault = '<tr id="fila_default_capacitacion">'+
+                              '<td colspan="8" style="text-align: center">NO EXISTEN DETALLES DE JORNADAS DE CAPACITACIÓN REALIZADAS</td>'+
+                              '</tr>';
+                $("#detalle_capacitaciones").append(filadefault);
+            };
+
+            borrarFilaDefaultCapacitacion = function (){
+                $("#fila_default_capacitacion").remove();
+            };
+
+            $(".agregapublicacion").click(function() {
+                if(datosPublicacionCompleto()){
+                    nf_publicacion += 1;
+                    secuenciapublicacion += 1;
+
+                    borrarFilaDefaultPublicacion();
+
+                    nueva = `<tr class="detallepublicaciones" id="filapublicacion_${nf_publicacion.toString()}">`+
+                            `<td style="text-align: center">${secuenciapublicacion.toString()}</td>`+
+                            `<td><input type="hidden" id="nfila_publicacion[]" name="nfila_publicacion[]" value="${nf_publicacion.toString()}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="titulo_publicacion${nf_publicacion.toString()}" name="titulo_publicacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="revista_publicacion${nf_publicacion.toString()}" name="revista_publicacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="100" id="issn_publicacion${nf_publicacion.toString()}" name="issn_publicacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="indexacion_publicacion${nf_publicacion.toString()}" name="indexacion_publicacion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><input type="date" id="envio_publicacion${nf_publicacion.toString()}" name="envio_publicacion[]" value="${fechaactual}" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><input type="date" id="aceptacion_publicacion${nf_publicacion.toString()}" name="aceptacion_publicacion[]" value="${fechaactual}" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgapublicacion_${nf_publicacion.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivospublicacion" idf="${nf_publicacion.toString()}" id="archivo_publicacion[]" name="archivo_publicacion[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoseleccpub${nf_publicacion.toString()}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_publicacion" idf="${nf_publicacion.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_publicaciones").append(nueva);
+                    $("#detalle_publicaciones").find(".eliminaritem_publicacion").tooltip();
+                    $("#titulo_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#revista_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#issn_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#indexacion_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#envio_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#aceptacion_publicacion"+nf_publicacion.toString()).addClass("validate[required]");
+                    $("#archivoseleccpub"+nf_publicacion.toString()).addClass("validate[required]");
+                    $(".eliminaritem_publicacion").unbind("click.eliminaritem_publicacion");
+                    $(".eliminaritem_publicacion").bind("click.eliminaritem_publicacion", eliminarItemPublicacion);
+
+                    conectarChangeFileinputPublicacion();
+                }
+            });
+
+            eliminarItemPublicacion = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filapublicacion_"+id).remove();
+
+                secuenciapublicacion = 0;
+                $("#tbdetallepublicaciones tbody tr").each(function (index) {
+                    secuenciapublicacion ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciapublicacion.toString());
+                    });
+                });
+
+                if(secuenciapublicacion == 0)
+                    agregarFilaDefaultPublicacion();
+
+                actualizarListaPublicacionArchivo();
+            };
+
+            actualizarListaPublicacionArchivo = function (){
+                lista_items3 = [];
+                cf = 1;
+                $('input[name="archivo_publicacion[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items3.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputPublicacion = function() {
+                $(".archivospublicacion").unbind();
+                $(".archivospublicacion").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgapublicacion_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoseleccpub"+idf).val("SI");
+                    else
+                        $("#archivoseleccpub"+idf).val("");
+
+                    actualizarListaPublicacionArchivo();
+                });
+            };
+
+            agregarFilaDefaultPublicacion = function (){
+                filadefault = '<tr id="fila_default_publicacion">'+
+                              '<td colspan="9" style="text-align: center">NO EXISTEN DETALLES DE PUBLICACIONES REALIZADAS</td>'+
+                              '</tr>';
+                $("#detalle_publicaciones").append(filadefault);
+            };
+
+            borrarFilaDefaultPublicacion = function (){
+                $("#fila_default_publicacion").remove();
+            };
+
+            datosPublicacionCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true, c5e = true;
+
+                $('input[name="titulo_publicacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="revista_publicacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="issn_publicacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="indexacion_publicacion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_publicacion[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c5e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e && c5e);
+            };
+
+            $(".agregaevento").click(function() {
+                if(datosEventoCompleto()){
+                    nf_evento += 1;
+                    secuenciaevento += 1;
+
+                    borrarFilaDefaultEvento();
+
+                    nueva = `<tr class="detalleeventos" id="filaevento_${nf_evento.toString()}">`+
+                            `<td style="text-align: center">${secuenciaevento.toString()}</td>`+
+                            `<td><input type="hidden" id="nfila_evento[]" name="nfila_evento[]" value="${nf_evento.toString()}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="nombre_evento${nf_evento.toString()}" name="nombre_evento[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="lugar_evento${nf_evento.toString()}" name="lugar_evento[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><input type="date" id="fecha_evento${nf_evento.toString()}" name="fecha_evento[]" value="${fechaactual}" /> <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="titulo_evento${nf_evento.toString()}" name="titulo_evento[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevento_${nf_evento.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivosevento" idf="${nf_evento.toString()}" id="archivo_evento[]" name="archivo_evento[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecceve${nf_evento.toString()}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_evento" idf="${nf_evento.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_eventos").append(nueva);
+                    $("#detalle_eventos").find(".eliminaritem_evento").tooltip();
+                    $("#nombre_evento"+nf_evento.toString()).addClass("validate[required]");
+                    $("#lugar_evento"+nf_evento.toString()).addClass("validate[required]");
+                    $("#fecha_evento"+nf_evento.toString()).addClass("validate[required]");
+                    $("#titulo_evento"+nf_evento.toString()).addClass("validate[required]");
+                    $("#archivoselecceve"+nf_evento.toString()).addClass("validate[required]");
+                    $(".eliminaritem_evento").unbind("click.eliminaritem_evento");
+                    $(".eliminaritem_evento").bind("click.eliminaritem_evento", eliminarItemEvento);
+
+                    conectarChangeFileinputEvento();
+                }
+            });
+
+            eliminarItemEvento = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaevento_"+id).remove();
+
+                secuenciaevento = 0;
+                $("#tbdetalleeventos tbody tr").each(function (index) {
+                    secuenciaevento ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaevento.toString());
+                    });
+                });
+
+                if(secuenciaevento == 0)
+                    agregarFilaDefaultEvento();
+
+                actualizarListaEventoArchivo();
+            };
+
+            actualizarListaEventoArchivo = function (){
+                lista_items4 = [];
+                cf = 1;
+                $('input[name="archivo_evento[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items4.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputEvento = function() {
+                $(".archivosevento").unbind();
+                $(".archivosevento").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bgaevento_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecceve"+idf).val("SI");
+                    else
+                        $("#archivoselecceve"+idf).val("");
+
+                    actualizarListaEventoArchivo();
+                });
+            };
+
+            agregarFilaDefaultEvento = function (){
+                filadefault = '<tr id="fila_default_evento">'+
+                              '<td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE PARTICIPACIONES EN EVENTOS CIENTÍFICOS</td>'+
+                              '</tr>';
+                $("#detalle_eventos").append(filadefault);
+            };
+
+            borrarFilaDefaultEvento = function (){
+                $("#fila_default_evento").remove();
+            };
+
+            datosEventoCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true;
+
+                $('input[name="nombre_evento[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="lugar_evento[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="titulo_evento[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_evento[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e);
+            };
+
+            $(".agregaotroproducto").click(function() {
+                if(datosOtroProductoCompleto()){
+                    nf_otroproducto += 1;
+                    secuenciaotroproducto += 1;
+
+                    borrarFilaDefaultOtroProducto();
+
+                    nueva = `<tr class="detalleotrosproductos" id="filaotroproducto_${nf_otroproducto.toString()}">`+
+                            `<td style="text-align: center">${secuenciaotroproducto.toString()}</td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_otroproducto${nf_otroproducto.toString()}" name="descripcion_otroproducto[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_otroproducto" idf="${nf_otroproducto.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_otrosproductos").append(nueva);
+                    $("#detalle_otrosproductos").find(".eliminaritem_otroproducto").tooltip();
+                    $("#descripcion_otroproducto"+nf_otroproducto.toString()).addClass("validate[required]");
+                    $(".eliminaritem_otroproducto").unbind("click.eliminaritem_otroproducto");
+                    $(".eliminaritem_otroproducto").bind("click.eliminaritem_otroproducto", eliminarItemOtroProducto);
+                }
+            });
+
+            eliminarItemOtroProducto = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaotroproducto_"+id).remove();
+
+                secuenciaotroproducto = 0;
+                $("#tbdetalleotrosproductos tbody tr").each(function (index) {
+                    secuenciaotroproducto ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaotroproducto.toString());
+                    });
+                });
+
+                if(secuenciaotroproducto == 0)
+                    agregarFilaDefaultOtroProducto();
+            };
+
+            agregarFilaDefaultOtroProducto = function (){
+                filadefault = '<tr id="fila_default_otroproducto">'+
+                              '<td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE OTROS PRODUCTOS</td>'+
+                              '</tr>';
+                $("#detalle_otrosproductos").append(filadefault);
+            };
+
+            borrarFilaDefaultOtroProducto = function (){
+                $("#fila_default_otroproducto").remove();
+            };
+
+            datosOtroProductoCompleto = function (){
+                let c1e = true;
+
+                $('input[name="descripcion_otroproducto[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            $(".agregapersona").click(function() {
+                if(datosPersonaCompleto()){
+                    nf_persona += 1;
+                    secuenciapersona += 1;
+
+                    camporol = `<select class="rolpersona" id="rol_persona${nf_persona}" name="rol_persona[]" style="width: 90%;">
+                                    {% for rol in rolesintegrantes %}
+                                        {% if rol.0 != 1 %}<option value="{{ rol.0 }}">{{ rol.1 }}</option>{% endif %}
+                                    {% endfor %}
+                                </select>
+                                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                    botonobjetivo = `<a href="javascript:;" class="btn btn-tini btn-info objetivo_persona" idf="${nf_persona.toString()}" data-bs-toggle="tooltip" title="Objetivos en los que participa"><i class="fa fa-list"></i></a>
+                                    <input id="idobjetivo_persona${nf_persona.toString()}" name="idobjetivo_persona[]" type="hidden" value="">
+                                    <input class="objetivopersona" autocomplete="off" style="text-align: left; width: 70%; text-transform: lowercase" maxlength="250" id="objetivo_persona${nf_persona.toString()}" name="objetivo_persona[]" type="text" value="" readonly>
+                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                    nueva = `<tr class="detallepersonas" id="filapersona_${nf_persona.toString()}">`+
+                            `<td style="text-align: center">${secuenciapersona.toString()}</td>`+
+                            `<td style="text-align: left"><input class="nombrepersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="nombre_persona${nf_persona.toString()}" name="nombre_persona[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><input class="apellidopersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="apellido_persona${nf_persona.toString()}" name="apellido_persona[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left">` + camporol + `</td>`+
+                            `<td style="text-align: left"><input class="institucionpersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="institucion_persona${nf_persona.toString()}" name="institucion_persona[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><input class="emailpersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: lowercase" maxlength="250" id="email_persona${nf_persona.toString()}" name="email_persona[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: center">` + botonobjetivo + `</td>`+
+                            `<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_persona" idf="${nf_persona.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_personas").append(nueva);
+                    $("#detalle_personas").find(".eliminaritem_persona").tooltip();
+                    $("#detalle_personas").find(".objetivo_persona").tooltip();
+                    $("#detalle_personas").find(".rolpersona").select2();
+                    $("#nombre_persona"+nf_persona.toString()).addClass("validate[required]");
+                    $("#apellido_persona"+nf_persona.toString()).addClass("validate[required]");
+                    $("#rol_persona"+nf_persona.toString()).addClass("validate[required]");
+                    $("#institucion_persona"+nf_persona.toString()).addClass("validate[required]");
+                    $("#email_persona"+nf_persona.toString()).addClass("validate[required, custom[email]]");
+                    $("#idobjetivo_persona"+nf_persona.toString()).addClass("validate[required]");
+                    $(".eliminaritem_persona").unbind("click.eliminaritem_persona");
+                    $(".eliminaritem_persona").bind("click.eliminaritem_persona", eliminarItemPersona);
+                    $(".objetivo_persona").unbind("click.objetivo_persona");
+                    $(".objetivo_persona").bind("click.objetivo_persona", objetivoPersona);
+                }
+            });
+
+            eliminarItemPersona = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filapersona_"+id).remove();
+
+                secuenciapersona = 0;
+                $("#tbdetallepersonas tbody tr").each(function (index) {
+                    secuenciapersona ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciapersona.toString());
+                    });
+                });
+            };
+
+            datosPersonaCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true, c5e = true, c6e = true;
+
+                $('input[name="nombre_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="apellido_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('select[name="rol_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="institucion_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="email_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c5e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="objetivo_persona[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c6e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e && c5e && c6e);
+            };
+
+            agregarValidacionesCamposPersonas = function (){
+                $(".nombrepersona").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".apellidopersona").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".rolpersona").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".institucionpersona").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".emailpersona").each(function(){
+                    $(this).addClass("validate[required, custom[email]]");
+                });
+
+                /*$(".objetivopersona").each(function(){
+                    $(this).addClass("validate[required]");
+                });*/
+            };
+
+            objetivoPersona = function() {
+                let id = $(this).attr("idf");
+                let nombres = $("#nombre_persona"+id).val() + " " + $("#apellido_persona"+id).val();
+                let objetivosper = $("#idobjetivo_persona"+id).val();
+                $("#nombrepersonaobjetivo").html(nombres);
+                $("#itemspanelobjetivo .agregar").attr("idfila", id);
+                $("#itemspanelobjetivo .agregar").attr("tipoobj", "PER");
+                $(".paneltitleobjetivo").html("Objetivos en los que participó la persona");
+                $("#tiporegistroobjetivo").html("Persona:");
+                $('#objetivoproyecto option').prop('selected', false);
+
+                if(objetivosper.trim() !== ''){
+                    $.each(objetivosper.split(","), function(i,e){
+                        $("#objetivoproyecto option[value='" + e + "']").prop("selected", true);
+                    });
+                }
+
+                $('#objetivoproyecto').trigger('change');
+                $("#itemspanelobjetivo").modal({backdrop:'static'}).modal('show');
+            };
+
+            $("#itemspanelobjetivo .agregar").click(function () {
+                $("#frmObjetivo").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmObjetivo").validationEngine('validate', { scroll: false });
+                if(valido){
+                    let codigos_objetivos = $("#objetivoproyecto").val();
+                    let objetivos = $('#objetivoproyecto option:selected').toArray().map(item => item.text);
+                    let numeros = "";
+
+                    for(let i=0; i<objetivos.length; i++){
+                        if(numeros == '')
+                            numeros = objetivos[i].split("-")[0].trim();
+                        else
+                            numeros = numeros + ", " + objetivos[i].split("-")[0].trim()
+                    }
+
+                    if($(this).attr("tipoobj") == 'PER'){
+                        $("#objetivo_persona"+$(this).attr("idfila")).val(numeros);
+                        $("#idobjetivo_persona"+$(this).attr("idfila")).val(codigos_objetivos);
+                    }else{
+                        $("#objetivo_equipo"+$(this).attr("idfila")).val(numeros);
+                        $("#idobjetivo_equipo"+$(this).attr("idfila")).val(codigos_objetivos);
+                    }
+
+                    $('#itemspanelobjetivo').modal('hide');
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            $(".agregainstitucion").click(function() {
+                if(datosInstitucionCompleto()){
+                    nf_institucion += 1;
+                    secuenciainstitucion += 1;
+
+                    borrarFilaDefaultInstitucion();
+
+                    nueva = `<tr class="detalleinstituciones" id="filainstitucion_${nf_institucion.toString()}">`+
+                            `<td style="text-align: center">${secuenciainstitucion.toString()}</td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="nombre_institucion${nf_institucion.toString()}" name="nombre_institucion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="actividad_institucion${nf_institucion.toString()}" name="actividad_institucion[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_institucion" idf="${nf_institucion.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_instituciones").append(nueva);
+                    $("#detalle_instituciones").find(".eliminaritem_institucion").tooltip();
+                    $("#nombre_institucion"+nf_institucion.toString()).addClass("validate[required]");
+                    $("#actividad_institucion"+nf_institucion.toString()).addClass("validate[required]");
+                    $(".eliminaritem_institucion").unbind("click.eliminaritem_institucion");
+                    $(".eliminaritem_institucion").bind("click.eliminaritem_institucion", eliminarItemInstitucion);
+                }
+            });
+
+            eliminarItemInstitucion = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filainstitucion_"+id).remove();
+
+                secuenciainstitucion = 0;
+                $("#tbdetalleinstituciones tbody tr").each(function (index) {
+                    secuenciainstitucion ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciainstitucion.toString());
+                    });
+                });
+
+                if(secuenciainstitucion == 0)
+                    agregarFilaDefaultInstitucion();
+            };
+
+            agregarFilaDefaultInstitucion = function (){
+                filadefault = '<tr id="fila_default_institucion">'+
+                              '<td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE INSTITUCIONES PARTICIPANTES</td>'+
+                              '</tr>';
+                $("#detalle_instituciones").append(filadefault);
+            };
+
+            borrarFilaDefaultInstitucion = function (){
+                $("#fila_default_institucion").remove();
+            };
+
+            datosInstitucionCompleto = function (){
+                let c1e = true, c2e = true;
+
+                $('input[name="nombre_institucion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="actividad_institucion[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                return c1e && c2e;
+            };
+
+            $(".agregacambio").click(function() {
+                if(datosCambioCompleto()){
+                    nf_cambio += 1;
+                    secuenciacambio += 1;
+
+                    borrarFilaDefaultCambio();
+
+                    nueva = `<tr class="detallecambios" id="filacambio_${nf_cambio.toString()}">`+
+                            `<td style="text-align: center">${secuenciacambio.toString()}</td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_cambio${nf_cambio.toString()}" name="descripcion_cambio[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_cambio" idf="${nf_cambio.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_cambios").append(nueva);
+                    $("#detalle_cambios").find(".eliminaritem_cambio").tooltip();
+                    $("#descripcion_cambio"+nf_cambio.toString()).addClass("validate[required]");
+                    $(".eliminaritem_cambio").unbind("click.eliminaritem_cambio");
+                    $(".eliminaritem_cambio").bind("click.eliminaritem_cambio", eliminarItemCambio);
+                }
+            });
+
+            eliminarItemCambio = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filacambio_"+id).remove();
+
+                secuenciacambio = 0;
+                $("#tbdetallecambios tbody tr").each(function (index) {
+                    secuenciacambio ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciacambio.toString());
+                    });
+                });
+
+                if(secuenciacambio == 0)
+                    agregarFilaDefaultCambio();
+            };
+
+            agregarFilaDefaultCambio = function (){
+                filadefault = '<tr id="fila_default_cambio">'+
+                              '<td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE CAMBIOS METODOLÓGICOS</td>'+
+                              '</tr>';
+                $("#detalle_cambios").append(filadefault);
+            };
+
+            borrarFilaDefaultCambio = function (){
+                $("#fila_default_cambio").remove();
+            };
+
+            datosCambioCompleto = function (){
+                let c1e = true;
+
+                $('input[name="descripcion_cambio[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            $(".agregaproblema").click(function() {
+                if(datosProblemaCompleto()){
+                    nf_problema += 1;
+                    secuenciaproblema += 1;
+
+                    borrarFilaDefaultProblema();
+
+                    nueva = `<tr class="detalleproblemas" id="filaproblema_${nf_problema.toString()}">`+
+                            `<td style="text-align: center">${secuenciaproblema.toString()}</td>`+
+                            `<td><input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_problema${nf_problema.toString()}" name="descripcion_problema[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_problema" idf="${nf_problema.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_problemas").append(nueva);
+                    $("#detalle_problemas").find(".eliminaritem_problema").tooltip();
+                    $("#descripcion_problema"+nf_problema.toString()).addClass("validate[required]");
+                    $(".eliminaritem_problema").unbind("click.eliminaritem_problema");
+                    $(".eliminaritem_problema").bind("click.eliminaritem_cambio", eliminarItemProblema);
+                }
+            });
+
+            eliminarItemProblema = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaproblema_"+id).remove();
+
+                secuenciaproblema = 0;
+                $("#tbdetalleproblemas tbody tr").each(function (index) {
+                    secuenciaproblema ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaproblema.toString());
+                    });
+                });
+
+                if(secuenciaproblema == 0)
+                    agregarFilaDefaultProblema();
+            };
+
+            agregarFilaDefaultProblema = function (){
+                filadefault = '<tr id="fila_default_problema">'+
+                              '<td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE PROBLEMAS TÉCNICOS Y/O FINANCIEROS</td>'+
+                              '</tr>';
+                $("#detalle_problemas").append(filadefault);
+            };
+
+            borrarFilaDefaultProblema = function (){
+                $("#fila_default_problema").remove();
+            };
+
+            datosProblemaCompleto = function (){
+                let c1e = true;
+
+                $('input[name="descripcion_problema[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            $(".agregaequipo").click(function() {
+                if(datosEquipoCompleto()){
+                    nf_equipo += 1;
+                    secuenciaequipo += 1;
+
+                    borrarFilaDefaultEquipo();
+
+                    botonobjetivo = `<a href="javascript:;" class="btn btn-tini btn-info objetivo_equipo" idf="${nf_equipo.toString()}" data-bs-toggle="tooltip" title="Objetivos en el cuál se utilizó"><i class="fa fa-list"></i></a>
+                                    <input id="idobjetivo_equipo${nf_equipo.toString()}" name="idobjetivo_equipo[]" type="hidden" value="">
+                                    <input class="objetivoequipo" autocomplete="off" style="text-align: left; width: 70%; text-transform: lowercase" maxlength="250" id="objetivo_equipo${nf_equipo.toString()}" name="objetivo_equipo[]" type="text" value="" readonly>
+                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>`;
+
+                    nueva = `<tr class="detalleequipos" id="filaequipo_${nf_equipo.toString()}">`+
+                            `<td style="text-align: center">${secuenciaequipo.toString()}</td>`+
+                            `<td style="text-align: left"><input class="codigoequipo" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="20" id="codigo_equipo${nf_equipo.toString()}" name="codigo_equipo[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><input class="nombreequipo" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="nombre_equipo${nf_equipo.toString()}" name="nombre_equipo[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><input class="descripcionequipo" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_equipo${nf_equipo.toString()}" name="descripcion_equipo[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: center">` + botonobjetivo + `</td>`+
+                            `<td style="text-align: left"><input class="ubicacionequipo" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="ubicacion_equipo${nf_equipo.toString()}" name="ubicacion_equipo[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><input class="personalequipo" autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="personal_equipo${nf_equipo.toString()}" name="personal_equipo[]" type="text" value=""><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_equipo" idf="${nf_equipo.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_equipos").append(nueva);
+                    $("#detalle_equipos").find(".eliminaritem_equipo").tooltip();
+                    $("#detalle_equipos").find(".objetivo_equipo").tooltip();
+                    $("#codigo_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $("#nombre_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $("#descripcion_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $("#objetivo_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $("#ubicacion_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $("#personal_equipo"+nf_equipo.toString()).addClass("validate[required]");
+                    $(".codigoequipo").unbind("blur.codigoequipo");
+                    $(".codigoequipo").bind("blur.codigoequipo", validarCodigosBarra);
+                    $(".eliminaritem_equipo").unbind("click.eliminaritem_equipo");
+                    $(".eliminaritem_equipo").bind("click.eliminaritem_equipo", eliminarItemEquipo);
+                    $(".objetivo_equipo").unbind("click.objetivo_equipo");
+                    $(".objetivo_equipo").bind("click.objetivo_equipo", objetivoEquipo);
+                }
+            });
+
+            eliminarItemEquipo = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaequipo_"+id).remove();
+
+                secuenciaequipo = 0;
+                $("#tbdetalleequipos tbody tr").each(function (index) {
+                    secuenciaequipo ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaequipo.toString());
+                    });
+                });
+
+                if(secuenciaequipo == 0)
+                    agregarFilaDefaultEquipo();
+
+            };
+
+            agregarFilaDefaultEquipo = function (){
+                filadefault = '<tr id="fila_default_equipo">'+
+                              '<td colspan="8" style="text-align: center">NO EXISTEN DETALLES DE EQUIPAMIENTO ADQUIRIDO</td>'+
+                              '</tr>';
+                $("#detalle_equipos").append(filadefault);
+            };
+
+            borrarFilaDefaultEquipo = function (){
+                $("#fila_default_equipo").remove();
+            };
+
+            datosEquipoCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true, c5e = true;
+
+                $('input[name="nombre_equipo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="descripcion_equipo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="objetivo_equipo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="ubicacion_equipo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="personal_equipo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c5e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e && c5e);
+            };
+
+            objetivoEquipo = function() {
+                let id = $(this).attr("idf");
+                let nombres = $("#nombre_equipo"+id).val();
+                let objetivosequi = $("#idobjetivo_equipo"+id).val();
+                $("#nombrepersonaobjetivo").html(nombres);
+                $("#itemspanelobjetivo .agregar").attr("idfila", id);
+                $("#itemspanelobjetivo .agregar").attr("tipoobj", "EQP");
+                $(".paneltitleobjetivo").html("Objetivos en los cuales se utilizó el equipamiento");
+                $("#tiporegistroobjetivo").html("Equipo:");
+                $('#objetivoproyecto option').prop('selected', false);
+
+                if(objetivosequi.trim() !== ''){
+                    $.each(objetivosequi.split(","), function(i,e){
+                        $("#objetivoproyecto option[value='" + e + "']").prop("selected", true);
+                    });
+                }
+
+                $('#objetivoproyecto').trigger('change');
+                $("#itemspanelobjetivo").modal({backdrop:'static'}).modal('show');
+            };
+
+            $(".agregaindicador").click(function() {
+                if(datosIndicadorCompleto()){
+                    nf_indicador += 1;
+                    secuenciaindicador += 1;
+
+                    borrarFilaDefaultIndicador();
+
+                    nueva = `<tr class="detalleindicadores" id="filaindicador_${nf_indicador.toString()}">`+
+                            `<td style="text-align: center">${secuenciaindicador.toString()}</td>`+
+                            `<td style="text-align: left"><textarea style="width: 99%; text-transform: none;" cols="40" id="indicador${nf_indicador.toString()}" name="indicador[]" rows="3" ></textarea><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><textarea style="width: 99%; text-transform: none;" cols="40" id="descripcionindicador${nf_indicador.toString()}" name="descripcionindicador[]" rows="3" ></textarea><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><textarea style="width: 99%; text-transform: none;" cols="40" id="fuentedatos${nf_indicador.toString()}" name="fuentedatos[]" rows="3" ></textarea><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: left"><textarea style="width: 99%; text-transform: none;" cols="40" id="datoslineabase${nf_indicador.toString()}" name="datoslineabase[]" rows="3" ></textarea><div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>`+
+                            `<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_indicador" idf="${nf_indicador.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_indicadores").append(nueva);
+                    $("#detalle_indicadores").find(".eliminaritem_indicador").tooltip();
+                    $("#indicador"+nf_indicador.toString()).addClass("validate[required]");
+                    $("#descripcionindicador"+nf_indicador.toString()).addClass("validate[required]");
+                    $("#fuentedatos"+nf_indicador.toString()).addClass("validate[required]");
+                    $("#datoslineabase"+nf_indicador.toString()).addClass("validate[required]");
+                    $(".eliminaritem_indicador").unbind("click.eliminaritem_indicador");
+                    $(".eliminaritem_indicador").bind("click.eliminaritem_indicador", eliminarItemIndicador);
+                }
+            });
+
+            eliminarItemIndicador = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaindicador_"+id).remove();
+
+                secuenciaindicador = 0;
+                $("#tbdetalleindicadores tbody tr").each(function (index) {
+                    secuenciaindicador ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaindicador.toString());
+                    });
+                });
+
+                if(secuenciaindicador == 0)
+                    agregarFilaDefaultIndicador();
+            };
+
+            agregarFilaDefaultIndicador = function (){
+                filadefault = '<tr id="fila_default_indicador">'+
+                              '<td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE INDICADORES</td>'+
+                              '</tr>';
+                $("#detalle_indicadores").append(filadefault);
+            };
+
+            borrarFilaDefaultIndicador = function (){
+                $("#fila_default_indicador").remove();
+            };
+
+            datosIndicadorCompleto = function (){
+                let c1e = true, c2e = true, c3e = true, c4e = true;
+
+                $('textarea[name="indicador[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('textarea[name="descripcionindicador[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                $('textarea[name="fuentedatos[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c3e = false;
+                        return false;
+                    }
+                });
+
+                $('textarea[name="datoslineabase[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c4e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e && c3e && c4e);
+            };
+
+            $(".guardar").click(function () {
+                envioFormulario("/pro_proyectoinvestigacion", "addinformefinal", false);
+                return false;
+            });
+
+            envioFormulario = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmAddInformeFinal").validationEngine('attach',{ scroll: false, validateNonVisibleFields: true });
+                valido = $("#frmAddInformeFinal").validationEngine('validate', { scroll: false, validateNonVisibleFields: true });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'addinformefinal'){
+                        try {
+                            for (instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmAddInformeFinal")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                        formdata.append("lista_items2", JSON.stringify(lista_items2));
+                        formdata.append("lista_items3", JSON.stringify(lista_items3));
+                        formdata.append("lista_items4", JSON.stringify(lista_items4));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/pro_proyectoinvestigacion?action=informesproyecto&id={{ proyecto.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    mensajeWarningSwal("Atención!!!", "Los campos marcados con <span style='color:red; font-weight:bold'>*</span> son obligatorios de llenar");
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Informe sin haber guardado la información?", false, "/pro_proyectoinvestigacion", "", "", "/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=informesproyecto");
+            });
+
+            agregarValidacionesCamposPersonas();
+            $(".eliminaritem_persona").unbind("click.eliminaritem_persona");
+            $(".eliminaritem_persona").bind("click.eliminaritem_persona", eliminarItemPersona);
+            $(".objetivo_persona").unbind("click.objetivo_persona");
+            $(".objetivo_persona").bind("click.objetivo_persona", objetivoPersona);
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_proyectoinvestigacion?id={{ proyecto.id|encrypt }}&action=propuestas&idc={{ proyecto.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Propuestas de Docentes (Convocatoria: {{ proyecto.convocatoria.descripcion }})</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        {# TITULO DEL PROYECTO #}
+        <div class='row'>
+            <div class="col-sm-12">
+                <div class="alert alert-info" style="text-align: justify">
+                    <strong>{{ proyecto.titulo }}</strong>
+                </div>
+            </div>
+        </div>
+        {# TITULO DEL PROYECTO #}
+        {# TABLA DE DATOS #}
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <form name="frmAddInformeFinal" id="frmAddInformeFinal">{% csrf_token %}
+                    {# CUERPO DEL FORMULARIO #}
+                    <input type='hidden' name='action' value='addinformefinal'/>
+                    <input type='hidden' name='id' value='{{ proyecto.id|encrypt }}'/>
+                    <div class="row">
+                        {# PESTAÑAS #}
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#datosgenerales">Datos Generales</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#ejecucion">Ejecución y Objetivos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#logros">Logros</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#productos">Productos y Participación Eventos</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#participantes">Participantes</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#equipamiento">Cambios, Problemas y Equipamiento</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#conclusiones">Conclusiones</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#tresultados">T.Resultados</a>
+                            </li>
+                        </ul>
+                        {# PESTAÑAS #}
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                        <div class="tab-content px-0">
+                            <div id="datosgenerales" class="container tab-pane active px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">A. Datos Generales</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdatosgenerales">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 15%;"><strong>Convocatoria:</strong></td>
+                                                <td style="width: 35%;">{{ proyecto.convocatoria.descripcion }}</td>
+                                                <td style="width: 15%;"><strong>Tipo:</strong></td>
+                                                <td style="width: 35%;">{{ proyecto.categoria2.descripcion }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Título:</strong></td>
+                                                <td colspan="3" style="text-align: justify">{{ proyecto.titulo }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Línea Investigación:</strong></td>
+                                                <td style="text-align: justify">{{ proyecto.lineainvestigacion.nombre }}</td>
+                                                <td><strong>Sub-Línea Investigación:</strong></td>
+                                                <td>
+                                                    {% for sublinea in proyecto.sublineainvestigacion.all %}
+                                                        {{ sublinea.nombre }}
+                                                        {% if not forloop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Área prioritaria:</strong></td>
+                                                <td colspan="3" style="text-align: justify">{{ proyecto.industriapriorizada.nombre }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>¿Requiere convenio?:</strong></td>
+                                                <td colspan="3" style="text-align: justify">
+                                                    {% if proyecto.requiereconvenio %}SI ({{ proyecto.especificaconvenio }}){% else %}NO{% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>¿Necesita permiso del CEISH?:</strong></td>
+                                                <td colspan="3" style="text-align: justify">
+                                                    {% if proyecto.requierepermiso %}SI ({{ proyecto.especificapermiso }}){% else %}NO{% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Duración(meses):</strong></td>
+                                                <td style="text-align: justify">{{ proyecto.tiempomes }} meses</td>
+                                                <td><strong>Monto Total Financ:</strong></td>
+                                                <td>$ {{ proyecto.montototal|floatformat:2|intcomma }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Monto UNEMI:</strong></td>
+                                                <td>$ {{ proyecto.montounemi|floatformat:2|intcomma }}</td>
+                                                <td><strong>Monto otra fuente:</strong></td>
+                                                <td>$ {{ proyecto.montootrafuente|floatformat:2|intcomma }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>¿Solicitó Adenda Contrato?<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td>
+                                                    <select id="adenda" name="adenda" style="width: 90%;">
+                                                        <option value="" selected>---------</option>
+                                                        <option value="1">SI</option>
+                                                        <option value="2">NO</option>
+                                                    </select>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>¿Solicitó Prórroga?<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td>
+                                                    <select id="prorroga" name="prorroga" style="width: 90%;">
+                                                        <option value="" selected>---------</option>
+                                                        <option value="1">SI</option>
+                                                        <option value="2">NO</option>
+                                                    </select>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td><strong>Meses prórroga:</strong></td>
+                                                <td>
+                                                    <input autocomplete="off" style="text-align: left; width: 90%; text-transform: none" maxlength="2" id="mesesprorroga" name="mesesprorroga" type="text" value="" >
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Fecha Inicio:</strong></td>
+                                                <td>
+                                                    <input type="date" style="width: 90%;" id="fechainicio" name="fechainicio" value="{{ proyecto.fechainicio|date:"Y-m-d" }}" readonly/>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td><strong>Fecha Fin (incluyendo prórroga)<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td>
+                                                    <input type="date" style="width: 90%;" id="fechafin" name="fechafin" value="{{ proyecto.fechafinplaneado|date:"Y-m-d" }}"/>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">B. Localización geográfica del proyecto</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tblocalizacion">
+                                        <tbody>
+                                            {% if proyecto.tipocobertura == 1 or proyecto.tipocobertura == 2 %}
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Tipo de Cobertura:</strong></td>
+                                                    <td colspan="3" style="width: 85%;">{{ proyecto.get_tipocobertura_display }}</td>
+                                                </tr>
+                                            {% elif proyecto.tipocobertura == 3 %}
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Tipo de Cobertura:</strong></td>
+                                                    <td style="width: 35%;">{{ proyecto.get_tipocobertura_display }}</td>
+                                                    <td style="width: 15%;"><strong>Zonas de planificación:</strong></td>
+                                                    <td style="width: 35%;">
+                                                        {% for zona in proyecto.zonas.all %}
+                                                            {{ zona.nombre }} ({{ zona.miembroszona }})
+                                                            {% if not forloop.last %}, {% endif %}
+                                                        {% endfor %}
+                                                    </td>
+                                                </tr>
+                                            {% elif proyecto.tipocobertura == 4 %}
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Tipo de Cobertura:</strong></td>
+                                                    <td style="width: 35%;">{{ proyecto.get_tipocobertura_display }}</td>
+                                                    <td style="width: 15%;"><strong>Provincias:</strong></td>
+                                                    <td style="width: 35%;">
+                                                        {% for provincia in proyecto.provincias.all %}
+                                                            {{ provincia.nombre }}
+                                                            {% if not forloop.last %}, {% endif %}
+                                                        {% endfor %}
+                                                    </td>
+                                                </tr>
+                                            {% else %}
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Tipo de Cobertura:</strong></td>
+                                                    <td style="width: 35%;">{{ proyecto.get_tipocobertura_display }}</td>
+                                                    <td style="width: 15%;"><strong>Provincia:</strong>
+                                                    <td style="width: 35%; text-align: justify">{{ proyecto.provincia.nombre }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="width: 15%;"><strong>Cantones:</strong></td>
+                                                    <td style="width: 35%; text-align: justify">
+                                                        {% for canton in proyecto.canton.all %}
+                                                            {{ canton.nombre }}
+                                                            {% if not forloop.last %}, {% endif %}
+                                                        {% endfor %}
+                                                    </td>
+                                                    <td style="width: 15%;"><strong>Parroquia:</strong></td>
+                                                    <td style="width: 35%; text-align: justify">{{ proyecto.parroquia }}</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">C. Instituciones Participantes</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbinstitucion">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 10%; text-align: center;">Tipo Institución</th>
+                                                <th style="width: 20%; text-align: center;">Grupo de Investigación</th>
+                                                <th style="width: 20%; text-align: center;">Representante legal</th>
+                                                <th style="width: 10%; text-align: center;">Identificación</th>
+                                                <th style="width: 10%; text-align: center;">e-mail</th>
+                                                <th style="width: 20%; text-align: center;">Dirección</th>
+                                                <th style="width: 10%; text-align: center;">Página web</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for institucion in proyecto.instituciones_proyecto %}
+                                                <tr>
+                                                    <td style="text-align: center">{{ institucion.get_tipo_display }}</td>
+                                                    <td style="text-align: justify">
+                                                        {% if institucion.tipo == 1 %}
+                                                            {% if proyecto.grupoinvestigacion %}{{ proyecto.grupoinvestigacion.nombre }}{% else %}NINGUNO{% endif %}
+                                                        {% endif %}
+                                                    </td>
+                                                    <td style="text-align: justify">{{ institucion.representante }}</td>
+                                                    <td style="text-align: justify">{{ institucion.cedula }}</td>
+                                                    <td style="text-align: justify">{{ institucion.email }}</td>
+                                                    <td style="text-align: justify">{{ institucion.direccion }}</td>
+                                                    <td style="text-align: justify">{{ institucion.paginaweb }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">D. Personal del Proyecto</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbpersonalproyecto">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; font-weight: bold; text-align: center">N°</th>
+                                                <th style="width: 15%; font-weight: bold; text-align: center">Rol</th>
+                                                <th style="width: 15%; font-weight: bold; text-align: center">Identificación</th>
+                                                <th style="width: 52%; font-weight: bold; text-align: center">Nombres y Apellidos</th>
+                                                <th style="width: 15%; font-weight: bold; text-align: center">Tipo</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for integrante in proyecto.integrantes_proyecto_informe %}
+                                                <tr>
+                                                    <td style="text-align: center">{{ forloop.counter }}</td>
+                                                    <td style="text-align: center">{{ integrante.get_funcion_display }}</td>
+                                                    <td style="text-align: center">{{ integrante.persona.identificacion }}</td>
+                                                    <td style="text-align: justify">{{ integrante.persona.nombre_completo_inverso }}</td>
+                                                    <td style="text-align: center">{{ integrante.get_tipo_display }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="ejecucion" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">E. Ejecución del Proyecto</span></h6>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">E.1 Ejecución Técnica (Estime el porcentaje de cumplimiento técnico por cada objetivo específico)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbejecucion">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; font-weight: bold; text-align: center">N°</th>
+                                                <th style="width: 80%; font-weight: bold; text-align: center">Objetivo Específico</th>
+                                                <th style="width: 17%; font-weight: bold; text-align: center">% ejecución</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for objetivo in proyecto.objetivos_especificos %}
+                                                <tr>
+                                                    <td style="text-align: center">{{ forloop.counter }}</td>
+                                                    <td style="text-align: justify">
+                                                        <input id="idobjetivo_ejecucion{{ forloop.counter }}" name="idobjetivo_ejecucion[]" type="hidden" value="{{ objetivo.id }}">
+                                                        {{ objetivo.descripcion }}
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <input autocomplete="off" class="porcentajeejecucion" style="text-align: right; width: 100%; text-transform: none" maxlength="6" id="porcentajeejecucion{{ forloop.counter }}" name="porcentajeejecucion[]" type="text" value="0.00" >
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <th colspan="2">Total Promedio</th>
+                                                <th style="text-align: right;">
+                                                    <input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="6" id="promediocumpl" name="promediocumpl" type="text" value="0.00" readonly>
+                                                </th>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">E.2 Ejecución Financiera (Indique el monto total y el ejecutado)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbejecucionfinanciera">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 17%;"><strong>Monto aprobado:</strong></td>
+                                                <td style="width: 13%;">
+                                                    <input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="50" id="montoaprobado" name="montoaprobado" type="text" value="{{ proyecto.montototal|floatformat:2 }}" readonly >
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 17%;"><strong>Monto ejecutado:</strong></td>
+                                                <td style="width: 13%;">
+                                                    <input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="50" id="montoejecutado" name="montoejecutado" type="text" value="0.00" >
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 17%;"><strong>% ejecución presupuestaria:</strong></td>
+                                                <td style="width: 13%;">
+                                                    <input autocomplete="off" style="text-align: right; width: 100%; text-transform: none" maxlength="50" id="porcentajepresup" name="porcentajepresup" type="text" value="0.00" readonly >
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleevidencias">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 72%; text-align: center;">Descripción</th>
+                                                <th style="width: 25%; text-align: center;">Archivo</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarformato" class="btn btn-success btn-mini agregaevidenciapresupuesto" data-bs-toggle="tooltip" title="Agregar Evidencia"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_evidencias">
+                                            <tr id="fila_default_evidencia">
+                                                <td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE EVIDENCIAS DE EJECUCIÓN DEL PRESUPUESTO</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">F. Objetivos General y Específicos (En esta sección describa cómo se cumplió con el objetivo general y los específicos planteados en la propuesta original)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbobjetivogeneralesp">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 50%; font-weight: bold; text-align: center">Objetivos</th>
+                                                <th style="width: 50%; font-weight: bold; text-align: center">Detalle</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="text-align: justify">
+                                                    <input id="descripcionobjetivo0" name="descripcionobjetivo[]" type="hidden" value="{{ proyecto.objetivogeneral }}">
+                                                    <b>O.G:</b> {{ proyecto.objetivogeneral|safe }}
+                                                </td>
+                                                <td style="text-align: center">
+                                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="detalleobjetivo0" name="detalleobjetivo[]" rows="3" ></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            {% for objetivo in proyecto.objetivos_especificos %}
+                                                <tr>
+                                                    <td style="text-align: justify">
+                                                        <input id="descripcionobjetivo{{ forloop.counter }}" name="descripcionobjetivo[]" type="hidden" value="{{ objetivo.descripcion }}">
+                                                        <b>O.E:</b> {{ objetivo.descripcion }}
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <textarea style="width: 99%; text-transform: none;" cols="40" id="detalleobjetivo{{ forloop.counter }}" name="detalleobjetivo[]" rows="3" ></textarea>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="logros" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">G. Logros del Proyecto</span></h6>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">G.1 Resultados significativos del proyecto (de acuerdo a los resultados esperados)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleresultados">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center">N°</th>
+                                                <th style="width: 47%; font-weight: bold; text-align: center">Resultados</th>
+                                                <th style="width: 47%; font-weight: bold; text-align: center">Descripción de Resultados</th>
+                                                <th style="width: 3%"><a href="javascript:;" class="btn btn-success btn-mini agregaresultado" data-bs-toggle="tooltip" title="Agregar Resultado"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_resultados">
+                                            {% for resultado in proyecto.resultados_compromisos %}
+                                                <tr class="detalleresultados" id="filaresultado_{{ forloop.counter }}">
+                                                    <td style="text-align: center;">{{ forloop.counter }}</td>
+                                                    <td style="text-align: left">
+                                                        <input type="hidden" id="agregado{{ forloop.counter }}" name="agregado[]" value="N">
+                                                        <textarea style="width: 99%; text-transform: none;" readonly cols="40" id="resultado{{ forloop.counter }}" name="resultado[]" rows="3" >{{ resultado.resultado.descripcion }}</textarea>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: left">
+                                                        <textarea style="width: 99%; text-transform: none;" cols="40" id="descripcionresultado{{ forloop.counter }}" name="descripcionresultado[]" rows="3" ></textarea>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">G.2 En caso de que aplique ¿Qué oportunidades de entrenamiento y capacitación profesional a Proveído el proyecto? (máximo 250 palabras)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbaplicaentrenamiento">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>¿Aplica Entrenamiento y capacitación?<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td style="width: 20%;">
+                                                    <select id="aplicacapacitacion" name="aplicacapacitacion" style="width: 90%;">
+                                                        <option value="" selected>---------</option>
+                                                        <option value="1">SI</option>
+                                                        <option value="2">NO</option>
+                                                    </select>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 55%;">
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>Detalle (Máximo 250 palabras):</strong></td>
+                                                <td colspan="3" style="width: 75%;">
+                                                    <textarea style="width: 99%; text-transform: none;" readonly cols="40" id="detallecapacitacion" name="detallecapacitacion" rows="5" ></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetallecapacitaciones">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 30%; text-align: center;">Capacitación</th>
+                                                <th style="width: 10%; text-align: center;">Fecha de Inicio</th>
+                                                <th style="width: 10%; text-align: center;">Fecha de culminacion</th>
+                                                <th style="width: 19%; text-align: center;">Lugar</th>
+                                                <th style="width: 10%; text-align: center;">N° Personas Capacitadas</th>
+                                                <th style="width: 15%; text-align: center;">Archivo</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarcapacitacion" class="btn btn-success btn-mini agregacapacitacion" data-bs-toggle="tooltip" title="Agregar Capacitación"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_capacitaciones">
+                                            <tr id="fila_default_capacitacion">
+                                                <td colspan="8" style="text-align: center">NO EXISTEN DETALLES DE JORNADAS DE CAPACITACIÓN REALIZADAS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">G.3 En el caso de aplique, ¿Cómo se han diseminado los resultados relevantes a comunidades de interés? (máximo150 palabras)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbaplicadiseminacion">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>¿Aplica diseminación de resultados?<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td style="width: 20%;">
+                                                    <select id="aplicadisemresultado" name="aplicadisemresultado" style="width: 90%;">
+                                                        <option value="" selected>---------</option>
+                                                        <option value="1">SI</option>
+                                                        <option value="2">NO</option>
+                                                    </select>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 55%;">
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>Detalle (Máximo 150 palabras):</strong></td>
+                                                <td colspan="3" style="width: 75%;">
+                                                    <textarea style="width: 99%; text-transform: none;" readonly cols="40" id="detalledisemresultado" name="detalledisemresultado" rows="5" ></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="productos" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">H. Productos</span></h6>
+                                </div>
+                                <span style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px; padding:0 10px">Liste los productos de proyectos de Investigación de acuerdo a los siguientes ítems</span>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">H.1 Publicaciones</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetallepublicaciones">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 17%; text-align: center;">Título</th>
+                                                <th style="width: 15%; text-align: center;">Revista / Libro</th>
+                                                <th style="width: 15%; text-align: center;">ISSN</th>
+                                                <th style="width: 15%; text-align: center;">Indexación</th>
+                                                <th style="width: 10%; text-align: center;">Fecha envío</th>
+                                                <th style="width: 10%; text-align: center;">Fecha aceptación</th>
+                                                <th style="width: 15%; text-align: center;">Archivo</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarpublicacion" class="btn btn-success btn-mini agregapublicacion" data-bs-toggle="tooltip" title="Agregar Publicación"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_publicaciones">
+                                            <tr id="fila_default_publicacion">
+                                                <td colspan="9" style="text-align: center">NO EXISTEN DETALLES DE PUBLICACIONES REALIZADAS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">I. Participación en Eventos Científicos</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleeventos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 24%; text-align: center;">Nombre del evento</th>
+                                                <th style="width: 20%; text-align: center;">Lugar</th>
+                                                <th style="width: 10%; text-align: center;">Fecha</th>
+                                                <th style="width: 25%; text-align: center;">Título del trabajo</th>
+                                                <th style="width: 15%; text-align: center;">Archivo</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarevento" class="btn btn-success btn-mini agregaevento" data-bs-toggle="tooltip" title="Agregar Evento"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_eventos">
+                                            <tr id="fila_default_evento">
+                                                <td colspan="7" style="text-align: center">NO EXISTEN DETALLES DE PARTICIPACIONES EN EVENTOS CIENTÍFICOS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">I.1 Otros productos (manuales, instrumentos didácticos, libros, capítulos de libros etc.)</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleotrosproductos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 94%; text-align: center;">Descripción</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarotroproducto" class="btn btn-success btn-mini agregaotroproducto" data-bs-toggle="tooltip" title="Agregar Otro producto"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_otrosproductos">
+                                            <tr id="fila_default_otroproducto">
+                                                <td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE OTROS PRODUCTOS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">I.2 Propiedad Intelectual</span></h6>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbpropiedadintelectual">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>¿Se obtuvo algún producto patentable?<span style="color:red;margin-left:2px;"><strong>*</strong></span>:</strong></td>
+                                                <td style="width: 20%;">
+                                                    <select id="productopatentable" name="productopatentable" style="width: 90%;">
+                                                        <option value="" selected>---------</option>
+                                                        <option value="1">SI</option>
+                                                        <option value="2">NO</option>
+                                                    </select>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                                <td style="width: 55%;">
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="width: 25%;"><strong>Especifique:</strong></td>
+                                                <td colspan="3" style="width: 75%;">
+                                                    <textarea style="width: 99%; text-transform: none;" readonly cols="40" id="detalleproductopatentable" name="detalleproductopatentable" rows="5" ></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="participantes" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">J. Participantes</span></h6>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">J.1 Personas</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">Por favor indique y liste las personas que participaron activamente en el proyecto,
+                                    incluyendo a los integrantes descritos en la propuesta original y los no listados como pasantes, tesistas, etc. En el caso de pasantes y tesistas entregue los sustentos de participación.
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetallepersonas">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 15%; text-align: center;">Nombres</th>
+                                                <th style="width: 15%; text-align: center;">Apellidos</th>
+                                                <th style="width: 15%; text-align: center;">Rol</th>
+                                                <th style="width: 20%; text-align: center;">Entidad</th>
+                                                <th style="width: 15%; text-align: center;">e-mail</th>
+                                                <th style="width: 10%; text-align: center;">Objetivos</th>
+                                                <th style="width: 3%; text-align: center"><a href="javascript:;" id="btnagregarotrapersona" class="btn btn-success btn-mini agregapersona" data-bs-toggle="tooltip" title="Agregar Persona"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_personas">
+                                            {% for integrante in proyecto.integrantes_proyecto_informe %}
+                                                <tr class="detallepersonas" id="filapersona_{{ forloop.counter }}">
+                                                    <td style="text-align: center">{{ forloop.counter }}</td>
+                                                    <td>
+                                                        <input class="nombrepersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="nombre_persona{{ forloop.counter }}" name="nombre_persona[]" type="text" value="{{ integrante.persona.nombres }}" {% if integrante.funcion == 1 %}readonly{% endif %}>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td>
+                                                        <input class="apellidopersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="apellido_persona{{ forloop.counter }}" name="apellido_persona[]" type="text" value="{{ integrante.persona.apellido1 }}{% if integrante.persona.apellido2 %} {{ integrante.persona.apellido2 }}{% endif %}" {% if integrante.funcion == 1 %}readonly{% endif %}>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td>
+                                                        <select class="rolpersona" id="rol_persona{{ forloop.counter }}" name="rol_persona[]" style="width: 90%;">
+                                                            {% if integrante.funcion != 1 %}
+                                                                {% for rol in rolesintegrantes %}
+                                                                    {% if rol.0 != 1 %}
+                                                                        <option value="{{ rol.0 }}" {% if rol.0 == integrante.funcion %}selected{% endif %}>{{ rol.1 }}</option>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            {% else %}
+                                                                <option value="1" selected>DIRECTOR</option>
+                                                            {% endif %}
+                                                        </select>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td>
+                                                        <input class="institucionpersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: uppercase" maxlength="250" id="institucion_persona{{ forloop.counter }}" name="institucion_persona[]" type="text" value="{% if integrante.tipo != 4 %}UNIVERSIDAD ESTATAL DE MILAGRO{% else %}{{ integrante.externo.institucionlabora|upper }}{% endif %}" {% if integrante.funcion == 1 %}readonly{% endif %}>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td>
+                                                        <input class="emailpersona" autocomplete="off" style="text-align: left; width: 100%; text-transform: lowercase" maxlength="250" id="email_persona{{ forloop.counter }}" name="email_persona[]" type="text" value="{% if integrante.persona.emailinst %}{{ integrante.persona.emailinst }}{% else %}{{ integrante.persona.email }}{% endif %}" {% if integrante.funcion == 1 %}readonly{% endif %}>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        <a href="javascript:;" class="btn btn-tini btn-info objetivo_persona" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" title="Objetivos en los que participa"><i class="fa fa-list"></i></a>
+                                                        <input id="idobjetivo_persona{{ forloop.counter }}" name="idobjetivo_persona[]" type="hidden" value="">
+                                                        <input class="objetivopersona" autocomplete="off" style="text-align: left; width: 70%; text-transform: lowercase" maxlength="250" id="objetivo_persona{{ forloop.counter }}" name="objetivo_persona[]" type="text" value="" readonly>
+                                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                    </td>
+                                                    <td style="text-align: center">
+                                                        {% if integrante.funcion != 1 %}
+                                                            <a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_persona" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">J2. Instituciones</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    Por favor, liste las instituciones que participaron activamente en el proyecto
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleinstituciones">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 47%; text-align: center;">Institución</th>
+                                                <th style="width: 47%; text-align: center;">Actividades en las que participó</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarinstitucion" class="btn btn-success btn-mini agregainstitucion" data-bs-toggle="tooltip" title="Agregar Institución"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_instituciones">
+                                            <tr id="fila_default_institucion">
+                                                <td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE INSTITUCIONES PARTICIPANTES</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="equipamiento" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">K. Cambios y Problemas</span></h6>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">K.1 Cambios</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    Por favor, indique cualquier cambio metodológico que se haya realizado en el proyecto y por qué. (Máximo 150 palabras por ítems)
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetallecambios">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 94%; text-align: center;">Cambio</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarcambio" class="btn btn-success btn-mini agregacambio" data-bs-toggle="tooltip" title="Agregar Cambio"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_cambios">
+                                            <tr id="fila_default_cambio">
+                                                <td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE CAMBIOS METODOLÓGICOS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">K.2 Problemas Técnicos y Financieros</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    Por favor, indique cualquier problema, técnico financiero, que es haya presentado en la ejecución del proyecto y si el mismo pudo solventarse. (máximo 150 palabras por ítems)
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleproblemas">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 94%; text-align: center;">Problema</th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarproblema" class="btn btn-success btn-mini agregaproblema" data-bs-toggle="tooltip" title="Agregar Problema"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_problemas">
+                                            <tr id="fila_default_problema">
+                                                <td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE PROBLEMAS TÉCNICOS Y/O FINANCIEROS</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">L. Equipamiento Adquirido</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    En esta Sección, indique cuáles fueron los libros, equipos o insumos para crear un equipo cuya compra
+                                    hubiese sido mediante el presupuesto del proyecto e indique su ubicación actual con el respectivo custodio. Recuerde que los equipos adquiridos a través de los proyectos son propiedad de la Universidad Estatal de Milagro y deben permanecer en la misma.
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleequipos">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 10%; text-align: center;">Código</th>
+                                                <th style="width: 22%; text-align: center;">Equipo</th>
+                                                <th style="width: 22%; text-align: center;">Descripción</th>
+                                                <th style="width: 10%; text-align: center;">Objetivos</th>
+                                                <th style="width: 15%; text-align: center;">Ubicación</th>
+                                                <th style="width: 15%; text-align: center;">Personal Custodio</th>
+                                                <th style="width: 3%; text-align: center"><a href="javascript:;" id="btnagregarequipo" class="btn btn-success btn-mini agregaequipo" data-bs-toggle="tooltip" title="Agregar Equipo"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_equipos">
+                                            <tr id="fila_default_equipo">
+                                                <td colspan="8" style="text-align: center">NO EXISTEN DETALLES DE EQUIPAMIENTO ADQUIRIDO</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="conclusiones" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">M. Conclusiones:</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    Plantee la conclusión más relevante del proyecto
+                                </div>
+                                <div class="row">
+                                    <div class="col-sm-12 px-4">
+                                        <div class="input-group">
+                                            <div class="label-text col-md-2 col-sm-2 col-12"  style="display: table;height: 30px;">
+                                                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                                                    <label for="conclusion" style="padding-right: 10px;">Conclusiones:</label>
+                                                </div>
+                                            </div>
+                                            <div class="control-group col-md-10 col-sm-10 col-12" style="float: left; width: 100">
+                                                <textarea name="conclusion" id="conclusion" rows="4"></textarea>
+                                                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="conclusion_aux" value="">
+                                                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">N. Continuación del Proyecto:</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:left; margin:5px 0 20px; padding:0 10px">
+                                    Especifique los planes de continuación de la línea desarrollada en el proyecto. Indique también si se han derivado nuevas oportunidades de Investigación, desarrollo e investigación.
+                                </div>
+                                <div class="row">
+                                    <div class="col-sm-12 px-4">
+                                        <div class="input-group">
+                                            <div class="label-text col-md-2 col-sm-2 col-12"  style="display: table;height: 30px;">
+                                                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                                                    <label for="continuacion" style="padding-right: 10px;">Continuación del Proyecto:</label>
+                                                </div>
+                                            </div>
+                                            <div class="control-group col-md-10 col-sm-10 col-12" style="float: left; width: 100">
+                                                <textarea name="continuacion" id="continuacion" rows="4"></textarea>
+                                                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="continuacion_aux" value="">
+                                                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="tresultados" class="container tab-pane fade px-0"><br>
+                                <div style="width: 100%; height: max-content; display: inline-block">
+                                    <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span  style="padding:0 10px; background: white;">O. Transferencia de Resultados al proyecto de vinculación:</span></h6>
+                                </div>
+                                <div style="width:100%; text-align:justify; margin:5px 0 20px; padding:0 10px">
+                                    <b>O.1 Línea base</b> establece la situación inicial, es la fotografía actual del lugar donde se va a efectuar la intervención el programa o proyecto y está en relación con los aspectos sociales, demográficos, económicos ambientales, organizativos capacidades etc., sobre los cuales el proyecto va a influir en un sector, área o zona
+                                </div>
+                                <div class="row">
+                                    <div class="col-sm-12 px-4">
+                                        <div class="input-group">
+                                            <div class="label-text col-md-2 col-sm-2 col-12"  style="display: table;height: 30px;">
+                                                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                                                    <label for="lineabase" style="padding-right: 10px;">Línea base:</label>
+                                                </div>
+                                            </div>
+                                            <div class="control-group col-md-10 col-sm-10 col-12" style="float: left; width: 100">
+                                                <textarea name="lineabase" id="lineabase" rows="4"></textarea>
+                                                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="lineabase_aux" value="">
+                                                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="width:100%; text-align:justify; margin:5px 0 20px; padding:0 10px">
+                                    <b>O.2 Metodología:</b> Seleccione el método para la línea base. El método más común es: observación y entrevista, a grupos de tratamiento, una valoración diagnostica por medio de
+                                    encuesta inicial con indicadores cuantificados y desagregados los aspectos como sexo, nacionalidades, pueblos y edad, que permitirán medir el impacto del proyecto y servirá para construir
+                                    los indicadores y metas para el mismo.
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetallemetodologia">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 20%; font-weight: bold; text-align: center">Descripción</th>
+                                                <th style="width: 80%; font-weight: bold; text-align: center">Detalle</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_metodologia">
+                                            <tr>
+                                                <td style="text-align: left;"><b>Descripción del Indicador:</b></td>
+                                                <td style="text-align: left">
+                                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="indicadorgeneral" name="indicadorgeneral" rows="3"></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="text-align: left;"><b>Fuente de datos:</b></td>
+                                                <td style="text-align: left">
+                                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="fuentedatosgeneral" name="fuentedatosgeneral" rows="3"></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="text-align: left;"><b>Datos de Línea base:</b></td>
+                                                <td style="text-align: left">
+                                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="lineabasegeneral" name="lineabasegeneral" rows="3"></textarea>
+                                                    <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="table-responsive-xxl">
+                                    <table class="table table-bordered table-striped" id="tbdetalleindicadores">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 3%; text-align: center;">#</th>
+                                                <th style="width: 24%; text-align: center;">Indicador (Causa, problema efecto)</th>
+                                                <th style="width: 24%; text-align: center;">Descripción del Indicador</th>
+                                                <th style="width: 24%; text-align: center;">Fuente de datos</th>
+                                                <th style="width: 24%; text-align: center;">Datos de la Línea base </th>
+                                                <th style="width: 3%"><a href="javascript:;" id="btnagregarindicador" class="btn btn-success btn-mini agregaindicador" data-bs-toggle="tooltip" title="Agregar Indicador"><i class="fa fa-plus"></i> </a></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detalle_indicadores">
+                                            <tr id="fila_default_indicador">
+                                                <td colspan="6" style="text-align: center">NO EXISTEN DETALLES DE INDICADORES</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {# CONTENIDO DE CADA PESTAÑA #}
+                    </div>
+                    {# CUERPO DEL FORMULARIO #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </form>
+            </div>
+        </div>
+        {# TABLA DE DATOS #}
+    </div>
+
+    <div class="modal fade static"  id="itemspanelobjetivo" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered  modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <span class="paneltitleobjetivo">Objetivos en los que participó la persona</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyobjetivo">
+                    <form id="frmObjetivo" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                        <table class="table table-bordered" >
+                            <tbody>
+                                <tr>
+                                    <td style="width: 15%;"><b><span id="tiporegistroobjetivo"></span></b></td>
+                                    <td style="width: 85%;">
+                                        <span id="nombrepersonaobjetivo"></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><b>Objetivos:</b></td>
+                                    <td>
+                                        <select id="objetivoproyecto" name="objetivoproyecto" multiple style="width: 99%">
+                                            {% for objetivo in objetivos %}
+                                                <option value="{{ objetivo.id }}">{{ objetivo.numero }} - {{ objetivo.descripcion }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar" idfila="" tipoobj=""> Aceptar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

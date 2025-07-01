@@ -1,0 +1,170 @@
+{% extends "adm_agendamientocitas/basegestorcita.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block extraheading %}
+    <script>
+        $(document).ready(function () {
+            const tabla_paginada = $('.tabla_paginada_cita').DataTable({
+                responsive: false,
+                {#scrollX: true,#}
+                ordering: false,
+                paging: true,
+                searching: false,
+                pageLength: 5,
+                bInfo: false,
+                dom: 'Bfrtip',
+                language: {
+                    "url": '/static/js/i18n/Spanish.json'
+                },
+                buttons: []
+            });
+            $('.tabla_paginada_cita tbody').on('click', 'tr', function () {
+                var data = tabla_paginada.row(this).data();
+            });
+
+            $('.tabla_responsive tbody').on('click', '.activo', function () {
+                    console.log('entre')
+                    var id = $(this).attr('idmostrar');
+                    var check=$(this).is(':checked');
+                   ActualizarEstadoExt(id,'mostrarservicio',check)
+            });
+
+
+            //Actualizar estados de checks
+        function ActualizarEstadoExt(id, action, check, idex){
+            bloqueointerface();
+            //console.log(id+'-'+action+'-'+check+'-'+idex)
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': action, 'id': id, 'val': check, 'idex':idex},
+                success: function (data) {
+                    if (data.result === true) {
+                        $.unblockUI();
+                        alertaSuccess(data.mensaje)
+                        if (idex=='ext'){
+                            location.reload()
+                        }else if(idex){
+                            if(action!='mostrarsoloadministrativo'){
+                                $(".activo").prop('checked', false)
+                                $("#activo_" + id).prop('checked', check);
+                            }
+                        }
+                    } else {
+                        $.unblockUI();
+                        CheckError(check,id)
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    CheckError(check,id)
+                    alertaInfo("Error al enviar los datos.");
+                },
+                dataType: "json"
+            });
+        }
+
+        });
+    </script>
+{% endblock %}
+{% block header_content %}
+    <a href="javascript:void(0);"
+       onclick="formModal('{{ cita.id|encrypt }}','Adicionar Observación','addgestion','modal-md')"
+       class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+    {% if not cita.estado == 4 and not cita.estado == 5 %}
+        <a href="javascript:void(0);"
+           onclick="formModal('{{ cita.id }}','{{ cita.fechacita|date:'d-m-Y' }} | {{ cita.horario.turno.nombre_horario }}','finalizar','modal-md')"
+           class="btn btn-primary-old"><i class="fa fa-check-circle"></i> Culminar cita
+        </a>
+    {% endif %}
+{#      {% if not cita.estado == 4 and not cita.estado == 5 %}#}
+        <a href="javascript:void(0);"
+           onclick="formModal('{{ cita.id }}','VISUALIZAR MOTIVO CITA','previsualizarmotivo','modal-md')"
+           class="btn btn-dark text-white"><i class="fa fa-eye"></i> Ver motivo
+        </a>
+{#    {% endif %}#}
+
+{% endblock %}
+{% block content %}
+    <div class="mb-3">
+        <p><b><i class="fa fa-traffic-light"></i> Estado:</b> <span
+                class="badge {{ cita.color_estado }}">{{ cita.get_estado_display }}</span></p>
+        <p><b><i class="fa fa fa-circle-o-notch"></i> Tipo atención: </b> {{ cita.get_tipo_atencion_display }}</p>
+        {% if cita.observacion %}
+            <p><b><i class="fa fa-commenting-o"></i> Observación: </b>{{ cita.observacion }}</p>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        {% if cita.servicio.serviciocita.departamentoservicio.id == 4 or cita.servicio.serviciocita.departamentoservicio.id == 5 or cita.servicio.serviciocita.departamentoservicio.id == 6 %}
+            <h4 class=""><i class="fa fa-comments-o"></i> Subsecuentes </h4>
+        {% else %}
+            <h4 class=""><i class="fa fa-calendar"></i> Observaciones </h4>
+        {% endif %}
+        <table class='tabla_responsive table table_primary'>
+            {#                <table class="table table-bordered table-responsive tabla_paginada_cita" width="100%" id="id_requisitos">#}
+            <thead class="table-light">
+            <tr>
+                <th class="text-center">&nbsp;<b><i class="fa fa-sort-numeric-asc"></i> N°</b></th>
+                <th class="">&nbsp;<i class="fa fa-commenting-o"></i> Observación</th>
+{#                <th class="text-center w-5">Mostrar</th>#}
+                <th class="text-center">&nbsp;<i class="fa fa-file-text"></i> Archivo</th>
+                <th class="text-center"><i class="fa fa-calendar"></i> Fecha creación</th>
+                <th class="text-center"><i class="fa fa-cogs"></i></th>
+
+            </tr>
+            </thead>
+            <tbody>
+            {% for list in cita.observaciones %}
+                <tr>
+                    <td class="text-center">{{ forloop.counter }}</td>
+                    <td class="">{{ list.observacion }}</td>
+{#                     <td class="text-center">#}
+{#                            <input class="activo" type="checkbox" name="activo" idmostrar="{{ list.id }}" id="activo_{{ list.id }}" {% if list.mostrar  %}checked{% endif %}>#}
+{#                     </td>#}
+                    <td class="text-center align-middle">
+                        {% if list.archivo %}
+                            <a class="text-danger fs-3"
+                               data-fancybox="image{{ list.id }}"
+                               data-caption="{{ list.archivo }}"
+                               href="{{ list.archivo.url }}"
+                               data-width="1948"
+                               data-height="1465"
+                               title="Ver acta"
+                               data-bs-toggle="tooltip">
+                                <i class="fa fa-file-pdf-o fs-3"></i>
+                            </a>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ list.fecha_creacion|date:'d-m-Y | H:i' }}</td>
+                    <td>
+                        <div class="dropdown text-center">
+                            <a href="javascript:void(0);"
+                               class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                               data-bs-toggle="dropdown" data-offset="-140"
+                               aria-haspopup="true" aria-expanded="false"
+                                    {% if not responsableid == list.cita.persona_responsable.id %} hidden {% endif %}>
+                                <i class="fa fa-ellipsis-v"></i>
+                            </a>
+
+                            <ul class="dropdown-menu" x-placement="right-start">
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0);"
+
+                                       onclick="formModal('{{ list.id|encrypt }}','Editar {{ list.observacion }}','editgestion','modal-md')">
+                                        <i class="fa fa-edit dropdown-item-icon"></i> Editar</a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0);"
+                                       onclick="eliminarajax('{{ list.id|encrypt }}','{{ list.observacion }}','delgestion')"><i
+                                            class="fa fa-trash dropdown-item-icon"></i> Eliminar</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

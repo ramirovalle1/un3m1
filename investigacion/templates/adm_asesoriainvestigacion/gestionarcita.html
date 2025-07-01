@@ -1,0 +1,565 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        var switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+
+        $(function(){
+            $("#id_horainicioase, #id_horafinase, #id_observacion").addClass("validate[required]");
+
+            $("body").initSwitchery();
+            
+            let nopcion = "GES";
+            let fecha = new Date('{{ fecha|date:"Y-m-d H:i:s" }}');
+            let horas = fecha.getHours();
+            let minutos = fecha.getMinutes();
+            let segundos = fecha.getSeconds();
+            let nf_anexo = secuenciaanexo = 0;
+            let nombresol = "{{ nombresol }}";
+            let nombreresp = "{{ nombreresp }}";
+            let anio = {{ anio }};
+            let mes = {{ mes }};
+
+            $("#id_realizaproximaacti").attr('disabled', true);
+
+            mostrarHoraActual = function (){
+                let hh = horas >= 10 ? `${horas}`:`0${horas}`;
+                let mm = minutos >= 10 ? `${minutos}`:`0${minutos}`;
+                let ss = segundos >= 10 ? `${segundos}`:`0${segundos}`;
+
+                let hora = `${hh}:${mm}:${ss}`;
+
+                $("#id_horafinase").val(hora);
+
+                segundos ++;
+                if(segundos > 59){
+                    segundos = 0;
+                    minutos ++;
+                    if(minutos > 59){
+                        minutos = 0;
+                        horas ++;
+                        if(horas > 23)
+                            horas = 0;
+                    }
+                }
+
+                setTimeout(mostrarHoraActual, 1000);
+            };
+
+            $("#id_asistio").change(function () {
+                if ($(this).is(':checked')) {
+                    $("#fieldset_horainicioase").show();
+                    $("#fieldset_horafinase").show();
+                    $("#id_horainicioase").addClass("validate[required]");
+                    $("#id_horafinase").addClass("validate[required]");
+                }
+                else{
+                    $("#fieldset_horainicioase").hide();
+                    $("#fieldset_horafinase").hide();
+                    $("#id_horainicioase").removeClass("validate[required]");
+                    $("#id_horafinase").removeClass("validate[required]");
+                }
+            });
+
+            $("#id_proxima").change(function () {
+                $("#id_realizaproximaacti").val("").trigger('change');
+                if ($(this).is(':checked')) {
+                    $("#id_realizaproximaacti").attr('disabled', false);
+                    $("#id_realizaproximaacti").addClass("validate[required]");
+                }
+                else{
+                    $("#id_realizaproximaacti").attr('disabled', true);
+                    $("#id_realizaproximaacti").removeClass("validate[required]");
+                }
+            });
+
+            $('#id_realizaproximaacti').change(function(){
+                $("#id_gestion").val('').trigger('change');
+                if($(this).val() != ''){
+                    $("#id_solicitante").val(nombresol);
+                    if($(this).val() == '1')
+                        $("#id_tipoactividad").val("ASESORÍA INVESTIGACIÓN");
+                    else
+                        $("#id_tipoactividad").val("GESTIÓN ADMINISTRATIVA");
+                    mostrarCamposProximaCita();
+                }
+                else{
+                    ocultarCamposProximaCita();
+                }
+            });
+
+            mostrarCamposProximaCita = function (){
+                $("#separator2_tipoactividad, #fieldset_tipoactividad, #fieldset_solicitante, #fieldset_modalidad, #fieldset_gestion, #fieldset_servicio").show();
+                $("#seccioncalendario").show();
+                $("#seccionhoraseleccionada").show();
+                $("#id_modalidad").addClass("validate[required]");
+                $("#id_gestion").addClass("validate[required]");
+                $("#id_servicio").addClass("validate[required]");
+                $("#id_fecha_aux").addClass("validate[required]");
+                $("#id_responsable_aux").addClass("validate[required]");
+                $("#id_horario_aux").addClass("validate[required]");
+            };
+
+            ocultarCamposProximaCita = function (){
+                $("#separator2_tipoactividad, #fieldset_tipoactividad, #fieldset_solicitante, #fieldset_modalidad, #fieldset_gestion, #fieldset_servicio, #fieldset_motivo").hide();
+                $("#seccioncalendario").hide();
+                $("#seccionhoraseleccionada").hide();
+                $("#id_modalidad").removeClass("validate[required]");
+                $("#id_gestion").removeClass("validate[required]");
+                $("#id_servicio").removeClass("validate[required]");
+                $("#id_motivo").removeClass("validate[required]");
+                $("#id_fecha_aux").removeClass("validate[required]");
+                $("#id_responsable_aux").removeClass("validate[required]");
+                $("#id_horario_aux").removeClass("validate[required]");
+            }
+
+            $('#id_gestion').change(function(){
+                $('#id_servicio').empty().append('<option value="">---------</option>').val('').trigger("change");
+                let control = $(this);
+                let id = parseInt($("#id_gestion").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_asesoriainvestigacion",
+                        data: {'action': 'serviciogestion', 'id': id, 'tipo': $('#id_realizaproximaacti').val()},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_servicio').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#id_servicio').change(function(){
+                let id = parseInt($(this).val());
+                if(!isNaN(id)){
+                    cargarCalendarioAdmin(nopcion, id, '0', anio, mes, '');
+                }else{
+                    $(".calendario").html("");
+                    $("#boxcalendario").show();
+                    $(".responsables").html("");
+                    $("#boxresponsable").show();
+                    $(".horarios").html("");
+                    $("#boxturno").show();
+                    $("#textohorarioseleccionado").hide();
+                    $("#boxturnoseleccionado").show();
+                    $("#fieldset_motivo").hide();
+                    $("#id_fecha_aux").val("");
+                }
+            });
+
+            cargarCalendarioAdmin = function (nopcion, idserv, idresp, anio, mes, mov){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_asesoriainvestigacion",
+                    data: {'action': 'cargarcalendario', 'nopcion': nopcion, 'idserv': idserv, 'idresp': idresp, 'anio': anio, 'mes': mes, 'mov': mov},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".calendario").html(data.data);
+                            $("#boxcalendario").hide();
+                            $(".responsables").html("");
+                            $("#boxresponsable").show();
+                            $(".horarios").html("");
+                            $("#boxturno").show();
+                            $("#textohorarioseleccionado").hide();
+                            $("#boxturnoseleccionado").show();
+                            $("#fieldset_motivo").hide();
+                            $("#anexos").hide();
+                            $("#id_motivo").val("");
+                            $("#id_motivo").removeClass("validate[required]");
+                            $("#id_fecha_aux").val("");
+                            $("#id_responsable_aux").val("");
+                            $("#id_horario_aux").val("");
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            cargarResponsableAdmin = function (nopcion, idserv, idresp, anio, mes, dia){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_asesoriainvestigacion",
+                    data: {'action': 'cargarresponsablesservicio', 'nopcion': nopcion, 'idserv': idserv, 'idresp': idresp, 'anio': anio, 'mes': mes, 'dia': dia},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".responsables").html(data.data);
+                            $("#boxresponsable").hide();
+                            $(".horarios").html("");
+                            $("#boxturno").show();
+                            $("#textohorarioseleccionado").hide();
+                            $("#boxturnoseleccionado").show();
+                            $("#fieldset_motivo").hide();
+                            $("#anexos").hide();
+                            $("#id_motivo").val("");
+                            $("#id_motivo").removeClass("validate[required]");
+                            $("#id_responsable_aux").val("");
+                            $("#id_horario_aux").val("");
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            cargarTurnoAdmin = function (nopcion, idserv, idresp, anio, mes, dia){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_asesoriainvestigacion",
+                    data: {'action': 'cargarturnosservicio', 'nopcion': nopcion, 'idserv': idserv, 'idresp': idresp, 'anio': anio, 'mes': mes, 'dia': dia},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            $(".horarios").html(data.data);
+                            $("#boxturno").hide();
+                            $("#textohorarioseleccionado").hide();
+                            $("#boxturnoseleccionado").show();
+                            $("#fieldset_motivo").hide();
+                            $("#anexos").hide();
+                            $("#id_motivo").val("");
+                            $("#id_motivo").removeClass("validate[required]");
+                            $("#id_horario_aux").val("");
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $(".agregaanexo").click(function() {
+                if(datosAnexoCompleto()){
+                    nf_anexo += 1;
+                    secuenciaanexo += 1;
+
+                    borrarFilaDefaultAnexo();
+
+                    nueva = `<tr class="detalleanexos" id="filaanexo_${nf_anexo.toString()}">`+
+                            `<td style="text-align: center">${secuenciaanexo.toString()}</td>`+
+                            `<td> <input type="hidden" id="nfila_anexo[]" name="nfila_anexo[]" value="${nf_anexo.toString()}">  <input autocomplete="off" style="text-align: left; width: 100%; text-transform: none" maxlength="250" id="descripcion_anexo${nf_anexo.toString()}" name="descripcion_anexo[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td style="text-align: center"><label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bganexo_${nf_anexo.toString()}" class="badge">0</span><input type="file" style="color: transparent" class="archivosanexo" idf="${nf_anexo.toString()}" id="archivo_anexo[]" name="archivo_anexo[]" hidden>   </label> <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc${nf_anexo.toString()}" value="">  <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>`+
+                            `<td><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_anexo" idf="${nf_anexo.toString()}" data-bs-toggle="tooltip" title="Eliminar fila"><i class="fa fa-remove"></i></a></td></tr>`;
+
+                    $("#detalle_anexos").append(nueva);
+                    $("#detalle_anexos").find(".eliminaritem_anexo").tooltip();
+                    $("#descripcion_anexo"+nf_anexo.toString()).addClass("validate[required]");
+                    $("#archivoselecc"+nf_anexo.toString()).addClass("validate[required]");
+                    $(".eliminaritem_anexo").unbind("click.eliminaritem_anexo");
+                    $(".eliminaritem_anexo").bind("click.eliminaritem_anexo", eliminarItemAnexo);
+
+                    conectarChangeFileinputAnexo();
+                }
+            });
+
+            eliminarItemAnexo = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                $("#filaanexo_"+id).remove();
+
+                secuenciaanexo = 0;
+                $("#tbdetalleanexos tbody tr").each(function (index) {
+                    secuenciaanexo ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaanexo.toString());
+                    });
+                });
+
+                if(secuenciaanexo == 0)
+                    agregarFilaDefaultAnexo();
+
+                actualizarListaAnexoArchivo();
+            };
+
+            actualizarListaAnexoArchivo = function (){
+                lista_items1 = [];
+                cf = 1;
+                $('input[name="archivo_anexo[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: cf
+                        };
+                        lista_items1.push(item);
+                    }
+                    cf ++;
+                });
+            };
+
+            conectarChangeFileinputAnexo = function() {
+                $(".archivosanexo").unbind();
+                $(".archivosanexo").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+
+                    $("#bganexo_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizarListaAnexoArchivo();
+                });
+            };
+
+            agregarFilaDefaultAnexo = function (){
+                filadefault = '<tr id="fila_default_anexo">'+
+                              '<td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS AGREGADOS</td>'+
+                              '</tr>';
+                $("#detalle_anexos").append(filadefault);
+            };
+
+            borrarFilaDefaultAnexo = function (){
+                $("#fila_default_anexo").remove();
+            };
+
+            datosAnexoCompleto = function (){
+                let c1e = true, c2e = true;
+
+                $('input[name="descripcion_anexo[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                $('input[name="archivo_anexo[]"]').each(function() {
+                    if($(this).get(0).files.length == 0){
+                        c2e = false;
+                        return false;
+                    }
+                });
+
+                return (c1e && c2e);
+            };
+
+            $('#id_servicio').empty().append('<option value="">---------</option>').val("").trigger("change");
+
+            switchery["id_asistio"].setPosition(true);
+
+            $("#id_motivoa, #id_observacion, #id_motivo").css("padding", "3px");
+            $("#fieldset_tabla_anexos_solicitante").detach().appendTo("#fieldset_motivoa");
+            $("#fieldset_tabla_anexos").detach().appendTo("#fieldset_observacion");
+            $("#textohorarioseleccionado").hide();
+            ocultarCamposProximaCita();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_asesoriainvestigacion{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/adm_asesoriainvestigacion{% endblock %}
+{% block formdestinationswal %}/adm_asesoriainvestigacion{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='gestionarcita'/>
+    <input type='hidden' id='id' name='id' value='{{ cita.id|encrypt }}'/>
+    <input type='hidden' id='fechaproximacita' name='fechaproximacita' value=''/>
+    <input type='hidden' id='idturno' name='idturno' value=''/>
+    <input type='hidden' id='idresponsable' name='idresponsable' value=''/>
+{% endblock %}
+{% block formback %}/adm_asesoriainvestigacion{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div id="fieldset_tabla_anexos_solicitante" class="col-md-12" style="float: left;">
+        <div class="row">
+
+        </div>
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_anexos_solicitante" style="padding-right: 10px;">Anexos:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left;">
+                <div class="table-responsive-xxl">
+                    <table class="table table-bordered table-striped" id="tbdetalleanexossolicitante">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 3%; text-align: center;">#</th>
+                                <th style="width: 87%; text-align: center;">Descripción</th>
+                                <th style="width: 10%; text-align: center;">Archivo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_anexos_solicitante">
+                            {% for anexo in cita.anexos %}
+                                <tr>
+                                    <td style="text-align: center">{{ forloop.counter }}</td>
+                                    <td style="text-align: justify;">{{ anexo.descripcion }}</td>
+                                    <td style="text-align: center">
+                                        {% if anexo.tipo_accion == 'preview' %}
+                                            <a href="{{ anexo.archivo.url }}" class="btn btn-mini btn-info" data-width="2048" data-height="1380" data-fancybox="anexo{{ anexo.id }}" data-caption="{{ anexo.descripcion }}" data-bs-toggle="tooltip" data-placement="top" title="Ver anexo"><i class="fa fa-eye"></i> </a>
+                                        {% else %}
+                                            <a href="{{ anexo.archivo.url }}" target="_blank" class="btn btn-mini btn-info"  data-bs-toggle="tooltip" data-placement="top" title="Descargar anexo"><i class="fa fa-download"></i> </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr id="fila_default_anexo_solicitante">
+                                    <td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="fieldset_tabla_anexos" class="col-md-12" style="float: left;">
+        <div class="row">
+
+        </div>
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_anexos_subir" style="padding-right: 10px;">Anexos a subir (Opcional):</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left;">
+                <div class="table-responsive-xxl">
+                    <label>Tipos permitidos: {{ tipoanexos }}, máximo {{ tamanio }}:</label>
+                    <table class="table table-bordered table-striped" id="tbdetalleanexos">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 3%; text-align: center;">#</th>
+                                <th style="width: 72%; text-align: center;">Descripción</th>
+                                <th style="width: 25%; text-align: center;">Archivo</th>
+                                <th style="width: 3%"><a href="javascript:;" id="btnagregaranexo" class="btn btn-success btn-mini agregaanexo" data-bs-toggle="tooltip" title="Agregar Anexo"><i class="fa fa-plus"></i> </a></th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_anexos">
+                            <tr id="fila_default_anexo">
+                                <td colspan="4" style="text-align: center">NO EXISTEN DETALLES DE ANEXOS AGREGADOS</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid" id="seccioncalendario">
+        <div class="row" style="justify-content: space-between;margin-left: calc(var(--bs-gutter-x) * -.5)!important;">
+            <div class="col-sm-12 col-md-7 col-lg-4 col-xxl-4">
+                <label>Fecha:</label>
+                <div id="boxcalendario" class="box-reserva text-center" style="height: 370px;">
+                    <div class="mensaje p-4 py-0">
+                        <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar el servicio</h4>
+                    </div>
+                </div>
+                <div class="calendario">
+
+                </div>
+                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_fecha_aux" value="">
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+            </div>
+            <div class="col-sm-12 col-md-12 col-lg-4 col-xxl-3">
+                <label>Responsable:</label>
+                <div id="boxresponsable" class="box-reserva text-center" style="height: 370px;">
+                    <div class="mensaje p-4 py-0">
+                        <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar una fecha</h4>
+                    </div>
+                </div>
+                <div class="responsables">
+
+                </div>
+                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_responsable_aux" value="">
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+            </div>
+            <div class="col-sm-12 col-md-12 col-lg-4 col-xxl-3">
+                <label>Horario:</label>
+                <div id="boxturno" class="box-reserva text-center" style="height: 370px;">
+                    <div class="mensaje p-4 py-0">
+                        <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar un responsable</h4>
+                    </div>
+                </div>
+                <div class="horarios">
+
+                </div>
+                <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_horario_aux" value="">
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid" id="seccionhoraseleccionada">
+        <div id="boxturnoseleccionado" class="box-reserva text-center">
+            <div class="mensaje p-4 py-0">
+                <h4 class="text-secondary">Este campo se habilitará al momento de seleccionar un horario</h4>
+            </div>
+        </div>
+        <div id="textohorarioseleccionado" class="alert alert-info text-justify">
+            Estimado docente usted va a agendar una cita para el día Lunes 29 de abril del 2024 en horario de 10:00 a 11:00
+        </div>
+    </div>
+
+    <div id="fieldset_motivo" class="col-md-12" style="float: left;">
+        <div class="row">
+
+        </div>
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12" style="display: table; height: 30px; text-align: right;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_motivo" style="padding-right: 10px;">Motivo:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">
+                <textarea name="motivo" cols="40" rows="4" col="12" class="form-control" data-nameinput="motivo" id="id_motivo" style="padding: 3px;"></textarea>
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"> </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

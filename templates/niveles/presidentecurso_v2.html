@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <script type="text/javascript">
+
+        var busqueda = function (page/*=undefined*/) {
+            var niv = $("#nivel_list").val();
+            var par = $("#paralelo_list").val();
+            var carrera = parseInt($("#carrera_list").val());
+            page = typeof page == 'undefined' ? 1 : page;
+            let href = "{{ request.path|safe }}?action={{ action|default:'' }}";
+            if (parseInt(niv)) {
+                href += "&niv=" + niv;
+            }
+            if ((par !== '0') && (par !== null)) {
+                href += "&par=" + par;
+            }
+            if (page) {
+                href += "&page=" + page;
+            }
+            if (carrera) {
+                href += "&c=" + carrera;
+            }
+            location.href = href;
+            bloqueointerface();
+            return false;
+        };
+
+        $(function () {
+
+            $(".fancybox").fancybox();
+            $("#nivel_list").select2({minimumResultsForSearch: 5});
+            $("#paralelo_list").select2({minimumResultsForSearch: 5});
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $("#paralelo_list").change(function () {
+                busqueda();
+            });
+
+            $("#nivel_list").change(function () {
+                $("#paralelo_list").select2('destroy');
+
+                $("#paralelo_list").select2();
+                $("#paralelo_list").val('0');
+                busqueda();
+            });
+
+            $("#carrera_list").change(function () {
+                busqueda();
+            });
+        });
+
+        function registrar_presidentes() {
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'cargarcursos_v2',
+                    'csrfmiddlewaretoken': '{{ csrf_token }}'
+                },
+                success: function (response) {
+                    if (response.result === "ok") { // Cambia la condición para verificar la respuesta correcta
+                        {#mensajeSuccessSwal('Registro guardado', response.mensaje, () => {#}
+                        {#    // Redirige a otra acción o URL específica#}
+                        {#    window.location.href = '{{ request.path }}?action=viewpresidentescurso';#}
+                        {# }); #}
+                        window.location.href = '{{ request.path }}?action=presidentescursosnew';
+                        {#$.unblockUI();#}
+                        {#window.open('{{ request.path }}?action=presidentescursosnew', '_blank');#}
+                    } else {
+                        $.unblockUI();
+                        mensajeDanger(response.mensaje);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    $.unblockUI();
+                    mensajeDanger("Ocurrió un error.");
+                },
+                dataType: "json"
+            });
+
+            return false;
+        }
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function generar_reporte(id, text) {
+            Swal.fire({
+                title: '¿Estás seguro de generar reporte?',
+                text: text,
+                type: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, generar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: 'GET',
+                            url: '/niveles?action=reporte_presidentes',
+
+                        });
+                        $.unblockUI();
+                    }
+                }
+            )
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Periodo: {{ periodo }}</h6>
+                <h6>Carrera: {{ carrera }}</h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-sm-4">
+                <b>Nivel:</b><br>
+                <select id="nivel_list" style="width: 100%">
+{#                    <option value="0" {% if nivelselected == 0 %}selected{% endif %}>TODAS</option>#}
+                    {% for niv in niveles %}
+                        <option {% if nivelselected == niv.0 %}selected{% endif %}
+                                value="{{ niv.0 }}">{{ niv.1 }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-sm-4">
+                <b>Paralelo:</b><br>
+                <select id="paralelo_list" style="width: 100%">
+{#                    <option value="0" selected="selected">TODOS</option>#}
+                    {% for paralelo in paralelos %}
+                        <option value="{{ paralelo }}" {% if paraleloid == paralelo %}
+                                selected {% endif %}>{{ paralelo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if carerraselect %}
+            <div class="col-sm-4">
+                <b>Carrera:</b><br>
+                <select id="carrera_list" style="width: 100%">
+                    {% for carrera in carreras %}
+                        <option value="{{ carrera.pk }}" {% if carrera.pk == carerraselect %}selected{% endif %}>{{ carrera }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        {#        <div class="row justify-content-end">#}
+        <div class="row">
+            <div class="col-sm-5" style="align-content: center">
+                <form method="GET">
+{#                     <a class="btn btn-primary cargarcursos" ref="javascript:;" ><i class="fa fa-cogs"></i> Cargar cursos</a>#}
+                    <a
+                        href="{{ request.path }}?exportar_excel&{{ url_vars }}&c={{ carerraselect|default:"0" }}"
+                       class='btn btn-cian-opacity tu'><span class="fa fa-file-excel-o"></span>
+                        Listado de candidatos a representantes de curso
+                    </a>
+                    <a
+                        href="javascript:void(0);"
+                        class='btn btn-primary tu' onclick="registrar_presidentes()"><span class="fa fa-group"></span>
+                        Registrar representantes estudiantiles
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+{#    <ul class="nav nav-tabs">#}
+{#        {% for nivel in niveles %}#}
+{#        <li class="{% if not genero_id or genero_id == '1' %}active{% endif %}">#}
+{#            <a href="{{ request.path }}?presidentecurso&nivel={{ nivel }}">{{ nivel }}</a>#}
+{#        </li>#}
+{#        {% endfor %}#}
+{#    </ul>#}
+
+    <div class="mb-4">
+        <div class="">
+            <table class=" table table_primary">
+                <thead>
+                    <thead>
+                    <tr>
+                        <th class="text-center" style="text-align: center;width: 5%"><i class="fa fa-sort-numeric-desc"></i></th>
+                        <th class="text-center" style="text-align: center;width: 15%">Cedula</th>
+                        <th class="text-center" style="text-align: center;width: 25%">Nombres</th>
+                        <th class="text-center" style="text-align: center;width: 15%">Correo</th>
+                        <th class="text-center" style="text-align: center;width: 10%">Sexo</th>
+                        <th class="text-center" style="text-align: center;width: 10%">Nivel</th>
+                        <th class="text-center" style="text-align: center;width: 10%">Paralelo</th>
+                        <th class="text-center" style="text-align: center;width: 10%">Promedio</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for dato in aspirantes %}
+                        {% if forloop.counter0 == 0 %}
+                            <tr>
+                                <td class="ps-4" colspan="8" style="text-align: center; background-color: #abcae6; color: #122436; font-weight: bold;">CANDIDATOS ELEGIBLES</td>
+                            </tr>
+                        {% endif %}
+                        {% if forloop.counter0 == 10 %}
+                            <tr>
+                                <td class="ps-4" colspan="8" style="text-align: center; background-color: #abcae6; color: #122436; font-weight: bold;">BANCO DE ELEGIBLES</td>
+                            </tr>
+                        {% endif %}
+                        {% if forloop.first or forloop.counter|divisibleby:"8" %}
+                            <tr>
+                                <td style="text-align: center">{{ forloop.counter }}</td>
+                                <td style="text-align: center">{{ dato.cedula }}</td>
+                                <td style="text-align: left">
+                                    <a href="{{ dato.cedula|get_fotocedula }}" class="fancybox p-3"><img src="{{ dato.cedula|get_fotocedula }}" alt="..." width="20" height="20" class="rounded-circle"></a>
+                                    {{ dato.nombres}}
+                                </td>
+                                <td  class="ps-2" style="text-align: left">{{ dato.correo }}</td>
+                                <td style="text-align: center">{{ dato.sexo }}</td>
+                                <td style="text-align: center">{{ dato.nivel }}</td>
+                                <td style="text-align: center">{{ dato.paralelo }}</td>
+                                <td style="text-align: center">{{ dato.promedio_final }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td style="text-align: center">{{ forloop.counter }}</td>
+                                <td style="text-align: center">{{ dato.cedula }}</td>
+                                <td style="text-align: left">
+                                    <a href="{{ dato.cedula|get_fotocedula }}" class="fancybox p-3"><img src="{{ dato.cedula|get_fotocedula }}" alt="..." width="20" height="20" class="rounded-circle"></a>
+                                    {{ dato.nombres}}
+                                </td>
+                                <td  class="ps-2" style="text-align: left">{{ dato.correo }}</td>
+                                <td style="text-align: center">{{ dato.sexo }}</td>
+                                <td style="text-align: center">{{ dato.nivel }}</td>
+                                <td style="text-align: center">{{ dato.paralelo }}</td>
+                                <td style="text-align: center">{{ dato.promedio_final }}</td>
+                            </tr>
+                        {% endif %}
+                    {% empty %}
+                        <tr>
+                            <td colspan="8" style="text-align: center">NO EXISTEN REGISTROS</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+            </table>
+        </div>
+        <div class="card-footer border-top-0">
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}

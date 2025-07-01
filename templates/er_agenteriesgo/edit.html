@@ -1,0 +1,339 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script>
+        $(function(){
+            //var idfila = "";
+            //Agrega las validaciones a los campos de cabecera
+            $("#id_grupo, #id_codigo, #id_descripcion").addClass("validate[required]");
+
+            //Validacion del codigo cuando se ejecuta evento keypress
+            $("#id_codigo, #codigoriesgo").keypress(function (e) {
+                return solodigitos(e);
+            });
+
+            //Funcion de validacion de digitos
+            solodigitos = function (e) {
+                 if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                    return false;
+                 }
+            };
+
+            //Clic en Boton Adicionar en detalle del Formulario
+            $("#itemsadicionar").click(function(){
+                $("#repetido, #incompleto").hide();
+                $("#codigoriesgo, #descripcionriesgo, #medidariesgo").val("");
+                $("#codigoriesgo").removeAttr("idr");
+                $("#itemspanel").modal({backdrop:'static', width: '700px'}).modal('show');
+                return false;
+            });
+
+            //Clic en boton Cerrar de la ventana Modal Adicionar Riesgo
+            $("#itemspanel .btn-cerrar").click(function() {
+                $("#itemspanel").modal("hide");
+                return false;
+            });
+
+            //Consulta los riesgos de trabajo para mostrarlos en el campo Codigo Riesgo del Modal Adicionar Riesgo
+            buscar_riesgo = function(query, process) {
+                $.get("/reportes", {'action': 'data', 'model': 'RiesgoTrabajo', 'p': 1, 'q': query, 's': 10}, function(data) {
+                    if (data.results.length>0) {
+                        $("#codigoriesgo").get(0).results = data.results;
+                        listing = [];
+                        for (var i in data.results) {
+                            var dato = data.results[i];
+                            listing.push(dato.name);
+                        }
+                        process(listing);
+                    } else {
+                        $("#descripcionriesgo, #medidariesgo").val("");
+                    }
+                }, "json");
+            };
+
+            //Actualiza los valores en el formulario Modal de Agregar Riesgo
+            updater_riesgo = function(item) {
+                var results = $("#codigoriesgo").get(0).results;
+                for (var i in results) {
+                    var datos = results[i];
+                    if (item==datos.name) {
+                        $("#codigoriesgo").val(datos.alias[0]).attr("idr", datos.id);
+                        $("#descripcionriesgo").val(datos.alias[2]);
+                        // Esto es lo que devuelve la funcion flexbox_alias(self): de la Clase RiesgoTrabajo. Segun orden
+                        return datos.alias[1];//Devuelvo codigo de riesgo a la caja de texto
+                    }
+                }
+                return item;
+            };
+
+            //Filtro de una lista de valores que se encuentren en la tabla de la BD
+            $("#codigoriesgo").typeahead({source: buscar_riesgo, updater: updater_riesgo}).blur(function(){
+                $("#codigoriesgo").val("");
+                $("#descripcionriesgo").val("");
+                $("#medidariesgo").val("");
+                $("#incompleto, #repetido").hide();
+            });
+
+            //Actualiza los valores del campo oculto listariesgos
+            actualizar_lista = function(){
+                var lista = "";
+                $(".eliminaritem").each(function(){
+                    var elemento = $(this);
+                    var id = elemento.attr('idr');//Id del riesgo
+                    var texto = elemento.attr('texto');//Medida para el agente
+                    var acciond = elemento.attr('acciond');//Accion del detalle
+                    var valor = texto.replace(":", "").replace(";", "");
+                    lista+=(id+":"+valor+":"+acciond+";");
+                });
+                lista = lista.substring(0, lista.length - 1);
+                $("#listariesgo").val(lista);
+
+            };
+
+            //Clic en el boton X Eliminar Item
+            conectar_eliminar = function() {
+                $(".eliminaritem").unbind();
+                $(".eliminaritem").click(function () {
+                    $("#detallemanipulado").val("SI");
+                    var id = $(this).attr('idr');
+                    var acciond = $("#elifil_"+id+"").attr("acciond");
+
+                    $('#elemto_' + id).remove();
+                    if ($(".eliminaritem").length == 0){
+                        $("#itemsbody").html("<tr><td colspan='4'>NO EXISTEN RIESGOS ASOCIADOS AL AGENTE</td></tr>");
+                    }
+
+                    if(acciond!="I"){
+                        var eliminados=$("#listaeliminar").val();
+                        if(eliminados.trim()=='')
+                            eliminados = id;
+                        else
+                            eliminados = eliminados + ";" + id;
+                        $("#listaeliminar").val(eliminados);
+                    }
+                    actualizar_lista();
+                });
+            };
+
+            //Clic en el boton Adiccionar del formulario Modal de Agregar Riesgo
+            $(".btn-adicionar").click(function () {
+                var boton = $(this);
+
+                $("#repetido, #incompleto").hide();
+                var codigo = $("#codigoriesgo").val();
+                var descripcionriesgo = $("#descripcionriesgo").val();
+                var medidariesgo = escapeHTMLEncode($("#medidariesgo").val().toUpperCase().trim());
+                var id = $("#codigoriesgo").attr('idr');
+
+                //Verifico si los datos de lo campos estan completos
+                if (codigo.length == 0 || descripcionriesgo.length == 0 || medidariesgo.length == 0){
+                    $("#incompleto").show();
+                    return false;
+                }
+
+                var adicionar = true;
+
+                //Recorre los botones eliminar item que tienen asignado el codigo del riesgo para verificar repetidos
+                $(".eliminaritem").each(function () {
+                    //Si el valor de la fila actual es igual al que se quiere agregar
+                    if($(this).attr('idr') == id){
+                        $("#repetido").show();
+                        adicionar = false;
+                        return false;
+                    }
+                });
+
+                if(adicionar){
+                    //Si no existen elementos
+                    if($(".eliminaritem").length == 0){
+                        $("#itemsbody").empty();
+                    }
+                    //Agrego fila a la tabla
+                    $("#itemsbody").append("<tr id='elemto_"+id+"'>" +
+                            "<td style='text-align: center'>"+codigo.trim()+"</td>" +
+                            "<td style='text-transform: uppercase'>"+descripcionriesgo.trim()+"</td>" +
+                            "<td style='text-transform: uppercase'>"+medidariesgo+"</td>" +
+                            "<td style='text-align: center'><a href='javascript:;' texto='"+medidariesgo+"' class='btn btn-tini btn-info editarritem tu' title='Editar' idr='"+id+"'><i class='fa fa-edit'></i></a>&nbsp;<a id='elifil_"+id+"' href='javascript:;' texto='"+medidariesgo+"' class='btn btn-tini btn-danger eliminaritem tu' title='Eliminar' idr='"+id+"' acciond='I'><i class='fa fa-remove'></i></a></td>" +
+                            "</tr>");
+                    //Limpio los campos del formulario modal
+                    $("#codigoriesgo, #descripcionriesgo, #medidariesgo").val("");
+
+                    $("#detallemanipulado").val("SI");
+                    //Asocia el evento eliminar al boton X
+                    conectar_eliminar();
+                    //Asocia el evento eliminar al boton / Editar
+                    conectar_editar();
+                    //Actualiza la lista de riesgos
+                    actualizar_lista();
+                    tooltips();
+                    //Clic en boton Adicionar y Cerrar: Cerrar
+                    if (boton.hasClass('cerrar')){
+                        $("#itemspanel").modal("hide");
+                    }
+                }
+            });
+
+            //Clic en el boton Editar Item
+            conectar_editar = function() {
+                $(".editarritem").unbind();
+                $(".editarritem").click(function () {
+
+                    var idfila = $(this).attr('idr');
+                    var codigor = $("#elemto_"+idfila+" td:eq(0)").text();
+                    var descripcionr = $("#elemto_"+idfila+" td:eq(1)").text();
+                    var medidar = $("#elemto_"+idfila+" td:eq(2)").text();
+
+                    $("#codigoriesgoE").val(codigor).attr("idr",idfila);
+                    $("#descripcionriesgoE").val(descripcionr);
+                    $("#medidariesgoE").val(medidar);
+                    $("#itemspanelEdit").modal({backdrop:'static', width: '700px'}).modal('show');
+                });
+            };
+
+            //Clic en boton Cerrar de la ventana Modal Editar Riesgo
+            $("#itemspanelEdit .btn-cerrar-edit").click(function() {
+                $("#itemspanelEdit").modal("hide");
+                return false;
+            });
+
+            //Clic en el boton Aceptar del formulario Modal de Editar Riesgo
+            $(".btn-aceptar").click(function () {
+                var boton = $(this);
+
+                $("#repetidoE, #incompletoE").hide();
+
+                var medidariesgo = escapeHTMLEncode($("#medidariesgoE").val().toUpperCase().trim());
+                var id = $("#codigoriesgoE").attr('idr');
+
+                //Verifico si los datos de lo campos estan completos
+                if (medidariesgo.length == 0){
+                    $("#incompletoE").show();
+                    return false;
+                }
+
+                //Limpio los campos del formulario modal
+                $("#codigoriesgoE, #descripcionriesgoE, #medidariesgoE").val("");
+                $("#elemto_"+id+" td:eq(2)").text(medidariesgo);
+                $("#elifil_"+id+"").attr("texto",medidariesgo);
+
+                if($("#elifil_"+id+"").attr("acciond")!="I")
+                    $("#elifil_"+id+"").attr("acciond","U");
+
+                $("#detallemanipulado").val("SI");
+                //Asocia el evento actualizar al boton Edit
+                conectar_editar();
+                //Actualiza la lista de riesgos
+                actualizar_lista();
+                tooltips();
+
+                $("#itemspanelEdit").modal("hide");
+            });
+
+            //Asocia el evento eliminar al boton X Elinminar
+            conectar_eliminar();
+            //Asocia el evento eliminar al boton / E#ditar
+            conectar_editar();
+        });
+    </script>
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/er_agenteriesgo{% endblock %}
+{% block formdestination %}/er_agenteriesgo{% endblock %}
+{% block formwidth %}form-xl{%  endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <table class="table table-bordered" style="margin-bottom: 0;">
+            <thead>
+            <tr>
+                <th style="width: 100px; text-align: center">C. Riesgo</th>
+                <th>Riesgo</th>
+                <th style="width: 500px;">Medida</th>
+                <th style="width: 40px;"> </th>
+            </tr>
+            </thead>
+            <tbody id="itemsbody" class="datatable">
+            {% for detalle in agenteriesgo.detalles_agente %}
+                <tr id="elemto_{{ detalle.riesgo.id }}">
+                    <td style="text-align: center">{{ detalle.riesgo.codigo }}</td>
+                    <td>{{ detalle.riesgo }}</td>
+                    <td>{{ detalle.medida }}</td>
+                    <td style='text-align: center'>
+                    {% if not agenteriesgo.en_uso %}
+                        <a href='javascript:;' texto='{{ detalle.medida }}' class='btn btn-tini btn-info editarritem tu' title='Editar' idr='{{ detalle.riesgo.id}}'><i class='fa fa-edit'></i></a>
+                        <a id="elifil_{{ detalle.riesgo.id}}" href='javascript:;' texto='{{ detalle.medida }}' class='btn btn-tini btn-danger eliminaritem tu' title='Eliminar' idr='{{ detalle.riesgo.id}}' acciond='U'><i class='fa fa-remove'></i></a>
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+            <tr>
+                <td colspan="4">
+                    {% if not agenteriesgo.en_uso %}
+                        <a href="javascript:;" id="itemsadicionar" title="Adicionar Riesgo" class="btn btn-info btn-mini"><i class="fa fa-plus"></i> Adicionar</a>
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                </td>
+            </tr>
+            </tfoot>
+        </table>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Adicionar Riesgo</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info" id="incompleto" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-info" id="repetido" style="display: none;">
+                <i class="fa fa-info-sign"></i> El Riesgo con la medida ya ha sido agregado al detalle
+            </div>
+            Riesgo
+            <input type="text" id="codigoriesgo" class="input-block-level">
+            Descripci&oacute;n
+            <input type="text" id="descripcionriesgo" class="input-block-level" disabled="disabled">
+            Medida
+            <textarea id="medidariesgo" rows="3" class="input-block-level" style="text-transform: uppercase"></textarea>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-adicionar btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+            <a href="javascript:;" class="btn btn-adicionar cerrar btn-info"><i class="fa fa-plus"></i> Adicionar y Cerrar</a>
+            <a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelEdit" style="display: none;">
+        <div class="modal-header">
+            <h3 class="paneltitle">Editar Riesgo</h3>
+        </div>
+        <div class="modal-body panelbody">
+            <div class="alert alert-info" id="incompletoE" style="display: none;">
+                <i class="fa fa-info-sign"></i> Complete todos los campos para continuar
+            </div>
+            <div class="alert alert-info" id="repetidoE" style="display: none;">
+                <i class="fa fa-info-sign"></i> El Riesgo con la medida ya ha sido agregado al detalle
+            </div>
+            Riesgo
+            <input type="text" id="codigoriesgoE" class="input-block-level" disabled="disabled">
+            Descripci&oacute;n
+            <input type="text" id="descripcionriesgoE" class="input-block-level" disabled="disabled">
+            Medida
+            <textarea id="medidariesgoE" rows="3" class="input-block-level" style="text-transform: uppercase"></textarea>
+        </div>
+        <div class="modal-footer">
+            <a href="javascript:;" class="btn btn-aceptar btn-success"><i class="fa fa-check"></i> Aceptar</a>
+            <a href="javascript:;" class="btn btn-cerrar-edit"><i class="fa fa-arrow-left"></i> Cerrar</a>
+        </div>
+    </div>
+{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='edit'/>
+    <input type='hidden' name='id' value='{{ agenteriesgo.id }}'/>
+    <input type='hidden' name='listariesgo' id='listariesgo' value='{{ agenteriesgo.detalles_agente_concatenado }}'/>
+    <input type='hidden' name='listaeliminar' id='listaeliminar' value=''/>
+    <input type='hidden' name='detallemanipulado' id='detallemanipulado' value='NO'/>
+{% endblock %}
+{% block formback %}/er_agenteriesgo{% endblock %}

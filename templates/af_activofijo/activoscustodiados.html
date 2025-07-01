@@ -1,0 +1,373 @@
+{% extends 'af_activofijo/base_activofijo.html' %}
+{% load sga_extras %}
+{% load humanize %}
+{% block extraJs_ext %}
+    <script>
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 20});
+            $('.activobaja').click(function () {
+                var id = $(this).attr('ida');
+                var valor;
+                if ($(this).is(':checked')) {
+                    valor = 'y';
+                } else {
+                    valor = 'n';
+                }
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: {'action': 'iniciabaja', 'id': id, 'val': valor},
+                    success: function (data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                        } else {
+                            $.unblockUI();
+                            if (valor === 'y') {
+                                $("#ch_" + id).prop('checked', false);
+                            } else {
+                                $("#ch_" + id).prop('checked', true);
+                            }
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        if (valor === 'y') {
+                            alert();
+                            $("#ch_" + id).prop('checked', false);
+                        } else {
+                            $("#ch_" + id).prop('checked', true);
+                        }
+                        smoke.alert("Error al enviar los datos.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#cerrarpanel_cerrar").click(function () {
+                $("#cerrarpanel").modal("hide");
+            });
+
+            $("#cerrarpanel_depreciar").click(function () {
+                empezar_depreciacion();
+                $("#fecha_dep").attr({'disabled': 'disabled'});
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").hide();
+            });
+
+            function terminar() {
+                $("#cerrarpanelprogresshint").html("Finalizando Depreciación");
+                $("#progressbar").css({'width': '100%'});
+                intentos = 0;
+                $("#cerrarpanel").modal("hide");
+                bloqueointerface();
+                location.href = "/af_activofijo";
+            }
+
+            function fallo() {
+                $.unblockUI();
+                $("#cerrarpanel").modal("hide");
+                smoke.alert("Fallo al depreciar");
+                $("#fecha_dep").removeAttr('disabled');
+                $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+            }
+
+            var a = 0;
+
+            function depreciacion(lista, elemento, cantidad) {
+                var activo = lista[elemento];
+                var cp = (100 / (cantidad + 1)) * elemento + '%';
+                var fecha = $("#fecha_dep").val();
+                if (elemento > cantidad) {
+                    $("#cerrarpanel").modal("hide");
+                    bloqueointerface();
+                    location.href = "/af_activofijo";
+                } else {
+                    $("#cerrarpanelprogresshint").html(activo.descripcion);
+                    $("#progressbar").css({'width': cp});
+                    $.ajax({
+                        type: "POST",
+                        url: "/af_activofijo",
+                        data: {"action": "depreciando", "maid": activo.id, "fecha": fecha},
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                intentos = 0;
+                                depreciacion(lista, elemento + 1, cantidad);
+                            } else {
+                                intentos += 1;
+                                if (intentos >= 100) {
+                                    fallo();
+                                } else {
+                                    depreciacion(lista, elemento, cantidad);
+                                }
+                            }
+                        },
+                        error: function () {
+                            intentos += 1;
+                            if (intentos >= 100) {
+                                fallo();
+                            } else {
+                                depreciacion(lista, elemento, cantidad);
+                            }
+                        },
+                        dataType: "json"
+                    });
+                }
+            }
+
+            empezar_depreciacion = function () {
+                var fecha = $("#fecha_dep").val();
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/af_activofijo",
+                    data: {'action': 'depreciar', 'fecha': fecha},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            activos = data.activos;
+                            cantidad = activos.length;
+                            indice = 0;
+                            depreciacion(activos, indice, (cantidad - 1));
+                        } else {
+                            mensajeErrorSwal("", data.mensaje);
+                            $("#fecha_dep").removeAttr('disabled');
+                            $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("", "Error de conexión");
+                        $("#fecha_dep").removeAttr('disabled');
+                        $("#cerrarpanel_cerrar, #cerrarpanel_depreciar").show();
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $("#depreciar").click(function () {
+                $("#cerrarpanel").modal({keyboard: false, backdrop: 'static'}).modal("show");
+            });
+            $(".informebaja").click(function () {
+                var id = $(this).attr('idr');
+                openwindow('POST', '/af_activofijo', {action: 'informebajapdf', 'id': id}, '_blank');
+            });
+
+
+            $("#importa_resp").click(function () {
+                smoke.confirm("¿Está seguro que desea actualizar responsables.?", function (e) {
+                    if (e) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/af_activofijo",
+                            data: {'action': 'actualizamasivo'},
+                            success: function (data) {
+                                if (data.result == 'ok') {
+                                    $.unblockUI();
+                                    smoke.alert("Importación exitosa");
+                                    location.reload();
+                                } else {
+                                    $.unblockUI();
+                                    smoke.alert(data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al enviar los datos.");
+                            }
+                        })
+                    }
+                }, {
+                    ok: "SI, SEGURO",
+                    cancel: "NO,CANCELAR",
+                    classname: "custom-class",
+                    reverseButtons: true
+                });
+            });
+
+            $("#reportefiltros").click(function () {
+                var estados_list = $("#estados_list").val();
+                var clases_list = $("#tipos_list").val();
+                var cuentas_list = $("#agentes_list").val();
+                var cuentas_list = $("#agentes_list").val();
+                openwindow('POST', '/af_activofijo', {
+                    action: 'reportefiltros',
+                    est: estados_list,
+                    clas: clases_list,
+                    cuent: cuentas_list
+                }, '_blank');
+            });
+
+        });
+
+    </script>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block subtitle %}
+    Administración
+{% endblock %}
+{% block title_input %}Buscar por códigos de gobierno, interno o descripción...{% endblock %}
+{% block filtros %}
+    <input type="hidden" name="action" value="activoscustodiados">
+    <div class="mb-1">
+        <label for=""><i class="fa fa-traffic-light"></i> Estado:</label>
+        <select name="estado" id="estados_list" class="form-control" style="width: 100%">
+            <option value="">Buscar por Estados</option>
+            {% for tc in estados %}
+                <option {% if tc.id == estado %}selected{% endif %}
+                        value="{{ tc.id }}">{{ tc.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+     <div class="mb-1">
+        <label for=""><i class="fa fa-bullseye"></i> Cuenta:</label>
+        <select name="cuenta" id="cuentas_list" style="width: 100%" class="form-control">
+            <option value="">Buscar por cuenta</option>
+            {% for tc in cuentas %}
+                <option {% if tc.pk == cuenta %}selected{% endif %}
+                        value="{{ tc.pk }}">{{ tc.cuenta }}-{{ tc.descripcion }}</option>
+            {% endfor %}
+        </select>
+    </div>
+     <div class="mb-1">
+        <label for=""><i class="fa fa-circle-notch"></i> Clase de bien:</label>
+         <select name="clase" id="clase_list" style="width: 100%" class="form-control">
+            <option value="">Buscar por clase de bien</option>
+            {% for tc in clases %}
+                <option {% if tc.0 == clase %}selected{% endif %}
+                        value="{{ tc.0 }}">{{ tc.1 }}</option>
+            {% endfor %}
+        </select>
+    </div>
+{% endblock %}
+{% block content %}
+        <div class='row'>
+            <div class="col-lg-12">
+                <a href="{{ request.pat }}?action={{ action }}&reporte=excel" target="_blank"
+                 class="btn btn-cian-opacity"><i class="fa fa-file-excel"></i> Reportes excel | {{ total }}
+                </a>
+                <a href="{{ request.pat }}?action={{ action }}&reporte=pdf" target="_blank"
+                 class="btn btn-cian-opacity"><i class="fa fa-print"></i> Reportes pdf | {{ total }}
+                </a>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                <div class="table-responsive">
+                    <table class='table table_primary'>
+                        <thead class="table-light">
+                        <tr>
+                            <th class="text-center">Códigos</th>
+{#                            <th class="text-center"><i class="fa fa-clipboard"></i> Catálogo</th>#}
+                            <th class="">Activo</th>
+                            <th class="text-center">Responsable</th>
+                            <th class="">Detalle</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for c in activos %}
+                            <tr>
+                                <td data-title='Códigos' class="w-15 text-center align-middle">
+                                    <p>
+                                        <b>Gob: </b>{{ c.codigogobierno|default_if_none:"" }}
+                                    </p>
+                                    {% if c.codigointerno %}
+                                        <p>
+                                            <b>Int: </b>{{ c.codigointerno }}
+                                        </p>
+                                    {% endif %}
+                                    {% if c.es_electronico %}
+                                        <p>
+                                            <span class="badge bg-primary ">Tecnológico</span>
+                                        </p>
+                                    {% endif %}
+                                    {% if c.statusactivo == 2 %}
+                                        <p>
+                                        <span class="badge bg-danger tu" title="Baja">Baja</span>
+                                        </p>
+                                    {% endif %}
+
+                                </td>
+                                <td data-title='activo' class="w-30">
+                                    <div class="row">
+                                        <div class="col">
+                                            <div class="d-flex" style="font-size: .80rem">
+                                                <div>
+                                                     <p>
+                                                        <b>Estado: </b>{{ c.estado|title }}
+                                                    </p>
+                                                    <p class="lh-35"><b>Catalogo: </b>
+                                                        {{ c.catalogo|title2 }}
+                                                    </p>
+                                                    <p class="lh-35"><b>Descripción: </b>
+                                                        {{ c.descripcion|title2 }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-auto text-center me-2 v-align-middle justify-content-center">
+                                            <a href="javascript:void(0)"
+                                               onclick="formModalBase('{{ c.id }}','Detalle de activo','detalle_activo','','modal-xl',false)"
+                                                cid="{{ c.id }}"
+                                               class=""
+                                               data-bs-toggle="tooltip" data-bs-placement="top" title=""
+                                               data-bs-original-title="Detalle de activo">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" fill="currentColor"
+                                                     class="bi bi-info-circle-fill me-2" viewBox="0 0 16 16">
+                                                    <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"></path>
+                                                </svg>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="w-15 align-middle text-center" style="font-size: .80rem;">
+                                    {% if c.responsable %}
+                                        <p>
+                                            {{ c.responsable.nombre_completo_minus }}
+                                        </p>
+                                        <p class="fs-6 " style="line-height: 14px"><b>{{ c.ubicacion|title2 }}</b>
+
+                                        </p>
+                                    {% endif %}
+                                </td>
+                                <td class="w-15 align-middle" data-title='detalle' style="font-size: .80rem;">
+                                    <p><b>F.Ingreso: </b>{{ c.fechaingreso|date:'d-m-Y' }}</p>
+                                    <p>
+                                        <b>Costo: </b> $ {{ c.costo|floatformat:2|intcomma }}
+                                    </p>
+                                    {% if c.procesobaja %}
+                                        <label class="text-warning"> Proceso de baja</label>
+                                    {% endif %}
+                                <p><b>Archivo baja:</b>
+                                    {% if c.archivo_informebaja %}
+                                         <a target="_blank" href="{{ c.archivo_informebaja.url }}"
+                                             data-width="2048" data-height="1365"  class="tb"
+                                             data-fancybox="iframe{{ c.pk }}"
+                                             data-caption="Archivo de baja: {{ c.codigogobierno }}"
+                                             title="Archivo de baja">
+                                             <i class="fa fa-file-pdf-o text-danger fs-4"></i></a>
+                                    {% else %}
+                                        S/A
+                                    {% endif %}
+                                </p>
+                                </td>
+
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="20" STYLE="text-align: center">
+                                    No existen activos custodiados a su nombre
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer border-top-0">
+                {% include 'paginacionb4.html' %}
+            </div>
+        </div>
+{% endblock %}
+

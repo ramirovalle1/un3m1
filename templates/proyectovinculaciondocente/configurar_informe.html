@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+
+    <style>
+        .bt-tabla, .aprobacion, .pdf{
+            border-radius: 15px !important;
+        }
+
+        .text-indigo {
+            color: #6610f2 !important
+        }
+
+        .nav-link.active {
+            border-bottom: 2px solid #fe9900b0 !important;
+        }
+
+        .nav-link:hover {
+            border-bottom: 2px solid #fe9900b0 !important;
+            opacity: .9;
+        }
+
+        #myTabContent .table .fa {
+            font-size: 9px;
+        }
+
+        .table thead th {
+            text-transform: none;
+        }
+
+    </style>
+    <script type="text/javascript">
+
+        var switchery = {};
+
+        $(function () {
+
+            $.each($('.js_switch'), function(){
+                switchery[this.id] = new Switchery(document.getElementById(this.id), {size: 'small', color: '#F89406'});
+            });
+
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                width:'90%',
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+
+
+            // $("select").select2({width: '100%'});
+
+
+            var informes = localStorage.getItem('InformesVinculacion');
+            if (!informes) {
+                {% if lider %}
+                    informes = "#1";
+                {% else %}
+                    informes = "#2";
+                {% endif %}
+                localStorage.setItem("InformesVinculacion", informes);
+            }
+
+            $('.tabs').each(function () {
+                if ($(this).attr('href') == informes) {
+                    $(this).trigger('click');
+                }
+            }).click(function () {
+                localStorage.setItem("InformesVinculacion", $(this).attr('href'));
+            });
+
+
+            $("#cerrarpanelAprobacion").click(function () {
+                $('#panelAprobacion').modal('hide');
+            });
+
+
+            $(".aprobacion").click(function() {
+                var id = $(this).data('id');
+                var idproyecto = $(this).data('idproyecto');
+
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/proyectovinculaciondocente",
+                    data: {'action': 'aprobarInforme', 'id': id, 'idproyecto': idproyecto},
+                    success: function(data) {
+                        $.unblockUI();
+                        debugger
+                        if (data.result === 'ok') {
+                            $("#panelAprobacion #paneltitleAprobacion").html('Aprobación de Informe');
+                            $("#panelAprobacion .panelbodyAprobacion").html(data.data);
+                            $("#panelAprobacion").modal({backdrop:'static', width: '1000px'}).modal('show');
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+
+            $('.check_all').change(function (e) {
+                 if (this.checked) {
+                     $('.check').prop("checked", true);
+                     /*$.each($('.check'), function () {
+                         $(this).prop( "checked", true).trigger('change')
+                     });*/
+                 } else {
+                     $.each($('.check'), function () {
+                         $(this).prop( "checked", false).trigger('change')
+                     });
+                 }
+            });
+
+        });
+
+
+        const backend = () => {
+            let list = $('.check:checked').map((index, element) => element.id).get();
+            if (list.length) {
+                bloqueointerface();
+                $.get('{{ request.path }}', {'action': 'firmainformevinculacion', 'pks': list, 'modal': 'panelAprobacion', 'masivo':true}, function (r) {
+                    if (r.result === 'ok') {
+                        $("#paneltitleAprobacion").html('Legalización de Informe');
+                        $(".panelbodyAprobacion").html(r.data);
+                        $("#panelAprobacion").modal({backdrop:'static', width: '1000px'}).modal('show');
+                        $.unblockUI();
+                    } else {
+                        mensajeWarning(r.mensaje);
+                    }
+                })
+            } else {
+                alertaWarning('Debe seleccionar al menos un registro.');
+            }
+        }
+
+
+        const uploadFile = (pk) => {
+            $('#itemspanel_uploadfile #id_configuracion').val(pk);
+            $('#itemspanel_uploadfile').modal('show');
+        }
+
+
+        const submitFile = () => {
+            bloqueointerface();
+            var formdata = new FormData($("#itemspanel_uploadfile form")[0]);
+            $.ajax({
+                type: "POST",
+                url: '{{ request.path }}',
+                data: formdata,
+                success: function (data) {
+                    if (data.result === 'ok') {
+                        location.reload();
+                        /*
+                        $.post('{{ request.path }}', {'id': formdata.get('id'), 'action': 'solicitudrevision'}, function (data) {
+                            if (data.result === 'ok') {
+                                location.reload();
+                            } else {
+                                mensajeDanger(data.mensaje, 'Error al enviar la solicitud de revisión')
+                            }
+                        });
+                        */
+                    } else {
+                        $.unblockUI();
+                        $('#itemspanel_uploadfile').modal('hide');
+                        mensajeDanger(data.mensaje)
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    NotificationJG.error("Error al enviar los datos.");
+                },
+                dataType: "json",
+                cache: false,
+                contentType: false,
+                processData: false
+            });
+        }
+
+
+    </script>
+{% endblock %}
+{% block atras %}/proyectovinculaciondocente?action=ejecucion&id={{ proyecto.pk }}{% endblock %}
+{% block canvas %}
+<div class="container" id="container">
+    <div class="row">
+        <div class="col-sm-12 ps-1">
+            <div class="headtitle py-0">
+                <h4 class="ps-1 my-0">{{ title }}</h4>
+                <h6 class="ms-1">Proyecto: {{ proyecto.nombre|lower|capfirst}}</h6>
+                <h6 class="ms-1">Líder del proyecto: {{ proyecto.lider|lower|title}}</h6>
+                {% if DEBUG %}
+                    <h6 class="ms-1">Técnico docente asociado: {{ tecnico.persona|lower|title}}</h6>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <a href="?action=addconfigurarinforme&id={{ proyecto.pk }}" class="btn btn-success py-2"><i class="bi bi-plus-lg"></i> Adicionar</a>
+    </div>
+    <div class="row-fluid">
+        <div class='col-sm-12'>
+            <div class="tabbable" style="background-color: #FFFF">
+                <ul class="nav nav-lb-tab" id="tab" role="tablist">
+                    <li class="nav-item">
+                        {% if lider %}
+                            <a class="nav-link active fw-lighter" id="promotores-tab" data-bs-toggle="pill" href="#promotores" role="tab" aria-controls="promotores" aria-selected="false"><i class="fa fa-users fs-6"></i> Informes de promotores ({{ informePromotor.count }})</a>
+                        {% endif %}
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if not lider %}active{% endif %} fw-lighter" id="profile-tab" data-bs-toggle="pill" href="#profile" role="tab" aria-controls="profile" aria-selected="false"><i class="fa fa-user fs-6"></i> Mis informes ({{ configuraciones.count }})</a>
+                    </li>
+                </ul>
+                <div class="tab-content" id="myTabContent">
+                    {% if lider %}
+                        <div class="tab-pane fade show active" id="promotores" role="tabpanel" aria-labelledby="promotores-tab">
+                            <br>
+                            <div class="container pb-2">
+                                <div class="table-responsive">
+                                    <table class='table table_primary table_striped'>
+                                        <thead class="">
+                                        <tr>
+                                            <th style="text-align: center; width: 50px;">
+                                                <a title="Envío a firma masiva" href="javascript:;" onclick="backend()" class="btn btn-cian-secondary tu"><i class="fa fa-qrcode"></i>&nbsp;<i class="fa fa-check-circle"></i></a>
+                                            </th>
+                                            <th style="text-align: center;width: 30px;border-right: 0;">#</th>
+                                            <th style="text-align: center;width: 160px;border-left: 0;"><i class="fa fa-user"></i> Usuario Promotor</th>
+                                            <th style="text-align: center;width:80px"><i class="fa fa-calendar-check-o"></i> Inicio</th>
+                                            <th style="text-align: center;width:80px"><i class="fa fa-calendar-times-o"></i> Fin</th>
+                                            <th style="text-align: center;width:100px"><i class="fa fa-spinner"></i> Avance mensual </th>
+                                            <th style="text-align: center;width:100px"><i class="fa fa-spinner"></i> Avance Ac. </th>
+                                            <th style="text-align: center;width:100px"><i class="fa fa-plus"></i> Actividades Extras </th>
+                                            <th style="text-align: center;width:80px"><i class="fa fa-tag"></i> Estados</th>
+                                            <th style="text-align: center;width:120px"><i class="fa fa-eye"></i> Observación</th>
+                                            <th style="text-align: center;width:100px"><i class="fa fa-file"></i> Archivo</th>
+                                            <th style="text-align: center;width:80px">Acciones</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for c in informePromotor %}
+                                            <tr>
+                                                <td style="text-align: center;">
+                                                    {% if c.archivo %}
+                                                        <input type="checkbox"  class="js_switch check" id="{{ c.pk }}">
+                                                    {% endif %}
+                                                </td>
+                                                <td style="text-align: center;vertical-align: middle;border-right: 0!important;">{{ forloop.counter }}</td>
+                                                <td style="border-left: 0;">
+                                                    <span style="cursor:pointer;" tabindex="0" data-bs-container="body" data-bs-toggle="popover"  data-bs-placement="right" data-bs-content="{{ c.usuario_creacion.persona_set.first }}">
+                                                        {{ c.usuario_creacion.persona_set.first|lower|title }}
+                                                    </span>
+                                                </td>
+                                                <td style="text-align: center;">{{ c.fecha_inicio|date:'d/m/Y'}}</td>
+                                                <td style="text-align: center;">{{ c.fecha_fin|date:'d/m/Y'}}</td>
+                                                <td style="text-align: center;" ><span class="text-success">{{ c.avance_registro|floatformat:4}}</span></td>
+                                                <td style="text-align: center;" ><span class="text-success">{{ c.avanceproposito.porcentaje_avance|floatformat:4}}</span></td>
+                                                <td style="text-align: center;">
+                                                    {% if  c.actividades_extras %}
+                                                        <span class="text-success">SI</span>
+                                                    {% else %}
+                                                        <span class="text-warning">NO</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td style="width: 50px;text-align: center;">
+                                                    {% if c.estado_aprobacion == "APROBADO" %}
+                                                        <span class="text-success">{{ c.estado_aprobacion }}</span>
+                                                    {% elif c.estado_aprobacion == "RECHAZADO" %}
+                                                        <span class="text-danger">{{ c.estado_aprobacion }}</span>
+                                                    {% elif c.estado_aprobacion == "PENDIENTE" %}
+                                                        <span class="text-warning">{{ c.estado_aprobacion }}</span>
+                                                    {% elif c.estado_aprobacion == "SOLICITADO" %}
+                                                        <span class="text-info">{{ c.estado_aprobacion }}</span>
+                                                    {% elif c.aprobacion == 5 %}
+                                                        <span class="text-primary tu" title="Aprobado por: {{ c.proyecto.get_tecnicoasociado|lower|title }}">{{ c.get_aprobacion_display }}</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ c.detalle_aprobacion|default_if_none:""}}</td>
+                                                <td style="text-align: center">
+                                                    {% if c.archivo %}
+                                                        <a class="btn cur btn-default bt-tabla gallerypdf" data-fancybox-type="iframe" target="_blank" href="{{ c.archivo.url }}"><i class="fa fa-download"></i> <span class="hidden-phone hidden-tablet">Descargar</span></a>
+                                                    {% endif %}
+                                                </td>
+                                                <td style="text-align: center;">
+                                                    <div class="dropdown dropstart">
+                                                        <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                                            <i class="fa fa-ellipsis-v" style="font-size:10px" aria-hidden="true"></i>
+                                                        </a>
+                                                        <div class="dropdown-menu">
+                                                            {% if c.aprobacion == 5 %}
+                                                                <a class="dropdown-item aprobacion" href="javascript:void(0);"  data-id="{{ c.pk }}" data-idproyecto="{{ c.proyecto.pk }}" data-toggle="tooltip" data-placement="top" title="Aprobar informe"><i class="fa fa-check-circle me-1"></i> Aprobar informe</a>
+                                                                <a class="dropdown-item pdf" href='?action=generarinformepdf&id={{ c.pk }}' target="_blank" data-toggle="tooltip" data-placement="top" title="Generar PDF"><i class="fa fa-file-pdf-o me-1"></i> Generar PDF</a>
+                                                            {% elif c.aprobacion == 3 %}
+                                                                <a class="dropdown-item pdf" href='?action=generarinformepdf&id={{ c.pk }}' target="_blank" data-toggle="tooltip" data-placement="top" title="Generar PDF"><i class="fa fa-file-pdf-o me-1"></i> Generar PDF</a>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% empty %}
+                                            <tr>
+                                                <td colspan="12" style="text-align: center;">No existen datos en esta tabla</td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                    <div class="tab-pane fade {% if not lider %}show active{% endif %}" id="profile" role="tabpanel" aria-labelledby="profile-tab">
+                        <br>
+                        <div class="container pb-2">
+                            <div class="table-responsive">
+                                <table class='table table_primary table_striped'>
+                                    <thead class="">
+                                    <tr>
+                                        <th style="text-align: center;width:100px">#</th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-calendar-check-o"></i> Inicio</th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-calendar-times-o"></i> Fin</th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-spinner"></i> Avance mensual </th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-spinner"></i> Avance Ac. </th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-plus"></i> Actividades Extras </th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-tag"></i> Estados</th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-eye"></i> Observación</th>
+                                        <th style="text-align: center;width:100px"><i class="fa fa-file"></i> Archivo</th>
+                                        <th style="text-align: center;width:100px">Acciones</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for c in configuraciones %}
+                                        <tr>
+                                            <td style="text-align: center;">{{ forloop.counter }}</td>
+                                            <td style="text-align: center;">{{ c.fecha_inicio|date:'d/m/Y'}}</td>
+                                            <td style="text-align: center;">{{ c.fecha_fin|date:'d/m/Y'}}</td>
+                                            <td style="text-align: center;" ><span class="text-success">{{ c.avance_registro|floatformat:4}}</span></td>
+                                            <td style="text-align: center;" ><span class="text-success">{{ c.avanceproposito.porcentaje_avance|floatformat:4}}</span></td>
+                                            <td style="text-align: center;">
+                                                {% if  c.actividades_extras %}
+                                                    <span class="text-success">SI</span>
+                                                {% else %}
+                                                    <span class="text-warning">NO</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="width: 50px;text-align: center;">
+                                                {% if c.estado_aprobacion == "APROBADO" %}
+                                                    <span class="text-success">{{ c.estado_aprobacion|lower|title }}</span>
+                                                {% elif c.estado_aprobacion == "RECHAZADO" %}
+                                                    <span class="text-danger">{{ c.estado_aprobacion|lower|title }}</span>
+                                                {% elif c.estado_aprobacion == "PENDIENTE" %}
+                                                    <span class="text-warning">{{ c.estado_aprobacion|lower|title }}</span>
+                                                {% elif c.estado_aprobacion == "SOLICITADO" %}
+                                                    <span class="text-info">{{ c.estado_aprobacion|lower|title }}</span>
+                                                {% elif c.aprobacion == 5 %}
+                                                    <span title="Aprobado por: {{ c.proyecto.get_tecnicoasociado|lower|title }}" class="text-primary">{{ c.get_aprobacion_display|lower|title }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center;">{{ c.detalle_aprobacion|default_if_none:"" }}</td>
+                                            <td style="text-align: center;">
+                                                {% if c.archivo %}
+                                                    <a class="btn btn-default bt-tabla gallerypdf" data-fancybox-type="iframe" target="_blank" href="{{ c.archivo.url }}"><i class="fa fa-download"></i> <span class="hidden-phone hidden-tablet">Descargar</span></a>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <div class="dropdown dropstart">
+                                                    <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                                        <i class="fa fa-ellipsis-v" aria-hidden="true"></i>
+                                                    </a>
+                                                    <div class="dropdown-menu" style="">
+                                                        {% if not c.aprobacion == 4 %}
+                                                            {% if c.aprobacion == 1 %}
+                                                                <a class="dropdown-item"  href='?action=editconfigurarinforme&id={{ c.pk }}' data-toggle="tooltip" data-placement="top" title="Editar"><i class="fa fa-edit"></i>&nbsp;Editar</a>
+                                                                <a class="dropdown-item" href='javascript:;' onclick="eliminarajax('{{ c.pk }}', '{{ c.fecha_inicio }}', 'delconfiguracion')" data-toggle="tooltip" data-placement="top" title="Eliminar"><i class="fa fa-trash "></i>&nbsp;Eliminar</a>
+                                                                <a class="dropdown-item" href='?action=generar&id={{ c.pk }}' data-toggle="tooltip" data-placement="top" title="Completar informe"><i class="fa fa-certificate text-warning" aria-hidden="true"></i>&nbsp;Completar informe</a>
+                                                                {% if  c.actividades_extras %}<a class="dropdown-item" href='?action=actividadExtra&id={{ c.pk }}' data-toggle="tooltip" data-placement="top" title="Añadir actividades extras"><i class="fa fa-calendar-plus-o "></i>&nbsp;Añadir actividades extras</a>{% endif %}
+                                                                {% if c.archivo %}
+                                                                    <div class="dropdown-divider"></div>
+                                                                    <a class="dropdown-item" onclick="uploadFile('{{ c.pk }}')" href='javascript:;'><i class="fa fa-upload "></i>&nbsp;Subir archivo legalizado</a>
+                                                                {% endif %}
+                                                            {% endif %}
+                                                            <a class="dropdown-item" href='?action=generarinformepdf&id={{ c.pk }}' target="_blank" data-toggle="tooltip" data-placement="top" title="Generar PDF"><i class="fa fa-file-pdf-o"></i>&nbsp;Generar PDF</a>
+                                                        {% else %}
+                                                            <a class="dropdown-item" href='javascript:;' onclick="eliminarajax('{{ c.pk }}', '{{ c.fecha_inicio }}', 'delconfiguracion')" data-toggle="tooltip" data-placement="top" title="Eliminar"><i class="fa fa-trash "></i>&nbsp;Eliminar</a>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="12" style="text-align: center;">No existen datos en esta tabla</td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="panelAprobacion" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h4><b style="text-transform: uppercase;" id="paneltitleAprobacion">INGRESAR AVANCE</b></h4>
+                    <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body border-0">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="panelbodyAprobacion">
+
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+        <div class="modal fade static" id="itemspanel_uploadfile" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header border-0 ms-2 pe-0">
+                    <div class="row" style="width:100%">
+                        <div class="col-8">
+                            <div class="headtitle mt-4 ms-0 py-0">
+                                <h6 class="py-0 paneltitle ps-1" style="font-size: 24px;">Subir documento firmado</h6>
+                            </div>
+                        </div>
+                        <div class="col-4 d-flex justify-content-end">
+                            <div class="btn-group">
+                                <button class="btn-icon btn btn-ghost btn-lg rounded-circle" data-bs-dismiss="modal">
+                                    <svg class="p-1" xmlns="http://www.w3.org/2000/svg" width="33.941" height="33.941" viewBox="0 0 33.941 33.941">
+                                      <g id="Grupo_775" data-name="Grupo 775" transform="translate(-687.308 -1024.598) rotate(45)">
+                                        <line id="Línea_1" data-name="Línea 1" y2="44" transform="translate(1234.5 216.5)" fill="none" stroke="#1c3247" stroke-width="4"/>
+                                        <line id="Línea_2" data-name="Línea 2" y2="44" transform="translate(1256.5 238.5) rotate(90)" fill="none" stroke="#1c3247" stroke-width="4"/>
+                                      </g>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                            <input type="hidden" name="id" id="id_configuracion">
+                            <input type="hidden" name="action" value="uploadFile">
+                            <b style="color:black">Archivo firmado: <span class="text-danger">*</span></b> <br>
+                            <input class="form-control" style="width: 100%;" type="file" name="archivo" id="id_archivo">
+                            <small class="text-danger">Asegurese de cargar un archivo firmado electrónicamente.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0 pe-2">
+                    <div class="mb-2">
+                        <button style="font-size:15px!important;" onclick="submitFile()" type="button" class="btn btn-orange btn-md py-2 btn-expand" style="display: inline-block;" aria-label="">Guardar</button>
+                        <button style="font-size:15px!important;" data-bs-dismiss="modal" type="button" class="btn btn-cian-secondary btn-expand btn-md py-2" style="display: inline-block;" aria-label="">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+{% endblock %}

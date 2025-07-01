@@ -1,0 +1,148 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function(){
+            $('#id_inscripcion_select2').addClass("validate[required]");
+
+            let carrera_id = -1;
+            let orden_nivel = -1;
+            $('#id_fechadesde, #id_fechahasta, #id_tiposolicitud, #id_estado, #id_nivelmalla').addClass("validate[required]");
+
+            {#$('#id_inscripcion').addClass("validate[required]");#}
+
+            $("#id_fechadesde, #id_fechahasta").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide');});
+            ItemsDisplay = function (item) {
+                    if (item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else{
+                        return '---------';
+                    }
+                };
+            $("#id_inscripcion_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        {#return "/reportes?action=data&model=Inscripcion:carrera_id="+id_carrera+"&p=1&s=10&q=" + params.term;#}
+                        return "/reportes?action=data&model=Inscripcion&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                bloqueointerface();
+                carrera_id = evt.params.data.alias[5];
+                orden_nivel = evt.params.data.alias[6];
+                idins = evt.params.data.id;
+                $("#id_inscripcion").attr({"value": (evt.params.data.id)});
+
+                $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {'action': 'itinerariosmalla', 'carrera_id': carrera_id,'orden_nivel':orden_nivel, 'idinscripcion': idins},
+                    success: function(data) {
+                        $.unblockUI();
+                        $("#id_itinerariomalla").empty();
+                        $("#id_itinerariomalla").val(null).trigger('change');
+                        if (data.result == 'ok') {
+                            //Si facultad del alumno no es salud
+                            if(parseInt(data.facultadid) != 1){
+                                $("#id_nivelmalla").addClass("validate[required]");
+                                $('#id_nivelmalla').attr('disabled', false);
+                                $("#id_nivelmalla").val(data.nivelid).trigger('change');
+                            }else{
+                                $("#id_nivelmalla").removeClass("validate[required]");
+                                $('#id_nivelmalla').attr('disabled', true);
+                                $("#id_nivelmalla").val(0).trigger('change');
+                            }
+
+                            $("#id_itinerariomalla").append(`<option value="">------------------</option>`);
+
+                            for (let i = 0; i < data.data.length; i++) {
+                                $("#id_itinerariomalla").append(`<option value="${data.data[i]['id']}">${data.data[i]['nombre']} - ${data.data[i]['horas_practicas']} HORAS - ${data.data[i]['nivel__nombre']}</option>`);
+                            }
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=listapreinscritos&id={{preinscripcion.id|encrypt}}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}{{ request.path }}{% endblock %}
+{% block form-type %}form-horizontal{% endblock %}
+{% block formdestination %}{{ request.path }}?action=listapreinscritos&id={{preinscripcion.id|encrypt}}{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='adddetallepreinscripcion'/>
+    <input type='hidden' name='idp' value='{{preinscripcion.id|encrypt}}'/>
+{% endblock %}
+{% block formsuffix %}
+    <fieldset class="control-group nomargins">
+        <div class="controls">
+            <table style="width: 100%;" class="table table-bordered table-condensed">
+                <thead>
+                <tr>
+                    <th colspan="2" style="text-align: center">Preguntas PreInscripción</th>
+                </tr>
+                <tr>
+                    <th>Pregunta</th>
+                    <th>Respuesta</th>
+                </tr>
+                </thead>
+                <tbody id="contenidopreguntas" style="margin: 0;overflow-y:auto;max-height:100px;">
+                {% for pregunta in preguntas %}
+                    <tr>
+                    <td style="vertical-align: middle;">{{ pregunta.descripcion }}</td>
+                    <td>
+                        <select name="respuestas" id="respuesta_{{ pregunta.id }}">
+                            {% for respuesta in pregunta.respuestas %}
+                                <option value="{{ respuesta.id }}">{{ respuesta.descripcion }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </fieldset>
+{% endblock %}
+{% block formback %}{{ request.path }}?action=listapreinscritos&id={{preinscripcion.id|encrypt}}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

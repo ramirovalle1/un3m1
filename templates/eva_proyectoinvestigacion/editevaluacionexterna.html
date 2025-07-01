@@ -1,0 +1,426 @@
+{% extends "basebs.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+
+    <script type="text/javascript">
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $("#estadoevaluacion").addClass("validate[required]");
+
+            valoresPuntaje = function (){
+                $('input[name="puntajeasignado[]"]').each(function() {
+                    var maximo = parseInt($(this).attr('maximo'));
+                    numerico($(this), 0, maximo, 0);
+                });
+                calcularTotalPuntaje();
+            };
+
+            // Combo de cada fila
+            $('.puntajeasignado').bind("change",function(){
+                calcularTotalPuntaje();
+            });
+
+            calcularTotalPuntaje = function (){
+                total = 0;
+                idauxrub = "";
+                sumarub = 0;
+
+                $(".puntajeasignado").each(function(){
+                    idrub = $(this).attr('idrub');
+                    valor = parseInt($(this).val());
+
+                    if(idauxrub == '')idauxrub = idrub;
+
+                    if(idauxrub !== idrub){
+                        $("#lblpuntajerub"+idauxrub).html(sumarub);
+                        sumarub = 0;
+                        idauxrub = idrub;
+                    }
+                    sumarub += valor;
+                    total += valor;
+                });
+
+                $("#lblpuntajerub"+idauxrub).html(sumarub);
+                $("#lblpuntajetotal").html(total);
+                $("#puntajetotal").val(total);
+                cargarEstados();
+            };
+
+            calcularTotalPuntajeInicial = function (){
+                total = 0;
+                idauxrub = "";
+                sumarub = 0;
+
+                $(".puntajeasignado").each(function(){
+                    idrub = $(this).attr('idrub');
+                    valor = parseInt($(this).val());
+
+                    if(idauxrub == '')idauxrub = idrub;
+
+                    if(idauxrub !== idrub){
+                        $("#lblpuntajerub"+idauxrub).html(sumarub);
+                        sumarub = 0;
+                        idauxrub = idrub;
+                    }
+                    sumarub += valor;
+                    total += valor;
+                });
+
+                $("#lblpuntajerub"+idauxrub).html(sumarub);
+                $("#lblpuntajetotal").html(total);
+                $("#puntajetotal").val(total);
+            };
+
+            cargarEstados =  function (){
+                var puntaje = parseFloat($("#puntajetotal").val());
+                $("#estadoevaluacion").empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $("#estadoevaluacion").append('<option value="5">EN PROCESO DE EVALUACIÓN</option>');
+                if(puntaje >= {{ minimoaprobacion }}){
+                    $('#estadoevaluacion').append('<option value="1">ACEPTADO Y NO REQUIERE MODIFICACIONES</option>');
+                    $('#estadoevaluacion').append('<option value="2">SERÁ ACEPTADO LUEGO DE MODIFICACIONES MENORES</option>');
+                }else if(puntaje > 0){
+                    $('#estadoevaluacion').append('<option value="3">DEBE SER PRESENTADO NUEVAMENTE LUEGO DE MODIFICACIONES MAYORES</option>');
+                    $('#estadoevaluacion').append('<option value="4">RECHAZADO</option>');
+                }
+            };
+
+            $('#estadoevaluacion').change(function(){
+                if($(this).val() == '2' || $(this).val() == '3' || $(this).val() == '4'){
+                    $("#observacion").addClass("validate[required]");
+                }else{
+                    $("#observacion").removeClass("validate[required]");
+                }
+            });
+
+            $(".archivos").change(function () {
+                var cantidad = $(this).get(0).files.length;
+                $("#bgarchivo").html(cantidad.toString());
+            });
+
+            $(".valorespuntaje").unbind("blur.valorespuntaje");
+            $(".valorespuntaje").bind("blur.valorespuntaje", valoresPuntaje);
+
+            $(".guardar").click(function () {
+                envioformularioreg("/eva_proyectoinvestigacion", "editevaluacionexterna", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                $("#frmEvaluacion").validationEngine('attach',{ scroll: false });
+                var valido = $("#frmEvaluacion").validationEngine('validate', { scroll: false });
+
+                if (valido){
+                    bloqueointerface();
+
+                    if(action == 'editevaluacionexterna')
+                        var formdata = new FormData($("#frmEvaluacion")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action : action,
+                        url: url,
+                        data:  formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                urlDestino = "/eva_proyectoinvestigacion?action=propuestas&reeval={{ reeval }}&tipoeval={{ tipoevaluacion }}&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de {% if reeval == 'N' %}Evaluación{% else %}Reevaluación{% endif %} Externa sin haber guardado la información?", false, "/eva_proyectoinvestigacion", "", "", "/eva_proyectoinvestigacion?action=propuestas&reeval={{ reeval }}&tipoeval={{ tipoevaluacion }}&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}");
+            });
+
+            $(".mostrarformacionacademica").click(function() {
+                var id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/eva_proyectoinvestigacion",
+                    data: {'action': 'mostrarformacionacademica', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyformacionacademica").html(data.data);
+                            $("#itemspanelformacionacademica").modal({backdrop:'static', width: '800px', height: '550px'}).modal('show');
+                        } else {
+                            if(data.swalType == 'warning')
+                                mensajeWarningSwal(data.titulo, data.mensaje);
+                            else
+                                mensajeErrorSwal(data.titulo, data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelformacionacademica .btn-cerrar").click(function() {
+                $("#itemspanelformacionacademica").modal("hide");
+            });
+
+            $(".borrararchivo").click(function (){
+                $("#filaarchivosubido").remove();
+                $("#borrararchivo").val("SI");
+            });
+
+            calcularTotalPuntajeInicial();
+        });
+    </script>
+{% endblock %}
+{% block atras %}/eva_proyectoinvestigacion?action=propuestas&reeval={{ reeval }}&tipoeval={{ tipoevaluacion }}&idc={{ proyecto.convocatoria.id|encrypt }}&id={{ proyecto.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <form name="frmEvaluacion" id="frmEvaluacion">{% csrf_token %}
+        <input type="hidden" name="action" value="editevaluacionexterna">
+        <input type="hidden" name="id" value="{{ evaluacion.id|encrypt }}">
+        <input type="hidden" id="borrararchivo" name="borrararchivo" value="NO">
+        <div class='row-fluid'>
+            <div class='span12'>
+                <h4>{{ title }}
+                    {% if proyecto.convocatoria.archivoconvocatoria %}
+                        <a target="_blank" href="{{ proyecto.convocatoria.archivoconvocatoria.url }}" class="btn btn-warning tu" data-toggle="tooltip" data-placement="top" data-original-title="Descargar Archivo"><i class="fa fa-download"></i> Bases Convocatoria</a>
+                    {% endif %}
+                    <a href="javascript:;" id="{{ proyecto.id|encrypt }}" class="btn btn-info tu mostrarformacionacademica" data-toggle="tooltip" data-placement="top" data-original-title="Mostrar Formación Académica"><i class="fa fa-table"></i> Formación Académica Participantes</a>
+                </h4>
+            </div>
+        </div>
+        <div class="alert alert-info" style="text-align: justify">
+            <strong>{{ proyecto.titulo }}</strong>
+        </div>
+        <div class="row-fluid">
+            <div class="span4">
+                <div class="row-fluid">
+                    <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbvistadocumento">
+                        <thead>
+                        <tr>
+                            <th colspan="2">Fecha y Evaluador del proyecto</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td style="width: 20%;">Fecha:</td>
+                            <td style="width: 80%;">
+                                {{ evaluacion.fecha|date:'Y-m-d' }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Evaluador:</td>
+                            <td>
+                                {{ persona.nombre_completo_inverso }}
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row-fluid" style="margin-bottom: 0px">
+                    <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbvistadocumento">
+                        <thead>
+                        <tr>
+                            <th>Rúbricas y criterios de evaluación</th>
+                        </tr>
+                        </thead>
+                    </table>
+                </div>
+                <div class="row-fluid">
+                    <div class="span12" style="overflow-y:scroll; height: 550px">
+                        <div class="accordion" id="accordion2">
+                            {% for rubrica in rubricas %}
+                                <div class="accordion-group">
+                                    <div class="accordion-heading" style="background-color: whitesmoke">
+                                        <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapse_{{ rubrica.id }}">
+                                            <span class="label label-success">{{ rubrica.categoria }}</span> {{ rubrica.descripcion }}
+                                            <span class="label label-success tu" title="Valoración de la rúbrica" id="lbl_totalobjetivo_{{ rubrica.id }}">{{ rubrica.valoracion }}</span>
+                                        </a>
+                                    </div>
+                                    <div id="collapse_{{ rubrica.id }}" class="accordion-body collapse">
+                                        <div class="accordion-inner" style="padding: 5px">
+                                            <table class="table table-bordered" id="tbrubrica_{{ rubrica.id }}">
+                                                <thead>
+                                                <tr>
+                                                    <th style="width: 80%; text-align: center">Item</th>
+                                                    <th style="width: 20%; text-align: center">Puntaje Asignado</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody id="detalle_rubrica_{{ rubrica.id }}">
+                                                {% with detalles=evaluacion|args:rubrica|call:"detalle_evaluacion_items_rubrica" %}
+                                                    {% for detalle in detalles %}
+                                                        <tr>
+                                                            <td style="text-align: justify">
+                                                                <input type="hidden" id="iddetalle[]" name="iddetalle[]" value="{{ detalle.id }}">
+                                                                <input type="hidden" id="idrubricaitem[]" name="idrubricaitem[]" value="{{ detalle.rubricaitem.id }}">{{ detalle.rubricaitem.item }}
+                                                            </td>
+                                                            <td style="text-align: center">
+                                                                <select id="{{ forloop.counter }}" idrub="{{ detalle.rubricaitem.rubrica.id }}" class="puntajeasignado" name="puntajeasignado[]" style="width: 90%">
+                                                                    <option value="0" {% if detalle.puntaje == 0 %}selected{% endif %}>0</option>
+                                                                    {% for valor in 1|rangonumeros:detalle.rubricaitem.puntajemaximo %}
+                                                                        <option value="{{ valor }}" {% if detalle.puntaje == valor %}selected{% endif %}>{{ valor }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                {% endwith %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="span8">
+                <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbvistadocumento">
+                    <thead>
+                    <tr>
+                        <th><span id="titulodocumento">Documento de la Propuesta de Proyecto de Investigación</span>&nbsp;<a target="_blank" href="{{ proyecto.archivodocumentosindatint.url }}" class="btn btn-mini btn-info tu" data-toggle="tooltip" data-placement="top" data-original-title="Descargar Documento de la Propuesta"><i class="fa fa-download"></i> </a></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td>
+                            <iframe border=1 id="framearchivo" frameborder=0 height=630px width=100% src="{{ proyecto.archivodocumentosindatint.url }}"></iframe>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="row-fluid">
+            <div class="span6">
+                <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbresumenrubricas">
+                    <thead>
+                        <tr>
+                            <th colspan="3">Rúbricas de Evaluación</th>
+                        </tr>
+                        <tr>
+                            <th style="text-align: center">Item</th>
+                            <th style="text-align: center">Descripción</th>
+                            <th style="text-align: center">Puntaje asignado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rubrica in rubricas %}
+                            <tr>
+                                <td style="text-align: justify">{{ rubrica.categoria }}</td>
+                                <td style="text-align: justify">{{ rubrica.descripcion }}</td>
+                                <td style="text-align: center">
+                                    <span class="label label-info" id="lblpuntajerub{{ rubrica.id }}">0</span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2"><strong>Puntaje Total:</strong></td>
+                            <td style="text-align: center">
+                                <input type="hidden" id="puntajetotal" name="puntajetotal" value="{{ evaluacion.puntajetotal }}"><span class="label label-info" id="lblpuntajetotal">{{ evaluacion.puntajetotal }}</span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="span6" style="">
+                <table class="table table-bordered table-striped table-condensed table-hover table-even-widths" id="tbestados">
+                    <thead>
+                    <tr>
+                        <th colspan="4">Resultados de Evaluación</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td style="width: 20%;">Estado de la Propuesta:</td>
+                        <td style="width: 80%;">
+                            <select id="estadoevaluacion" name="estadoevaluacion" style="width: 95%">
+                                <option value="" selected>---------</option>
+                                {% for estado in estados %}
+                                    <option value="{{ estado.0 }}" {% if evaluacion.estado == estado.0 %}selected{% endif %}>{{ estado.1 }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="help-text"></div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Observaciones:</td>
+                        <td>
+                            <textarea id="observacion" rows="10" name="observacion" value="" style="width: 98%; text-transform: uppercase; resize: none" >{{ evaluacion.observacion }}</textarea>
+                            <div class="help-text"></div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Archivo Observaciones:</td>
+                        <td>
+                            <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgarchivo" class="badge">0</span><input type="file" style="color: transparent" class="archivos" id="archivo" name="archivo" hidden> </label>
+                            <small class="form-text text-muted">Tamaño Maximo permitido 4Mb, en formato pdf</small>
+                        </td>
+                    </tr>
+                    {% if evaluacion.archivo %}
+                        <tr id="filaarchivosubido">
+                            <td>Archivo Observaciones Subido Previamente:</td>
+                            <td>
+                                <a target="_blank" href="{{ evaluacion.archivo.url }}" class="btn btn-success tu" title="Descargar Archivo"><i class="fa fa-download"></i> Descargar</a>
+                                <a href="javascript:;" class="btn btn-danger btn-mini tu borrararchivo" title="Borrar Archivo"><i class="fa fa-remove"></i> </a>
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="row-fluid">
+            <div class="row-fluid">
+                <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="modal fade static" data-keyboard="false" id="itemspanelformacionacademica" style="display: none;">
+        <div class="modal-header">
+            <h4 class="paneltitleformacionacademica">Formación Académica Participantes</h4>
+        </div>
+        <div class="modal-body panelbodyformacionacademica">
+        </div>
+        <div class="modal-footer">
+            <table class="pull-right">
+                <tr>
+                    <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+{% endblock %}

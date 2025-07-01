@@ -1,0 +1,378 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type='text/javascript' src="/static/js/bootstrap-datepicker.js?4.0.0"></script>
+    <link href="/static/css/datepicker.css?4.0.0" rel='stylesheet'/>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        var switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data()); size: small
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+        function changeFormat(args){
+            let parts = args.split('-');
+            return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+
+        function validate(fI, fF, cdg) {
+            var fechaI = changeFormat(fI);
+            var fechaF = changeFormat(fF);
+
+            if (Date.parse(fechaF) < Date.parse(fechaI)){
+                if (cdg === 'f'){
+                    smoke.alert('La fecha de finalización debe ser mayor o igual a la fecha de inicio.', function () {
+                        $('#id_fechafin').val('').focus();
+                    });
+                }else{
+                    smoke.alert('La fecha de inicio debe ser menor o igual a la fecha de finalización.', function () {
+                        $('#id_fechainicio').val('').focus();
+                    });
+                }
+            }
+        }
+        function obtener_total_perfiles_cumplen(ids_campoamplio,ids_campoespecifico,ids_campodetallado,ids_perfilrequeridopac){
+            $.ajax({
+                    type: "GET",
+                    url: "{{ request.path }}",
+                    data: {'action': 'cantidad_perfiles_cumplen', 'ids_campoamplio': ids_campoamplio, 'ids_campoespecifico': ids_campoespecifico, 'ids_campodetallado': ids_campodetallado, 'ids_perfilrequeridopac': ids_perfilrequeridopac},
+                    success: function(data) {
+                        if (data.result == 'ok') {
+                            $('#id_perfiles_cumplen').val(data.total)
+                        } else {
+                           $('#id_perfiles_cumplen').val(0)
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        smoke.alert("Error al cambiar de periodo");
+                    },
+                    dataType: "json"
+                });
+        }
+
+        function validate2(fI, fF) {
+            $(".help-text").text('');
+            let fechaI = changeFormat(fI);
+            let fechaF = changeFormat(fF);
+            let mayor;
+            (Date.parse(fechaF) > Date.parse(fechaI)) ? mayor = fechaF : mayor = fechaI;
+            return fechaF.toDateString() === mayor.toDateString();
+        }
+
+        $(function(){
+
+
+
+            $('.headtitle').addClass('ms-0');
+
+            $("body").initSwitchery();
+
+            $("#id_fechainiciorequisito, #id_fechafinrequisito, #id_fechafin, #id_fechainicio").datepicker(
+                {format: "dd-mm-yyyy"}).on('changeDate', function (ev) {
+                $(this).datepicker('hide');
+            });
+
+            $("#id_campoamplio,#id_perfilrequeridopac,#id_fechainiciorequisito, #id_fechafinrequisito, #id_fechainicio, #id_fechafin, #id_nombre, #id_tipodocente").addClass("validate[required]");
+
+            ItemsDisplay = function (item) {
+                if(item.text=='undefined')
+                {
+                    return '---------';
+                }
+                if (item.text){
+                    return $('<span>' + item.text+ '</span>');
+                }else{
+                    if(item.name){
+                        return $('<span>' + item.name+ '</span>');
+                    }else {
+                        return '---------';
+                    }
+                }
+            };
+
+            $("#id_perfilrequeridopac").trigger('change');
+
+            ($("#id_fechafin").val() == '') ? $("#id_fechafin").attr('disabled', true) : '';
+
+            $("#id_fechainicio").on('changeDate',function () {
+                if($("#id_fechafin").val() !== ''){
+                    if (!validate2($(this).val(),$("#id_fechafin").val())){
+                        $(".help-text:eq(2)").text('La fecha de inicio debe ser menor o igual a la fecha de finalización.');
+                        $('#id_fechainicio').val('');
+                    }
+                }
+                $("#id_fechafin").attr('disabled', false);
+            });
+
+            $("#id_fechafin").on('changeDate',function (e) {
+                let fechaI = $("#id_fechainicio").val();
+                let fechaF = $(this).val();
+
+                if (!validate2(fechaI, fechaF)){
+                    $(".help-text:eq(3)").text('La fecha de finalización debe ser mayor o igual a la fecha de inicio.');
+                    $('#id_fechafin').val('');
+                }
+            });
+            $('#id_campoespecifico, #id_campodetallado').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            obtener_total_perfiles_cumplen($('#id_campoamplio').val(),$('#id_campoespecifico').val(),$('#id_campodetallado').val(),$('#id_perfilrequeridopac').val())
+
+
+
+            $("#id_perfilrequeridopac").select2({
+                placeholder: "Seleccionar perfil requerido",
+            }).on("select2:unselect", function (e) {
+                $('#id_campoamplio,#id_campoespecifico, #id_campodetallado').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            });
+
+            $("#id_campoamplio").select2({
+                placeholder: "Seleccionar perfil requerido",
+            }).on("select2:unselect", function (e) {
+                $('#id_campoespecifico, #id_campodetallado').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            });
+
+            $("#id_campoespecifico").select2({
+                placeholder: "Seleccionar perfil requerido",
+            }).on("select2:unselect", function (e) {
+                $(' #id_campodetallado').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            });
+
+            $('#id_campoamplio').trigger('change');
+            $("#id_campoamplio").select2({
+                placeholder: "Seleccionar Campo Amplio",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear: true,
+                width: '100%',
+                ajax: {
+                    url: function (params) {
+                        return `{{ url_ }}?action=listcampoamplio&ePerfilRequeridoPac=${$('#id_perfilrequeridopac').val()}&q=` + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                },
+                minimumInputLength: 0,
+                templateResult: ItemsDisplay,
+                templateSelection: ItemsDisplay
+            }).on("select2:select", function (evt) {
+                $("#id_campoamplio").attr({"value": (evt.params.data.id)});
+            }).on("select2:unselect", function (e) {
+                $('#id_campoespecifico').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            });
+
+
+            $('#id_campoespecifico').trigger('change');
+            $("#id_campoespecifico").select2({
+                placeholder: "Seleccionar Campo Especifico",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear: true,
+                width: '100%',
+                ajax: {
+                    url: function (params) {
+                        return `{{ url_ }}?action=listcampoespecifico&campoamplio=${$('#id_campoamplio').val()}&ePerfilRequeridoPac=${$('#id_perfilrequeridopac').val()}&q=` + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                },
+                minimumInputLength: 0,
+                templateResult: ItemsDisplay,
+                templateSelection: ItemsDisplay
+            }).on("select2:select", function (evt) {
+                $("#id_campoespecifico").attr({"value": (evt.params.data.id)});
+            }).on("select2:unselect", function (e) {
+                $('#id_campodetallado').empty().append('<option value="" disabled>---------</option>').val(0).trigger("change");
+            });
+
+            $('#id_campodetallado').trigger('change');
+            $("#id_campodetallado").select2({
+                placeholder: "Seleccionar Campo Detallado",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear: true,
+                width: '100%',
+                ajax: {
+
+                    url: function (params) {
+                        return `{{ url_ }}?action=listcampodetallado&campoespecifico=${$('#id_campoespecifico').val()}&ePerfilRequeridoPac=${$('#id_perfilrequeridopac').val()}&q=` + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) {
+                    return markup;
+                },
+                minimumInputLength: 0,
+                templateResult: ItemsDisplay,
+                templateSelection: ItemsDisplay
+            }).on("select2:select", function (evt) {
+                $("#id_campodetallado").attr({"value": (evt.params.data.id)});
+            });
+
+
+            $('#id_campodetallado, #id_campoespecifico,#id_campoamplio').change(function () {
+                var ids_campoamplio= $('#id_campoamplio').val()
+                var ids_campoespecifico=$('#id_campoespecifico').val()
+                var ids_campodetallado=$('#id_campodetallado').val()
+                var ids_perfilrequeridopac=$('#id_perfilrequeridopac').val()
+
+                obtener_total_perfiles_cumplen(ids_campoamplio,ids_campoespecifico,ids_campodetallado,ids_perfilrequeridopac)
+
+
+            });
+
+
+        });
+    </script>
+{% endblock %}
+{% block titulo %}{{ title|lower|title }}{% endblock %}
+
+{% block formtop %}
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+        <symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+        </symbol>
+        <symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+        </symbol>
+        <symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+        </symbol>
+    </svg>
+    {% if not existe_perfil_requerido and tipo == 1 %}
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:">
+                <use xlink:href="#exclamation-triangle-fill"/>
+            </svg>
+            <div>
+                Los perfiles requeridos para postular al módulo <b>{{ asignatura }}</b> no se encuentran registrados en instauración.
+            </div>
+        </div>
+    {% endif %}
+    {% if tipo == 1 %}
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:">
+                <use xlink:href="#exclamation-triangle-fill"/>
+            </svg>
+            <div>
+                Estimad{% if persona.es_mujer %}a{% else %}o{% endif %} {{ persona.nombres }}, la convocatoria que estas por generar es de tipo <b>DOCENTE MODULAR</b>.
+            </div>
+        </div>
+        {% elif tipo == 2 %}
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:">
+                <use xlink:href="#exclamation-triangle-fill"/>
+            </svg>
+            <div>
+                Estimad{% if persona.es_mujer %}a{% else %}o{% endif %} {{ persona.nombres }}, la convocatoria que estas por generar es de tipo <b>DOCENTE INVITADO</b>.
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+{% block atras %}
+    {% if tipo == 1 %}?action=listadoconvocatorias&idm={{ idm|encrypt }}&idc={{ idc|encrypt }}&idp={{ idp|encrypt }}{% else %}?action=convocatorias{% endif %}
+{% endblock %}
+{% block formaction %}/adm_postulacion{% endblock %}
+{% block form-type %}form-horizontal{% endblock %}
+{% block formwidth %}form-m{% endblock %}
+{% block formdestination %}{% if tipo == 1 %}?action=listadoconvocatorias&idm={{ idm|encrypt }}&idc={{ idc|encrypt }}&idp={{ idp|encrypt }}{% else %}?action=convocatorias{% endif %}{% endblock %}
+{% block formextra %}
+    <input type="hidden" name="id" value="{{ id|encrypt }}"/>
+    <input type="hidden" name="idasigmalla" value="{{ idasigmalla|encrypt }}"/>
+    <input type="hidden" name="action" value="{{ action }}"/>
+    <input type="hidden" name="idc" value="{{ idc }}"/>
+    <input type="hidden" name="idp" value="{{ idp }}"/>
+    <input type="hidden" name="tipo" value="{{ tipo }}"/>
+    <input type="hidden" name="planificacionmateria" value="{{ ePlanificacionMateria.pk }}"/>
+{% endblock %}
+{% block formback %}{% if tipo == 1 %}?action=listadoconvocatorias&idm={{ idm|encrypt }}&idc={{ idc|encrypt }}&idp={{ idp|encrypt }}{% else %}?action=convocatorias{% endif %}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+

@@ -1,0 +1,925 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        let switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            let searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(function(){
+            $("body").initSwitchery();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            let nf_objetivo = secuenciaobjetivo = {{ objetivos|length }};
+            let nf_tecnologia = secuenciatecnologia = {{ tecnologias|length }};
+            let nueva;
+            let nf_persona = secuenciapersona = {{ integrantes|length }};
+            let idfilaedit = "";
+
+            lista_items1 = [];//Integrantes
+            lista_items2 = [];//Requisitos
+
+            lista_items3 = [];//Objetivos eliminados
+            lista_items4 = [];//Integrantes eliminados
+            lista_items5 = [];//Tecnologías eliminados
+
+            $("#id_nombre, #id_acronimo, #id_descripcion, #id_objetivogeneral, #id_objetivos_aux, #id_requisitos_aux, #id_tecnologias_aux").addClass("validate[required]");
+            $("#id_lineainvestigacion, #id_colaboracion").addClass("validate[required]");
+            $("#id_descripcion, #id_objetivogeneral, #id_tecnologiadomina, #id_colaboracion").css('resize', 'none');
+
+            $("#id_acronimo").css('text-transform', 'uppercase');
+
+
+            $(".agregaobjetivo").click(function() {
+                if(datos_objetivo_completo()){
+                    nf_objetivo += 1;
+                    secuenciaobjetivo += 1;
+
+                    borrar_fila_default_objetivo();
+
+                    nueva = '<tr class="detalleobjetivo" id="filaobjetivo_' + nf_objetivo.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciaobjetivo.toString()+'</td>'+
+                        '<td> <input type="hidden" id="id_objetivo[]" name="id_objetivo[]" value="0">  <input autocomplete="off" style="text-align: left; width: 100%;" maxlength="500" id="objetivo_especifico'+nf_objetivo.toString()+'" name="objetivo_especifico[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_objetivo" idreg="0" idf="' + nf_objetivo.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>';
+
+                    $("#detalle_objetivos").append(nueva);
+                    $("#objetivo_especifico"+nf_objetivo.toString()).addClass("validate[required]");
+                    $("#detalle_objetivos").find(".eliminaritem_objetivo").tooltip();
+                    $(".eliminaritem_objetivo").unbind("click.eliminaritem_objetivo");
+                    $(".eliminaritem_objetivo").bind("click.eliminaritem_objetivo", eliminarItem_objetivo);
+                }
+            });
+
+            eliminarItem_objetivo = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                let idreg = $(this).attr("idreg");
+                $("#filaobjetivo_"+id).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items3.push(item);
+                }
+                console.log(lista_items3);
+
+                secuenciaobjetivo = 0;
+                $("#tbdetalleobjetivos tbody tr").each(function (index) {
+                    secuenciaobjetivo ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaobjetivo.toString());
+                    });
+                });
+
+                if(secuenciaobjetivo == 0)
+                    agregar_fila_default_objetivo();
+            };
+
+            agregar_fila_default_objetivo = function (){
+                let filadefault = '<tr id="fila_default_objetivo">'+
+                              '<td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE OBJETIVOS ESPECÍFICOS</td>'+
+                              '</tr>';
+                $("#detalle_objetivos").append(filadefault);
+                $("#id_objetivos_aux").addClass("validate[required]");
+                $("#id_objetivos_aux").val("");
+            };
+
+            borrar_fila_default_objetivo = function (){
+                $("#fila_default_objetivo").remove();
+                $("#id_objetivos_aux").removeClass("validate[required]");
+            };
+
+            datos_objetivo_completo = function (){
+                let c1e = true;
+
+                $('input[name="objetivo_especifico[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            $(".agregarpersona").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_fgrupoinvestigacion",
+                    data: {'action': 'addintegrante'},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodypersona").html(data.data);
+                            $(".paneltitlepersona").html(data.title);
+                            $("#itemspanelpersona").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelpersona .agregar").click(function () {
+                $("#frmPersona").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmPersona").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarPersona()){
+                        idtipopersona = $("#tipopersona").val();
+                        tipopersona = $("#tipopersona").find('option:selected').text();
+                        idpersona = $('#auxpersona_select2').attr("idp");
+                        nombres = $('#auxpersona_select2').attr("nombre");
+                        idtipo = $("#idtipo").val();
+                        tipo = $("#tipo").val();
+                        iddedicacion = $("#iddedicacion").val();
+                        dedicacion = $("#dedicacion").val();
+                        idfuncion = $("#idfuncion").val();
+                        funcion = $("#funcion").val();
+                        horas = "0";
+                        idfiliacion = $("#filiacion").val();
+                        filiacion = $("#filiacion").find('option:selected').text();
+                        trayectoria = $("#trayectoria").val();
+                        justificacion = $("#justificacion").val();
+                        cantgruposvigentes = $("#cantgruposvigentes").val();
+                        idcoordinacion = $("#idcoordinacion").val();
+                        coordinacion = $("#coordinacion").val();
+                        aliascoordinacion = $("#aliascoordinacion").val();
+                        idcarrera = $("#idcarrera").val();
+                        carrera = $("#carrera").val();
+                        aliascarrera = $("#aliascarrera").val();
+                        trayectoriaaux = (trayectoria.length <= 100) ? trayectoria : trayectoria.substring(0, 100) + "...";
+
+                        camponombre = `${nombres}<br><span class="label label-info">${aliascoordinacion}</span>&nbsp;<span class="label label-success">${aliascarrera}</span>`;
+                        campocategdedi = tipo != '' ? `${tipo} / ${dedicacion}`: '';
+                        campofuncionhoras = `${funcion}`;
+
+                        secuenciapersona ++;
+                        nf_persona ++;
+
+                        nueva_fila = `<tr class="detallepersonas" id="filapersona_${nf_persona}" idreg="0" idtipopersona="${idtipopersona}" tipopersona="${tipopersona}" idpe="${idpersona}" nombre="${nombres}" idtipo="${idtipo}" tipo="${tipo}" iddedicacion="${iddedicacion}" dedicacion="${dedicacion}" idfuncion="${idfuncion}" funcion="${funcion}" horas="${horas}" idfiliacion="${idfiliacion}" filiacion="${filiacion}" trayectoria="${trayectoria}" justificacion="${justificacion}" cantgruposvigentes="${cantgruposvigentes}" idcoordinacion="${idcoordinacion}" coordinacion="${coordinacion}" aliascoordinacion="${aliascoordinacion}" idcarrera="${idcarrera}" carrera="${carrera}" aliascarrera="${aliascarrera}">`+
+                            '<td style="text-align: right">'+secuenciapersona.toString()+'</td>'+
+                            '<td style="text-align: center">'+tipopersona+'</td>'+
+                            '<td style="text-align: justify">'+camponombre+'</td>'+
+                            '<td style="text-align: center">'+ campocategdedi +'</td>'+
+                            '<td style="text-align: center">'+campofuncionhoras+'</td>'+
+                            '<td style="text-align: center">'+filiacion+'</td>'+
+                            '<td style="text-align: justify">'+trayectoriaaux+'</td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-info editarpersona tu" idreg="0" idfila="'+nf_persona.toString()+'" title="Editar"><i class="fa fa-edit"></i></a></td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarpersona tu" idreg="0" idfila="'+nf_persona.toString()+'" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                            '</tr>';
+
+                        $("#detalle_personas").append(nueva_fila);
+                        $("#detalle_personas").find(".editarpersona").tooltip();
+                        $("#detalle_personas").find(".eliminarpersona").tooltip();
+                        $(".editarpersona").unbind("click.editarpersona");
+                        $(".editarpersona").bind("click.editarpersona", editarPersona);
+                        $(".eliminarpersona").unbind("click.eliminarpersona");
+                        $(".eliminarpersona").bind("click.eliminarpersona", eliminarPersona);
+                        actualizarListaPersona();
+                        $('#itemspanelpersona').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarPersona = function (){
+                let idper = $('#auxpersona_select2').attr("idp");
+                let npersona = $('#auxpersona_select2').attr("nombre");
+                let repetido = false;
+
+                if($('.detallepersonas[idpe="'+idper+'"]').length > 0){
+                    repetido = true;
+                }
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "La persona: <b>" + npersona + "</b> ya ha sido agregado al detalle de integrantes del grupo");
+                    return false;
+                }
+
+                if($("#tipopersona").val() == '1' && $("#idtipo").val() !== '4' && $("#idcarrera").val() == '0'){
+                    mensajeWarningSwal("Atención!!!", "No se puede agregar al profesor debido a que no cuenta con una carrera asignada en el periodo actual");
+                    return false;
+                }
+
+                return true;
+            };
+
+            editarPersona = function() {
+                ida = $(this).attr('idreg');
+                idfilaedit = $(this).attr('idfila');
+
+                $(".paneltitleeditpersona").html("Editar Integrante del Grupo");
+
+                //Obtengo la fila actual de la tabla
+                let filaTabla=$("#filapersona_"+idfilaedit);
+                //Obtengo texto de los atributos de esa fila
+                tipopersona = filaTabla.attr("tipopersona");
+                nombre = filaTabla.attr("nombre");
+                tipo = filaTabla.attr("tipo");
+                dedicacion = filaTabla.attr("dedicacion");
+                idfuncion = filaTabla.attr("idfuncion");
+                funcion = filaTabla.attr("funcion");
+                horas = filaTabla.attr("horas");
+                idfiliacion = filaTabla.attr("idfiliacion");
+                trayectoria = filaTabla.attr("trayectoria");
+                justificacion = filaTabla.attr("justificacion");
+                cantgruposvigentes = filaTabla.attr("cantgruposvigentes");
+                idcoordinacion = filaTabla.attr("idcoordinacion");
+                coordinacion = filaTabla.attr("coordinacion");
+                aliascoordinacion = filaTabla.attr("aliascoordinacion");
+                idcarrera = filaTabla.attr("idcarrera");
+                carrera = filaTabla.attr("carrera");
+                aliascarrera = filaTabla.attr("aliascarrera");
+
+                $("#tipopersonaedit").html(tipopersona);
+                $("#nombrepersonaedit").html(nombre);
+                $("#tipoedit").val(tipo);
+                $("#dedicacionedit").val(dedicacion);
+                $("#idfuncionedit").val(idfuncion);
+                $("#funcionedit").val(funcion);
+                $("#filiacionedit").val(idfiliacion).trigger('change');
+                $("#trayectoriaedit").val(trayectoria);
+                $("#justificacionedit").val(justificacion);
+                $("#cantgruposvigentesedit").val(cantgruposvigentes);
+                $("#idcoordinacionedit").val(idcoordinacion);
+                $("#coordinacionedit").val(coordinacion);
+                $("#aliascoordinacionedit").val(aliascoordinacion);
+                $("#idcarreraedit").val(idcarrera);
+                $("#idcarrera").val(carrera);
+                $("#aliascarreraedit").val(aliascarrera);
+
+                habilitarCamposEditPersona();
+                $("#itemspaneleditpersona").modal({backdrop:'static'}).modal('show');
+            };
+
+            habilitarCamposEditPersona = function (){
+                $("#filiacionedit, #trayectoriaedit, #justificacionedit").prop('disabled', false);
+                $("#filiacionedit, #trayectoriaedit, #justificacionedit").addClass("validate[required]");
+                if(parseInt($("#cantgruposvigentesedit").val()) < 2)
+                    $("#filajustificacionedit").hide();
+                else
+                    $("#filajustificacionedit").show();
+            };
+
+            $(".actualizarpersona").click(function() {
+                $("#frmEditPersona").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmEditPersona").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    funcion = $("#funcionedit").val();
+                    horas = "0";
+                    idfiliacion = $("#filiacionedit").val();
+                    filiacion = $("#filiacionedit").find('option:selected').text();
+                    trayectoria = $("#trayectoriaedit").val();
+                    justificacion = $("#justificacionedit").val();
+
+                    //Obtengo la fila actual de la tabla
+                    let filaTabla=$("#filapersona_"+idfilaedit);
+                    //Edito los atributos de la fila
+                    filaTabla.attr('horas', horas);
+                    filaTabla.attr('idfiliacion', idfiliacion);
+                    filaTabla.attr('filiacion', filiacion);
+                    filaTabla.attr('trayectoria', trayectoria);
+                    filaTabla.attr('justificacion', justificacion);
+
+                    //Edito el texto o contenido html de las celdas
+                    filaTabla.find("td:eq(4)").html("");
+                    filaTabla.find("td:eq(4)").html(`${funcion}`);
+                    filaTabla.find("td:eq(5)").text(filiacion);
+                    filaTabla.find("td:eq(6)").text(trayectoria.length <= 100 ? trayectoria : trayectoria.substring(0, 100) + "..." );
+
+                    actualizarListaPersona();
+
+                    directoract = true;
+
+                    $('#itemspaneleditpersona').modal('hide');
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            eliminarPersona = function() {
+                let idf = $(this).attr("idfila");
+                $(this).tooltip('hide');
+                let idreg = $(this).attr("idreg");
+                $("#filapersona_"+idf).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items4.push(item);
+                }
+                console.log(lista_items4);
+
+                secuenciapersona = 0;
+                $("#tbdetallepersonas tbody tr").each(function (index) {
+                    secuenciapersona ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciapersona.toString());
+                    });
+                });
+
+                actualizarListaPersona();
+            };
+
+            actualizarListaPersona = function () {
+                lista_items1 = [];
+                $(".detallepersonas").each(function(){
+                    let item = {
+                        idreg: $(this).attr('idreg'),
+                        idtipopersona: $(this).attr('idtipopersona'),
+                        idpersona: $(this).attr('idpe'),
+                        idtipo: $(this).attr('idtipo'),
+                        iddedicacion: $(this).attr('iddedicacion'),
+                        idfuncion: $(this).attr('idfuncion'),
+                        horas: $(this).attr('horas'),
+                        idfiliacion: $(this).attr('idfiliacion'),
+                        trayectoria: $(this).attr('trayectoria'),
+                        justificacion: $(this).attr('justificacion'),
+                        cantgruposvigentes: $(this).attr('cantgruposvigentes'),
+                        idcoordinacion: $(this).attr('idcoordinacion'),
+                        coordinacion: $(this).attr('coordinacion'),
+                        aliascoordinacion: $(this).attr('aliascoordinacion'),
+                        idcarrera: $(this).attr('idcarrera'),
+                        carrera: $(this).attr('carrera'),
+                        aliascarrera: $(this).attr('aliascarrera')
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            $(".agregatecnologia").click(function() {
+                if(datos_tecnologia_completo()){
+                    nf_tecnologia += 1;
+                    secuenciatecnologia += 1;
+
+                    borrar_fila_default_tecnologia();
+
+                    nueva = '<tr class="detalletecnologia" id="filatecnologia_' + nf_tecnologia.toString() + '">' +
+                        '<td style="text-align: right">'+secuenciatecnologia.toString()+'</td>'+
+                        '<td> <input type="hidden" id="id_tecnologia[]" name="id_tecnologia[]" value="0">  <input autocomplete="off" style="text-align: left; width: 100%;" maxlength="250" id="tecnologia'+nf_tecnologia.toString()+'" name="tecnologia[]" type="text" value="" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>' +
+                        '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_tecnologia" idreg="0" idf="' + nf_tecnologia.toString() + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td></tr>';
+
+                    $("#detalle_tecnologias").append(nueva);
+                    $("#tecnologia"+nf_tecnologia.toString()).addClass("validate[required]");
+                    $("#detalle_tecnologias").find(".eliminaritem_tecnologia").tooltip();
+                    $(".eliminaritem_tecnologia").unbind("click.eliminaritem_tecnologia");
+                    $(".eliminaritem_tecnologia").bind("click.eliminaritem_tecnologia", eliminarItem_tecnologia);
+                }
+            });
+
+            eliminarItem_tecnologia = function() {
+                let id = $(this).attr("idf");
+                $(this).tooltip('hide');
+                let idreg = $(this).attr("idreg");
+                $("#filatecnologia_"+id).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items5.push(item);
+                }
+                console.log(lista_items5);
+
+                secuenciatecnologia = 0;
+                $("#tbdetalletecnologias tbody tr").each(function (index) {
+                    secuenciatecnologia ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciatecnologia.toString());
+                    });
+                });
+
+                if(secuenciatecnologia == 0)
+                    agregar_fila_default_tecnologia();
+            };
+
+            agregar_fila_default_tecnologia = function (){
+                let filadefault = '<tr id="fila_default_tecnologia">'+
+                              '<td colspan="3" style="text-align: center">NO EXISTEN DETALLES DE TECNOLOGÍAS QUE DOMINA</td>'+
+                              '</tr>';
+                $("#detalle_tecnologias").append(filadefault);
+                $("#id_tecnologias_aux").addClass("validate[required]");
+                $("#id_tecnologias_aux").val("");
+            };
+
+            borrar_fila_default_tecnologia = function (){
+                $("#fila_default_tecnologia").remove();
+                $("#id_tecnologias_aux").removeClass("validate[required]");
+            };
+
+            datos_tecnologia_completo = function (){
+                let c1e = true;
+
+                $('input[name="tecnologia[]"]').each(function() {
+                    if($(this).val().trim()==''){
+                        c1e = false;
+                        return false;
+                    }
+                });
+
+                return c1e;
+            };
+
+            $(".requisitos").on("change" , function() {
+                actualizarListaRequisitos();
+            });
+
+            actualizarListaRequisitos = function (){
+                lista_items2 = [];
+
+                $(".requisitos").each(function(){
+                    lista_items2.push({'idreg': $(this).attr("idreg"),
+                                       'idreq': $(this).attr("idreq"),
+                                       'valor': $(this).is(":checked")});
+                });
+            };
+
+            $("#itemspanelagregapersonaxterna .guardar").click(function () {
+                envioformularioreg("/pro_fgrupoinvestigacion", "addpersonaexterna", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+                if(action == 'addpersonaexterna'){
+                    $("#frmPersonaExterna").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmPersonaExterna").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if (action == 'addpersonaexterna')
+                        formdata = new FormData($("#frmPersonaExterna")[0]);
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function (data) {
+                            if (data.result == 'ok') {
+                                $.unblockUI();
+                                urlDestino = "";
+
+                                idtipopersona = "4";
+                                tipopersona = "EXTERNO";
+                                idpersona = data.idpersona;
+                                nombres = data.nombres;
+                                idtipo = "0";
+                                tipo = "";
+                                iddedicacion = "0";
+                                dedicacion = "";
+                                idfuncion = "3";
+                                funcion = "INVESTIGADOR";
+                                horas = "0";
+                                idfiliacion = "2";
+                                filiacion = "EXTERNA";
+                                trayectoria = $("#trayectoriapex").val();
+                                justificacion = "";
+                                cantgruposvigentes = "0";
+                                idcoordinacion = "0";
+                                coordinacion = "";
+                                aliascoordinacion = "";
+                                idcarrera = "0";
+                                carrera = "";
+                                aliascarrera = "";
+                                trayectoriaaux = (trayectoria.length <= 100) ? trayectoria : trayectoria.substring(0, 100) + "...";
+
+                                camponombre = `${nombres}<br><span class="label label-info">${aliascoordinacion}</span>&nbsp;<span class="label label-success">${aliascarrera}</span>`;
+                                campocategdedi = tipo != '' ? `${tipo} / ${dedicacion}`: '';
+                                campofuncionhoras = `${funcion}`;
+
+                                secuenciapersona ++;
+                                nf_persona ++;
+
+                                nueva_fila = `<tr class="detallepersonas" id="filapersona_${nf_persona}" idreg="0" idtipopersona="${idtipopersona}" tipopersona="${tipopersona}" idpe="${idpersona}" nombre="${nombres}" idtipo="${idtipo}" tipo="${tipo}" iddedicacion="${iddedicacion}" dedicacion="${dedicacion}" idfuncion="${idfuncion}" funcion="${funcion}" horas="${horas}" idfiliacion="${idfiliacion}" filiacion="${filiacion}" trayectoria="${trayectoria}" justificacion="${justificacion}" cantgruposvigentes="${cantgruposvigentes}" idcoordinacion="${idcoordinacion}" coordinacion="${coordinacion}" aliascoordinacion="${aliascoordinacion}" idcarrera="${idcarrera}" carrera="${carrera}" aliascarrera="${aliascarrera}">`+
+                                    '<td style="text-align: right">'+secuenciapersona.toString()+'</td>'+
+                                    '<td style="text-align: center">'+tipopersona+'</td>'+
+                                    '<td style="text-align: justify">'+camponombre+'</td>'+
+                                    '<td style="text-align: center">'+ campocategdedi +'</td>'+
+                                    '<td style="text-align: center">'+campofuncionhoras+'</td>'+
+                                    '<td style="text-align: center">'+filiacion+'</td>'+
+                                    '<td style="text-align: justify">'+trayectoriaaux+'</td>'+
+                                    '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-info editarpersona tu" idreg="0" idfila="'+nf_persona.toString()+'" title="Editar"><i class="fa fa-edit"></i></a></td>'+
+                                    '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarpersona tu" idreg="0" idfila="'+nf_persona.toString()+'" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                                    '</tr>';
+
+                                $("#detalle_personas").append(nueva_fila);
+                                $("#detalle_personas").find(".editarpersona").tooltip();
+                                $("#detalle_personas").find(".eliminarpersona").tooltip();
+                                $(".editarpersona").unbind("click.editarpersona");
+                                $(".editarpersona").bind("click.editarpersona", editarPersona);
+                                $(".eliminarpersona").unbind("click.eliminarpersona");
+                                $(".eliminarpersona").bind("click.eliminarpersona", eliminarPersona);
+                                actualizarListaPersona();
+
+                                $("#itemspanelagregapersonaxterna").modal({backdrop:'static'}).modal('hide');
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            } else {
+                                $.unblockUI();
+                                if (data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            {% if grupoinvestigacion.logotipo %}
+                $("#viewlogotipo").click(function (){
+                    Fancybox.show([
+                        {
+                            src: "{{ grupoinvestigacion.logotipo.url }}",
+                            width: 2048,
+                            height: 1365,
+                            caption:"Logotipo del Grupo de Investigación"
+                        },
+                    ]);
+                });
+            {% else %}
+                $("#viewlogotipo").hide();
+            {% endif %}
+            $(".editarpersona").unbind("click.editarpersona");
+            $(".editarpersona").bind("click.editarpersona", editarPersona);
+
+            $.each("{{ lineasgrupo }}".split(","), function(i,e){
+                $("#id_lineainvestigacion option[value='" + e + "']").prop("selected", true);
+            });
+            $("#id_lineainvestigacion").trigger('change');
+
+            actualizarListaPersona();
+            actualizarListaRequisitos();
+
+            $(".eliminaritem_objetivo").unbind("click.eliminaritem_objetivo");
+            $(".eliminaritem_objetivo").bind("click.eliminaritem_objetivo", eliminarItem_objetivo);
+            $(".editarpersona").unbind("click.editarpersona");
+            $(".editarpersona").bind("click.editarpersona", editarPersona);
+            $(".eliminarpersona").unbind("click.eliminarpersona");
+            $(".eliminarpersona").bind("click.eliminarpersona", eliminarPersona);
+            $(".eliminaritem_tecnologia").unbind("click.eliminaritem_tecnologia");
+            $(".eliminaritem_tecnologia").bind("click.eliminaritem_tecnologia", eliminarItem_tecnologia);
+
+            $("#id_descripcion, #id_objetivogeneral, #id_colaboracion").css("padding", "3px");
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_fgrupoinvestigacion?action=solicitudesgrupo&tipo=ms{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/pro_fgrupoinvestigacion?action=solicitudesgrupo&tipo=ms{% endblock %}
+{% block formdestinationswal %}/pro_fgrupoinvestigacion?action=solicitudesgrupo&tipo=ms{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editsolicitudgrupo'/>
+    <input type='hidden' name='id' value='{{ grupoinvestigacion.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/pro_fgrupoinvestigacion?action=solicitudesgrupo&tipo=ms{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid">
+        <div class="table-responsive-xxl">
+            <table class="table table-bordered table-striped mb-0" id="tbdetalleobjetivos">
+                <thead class="table-light">
+                    <tr>
+                        <th colspan="3">Objetivos Específicos</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 2%; text-align: center;">#</th>
+                        <th style="width: 95%; text-align: center;">Objetivo</th>
+                        <th style="width: 3%; text-align: center">
+                            <a href="javascript:;" id="btnagregaobjetivo" class="btn btn-success btn-mini agregaobjetivo" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Objetivo específico"><i class="fa fa-plus"></i> </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="detalle_objetivos">
+                    {% for objetivo in objetivos %}
+                        <tr class="detalleobjetivo" id="filaobjetivo_{{ forloop.counter }}">
+                            <td style="text-align: right">{{ forloop.counter }}</td>
+                            <td> <input type="hidden" id="id_objetivo[]" name="id_objetivo[]" value="{{ objetivo.id }}">  <input class="validate[required]" autocomplete="off" style="text-align: left; width: 100%;" maxlength="500" id="objetivo_especifico{{ forloop.counter }}" name="objetivo_especifico[]" type="text" value="{{ objetivo.descripcion }}" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>
+                            <td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_objetivo" idreg="{{ objetivo.id }}" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_objetivos_aux" value="OK">
+            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+        </div>
+    </div>
+    <div id="fieldset_lineainvestigacion" class="col-md-12" style="float: left;">
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_lineainvestigacion" style="padding-right: 10px;">Líneas Investigación:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">
+                <select id="id_lineainvestigacion" multiple name="id_lineainvestigacion" col="12">
+                    {% for linea in lineasinvestigacion %}
+                        <option value="{{ linea.id }}">{{ linea.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid">
+
+    </div>
+    <div class="row-fluid">
+        <div class="table-responsive-xxl">
+            <table class="table table-bordered table-striped" id="tbdetallepersonas">
+                <thead class="table-light">
+                    <tr>
+                        <th colspan="9">Miembros del Grupo</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 2%; text-align: center; text-transform: none">#</th>
+                        <th style="width: 10%; text-align: center; text-transform: none">Tipo</th>
+                        <th style="width: 30%; text-align: center; text-transform: none">Nombres</th>
+                        <th style="width: 10%; text-align: center; text-transform: none">Tipo/Dedicación</th>
+                        <th style="width: 15%; text-align: center; text-transform: none">Función</th>
+                        <th style="width: 15%; text-align: center; text-transform: none">Filiación</th>
+                        <th style="width: 15%; text-align: center; text-transform: none">Trayectoria</th>
+                        <th colspan="2" style="width: 3%; text-align: center">
+                            <a href="javascript:;" id="btnagregarintegrante" class="btn btn-success btn-mini agregarpersona" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Integrante"><i class="fa fa-plus"></i> </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="detalle_personas">
+                    {% for integrante in integrantes %}
+                        <tr class="detallepersonas" id="filapersona_{{ forloop.counter }}" idreg="{{ integrante.id }}" idtipopersona="{{ integrante.tipo }}" tipopersona="{{ integrante.get_tipo_display }}" idpe="{{ integrante.persona.id }}" nombre="{{ integrante.persona.nombre_completo_inverso }}" idtipo="{{ integrante.tipodocente.id }}" tipo="{{ integrante.tipodocente.nombre }}" iddedicacion="{{ integrante.dedicacion.id }}" dedicacion="{{ integrante.dedicacion.nombre }}" idfuncion="{{ integrante.funcion }}" funcion="{{ integrante.get_funcion_display }}" horas="{{ integrante.cantidadhora }}" idfiliacion="{{ integrante.filiacion }}" filiacion="{{ integrante.get_filiacion_display }}" trayectoria="{{ integrante.trayectoriaprevia }}" justificacion="{{ integrante.justificacion }}" cantgruposvigentes="{{ integrante.persona.cantidad_grupos_investigacion_vigente }}" idcoordinacion="{{ integrante.coordinacion.id }}" coordinacion="{{ integrante.coordinacion.nombre }}" aliascoordinacion="{{ integrante.coordinacion.alias }}" idcarrera="{{ integrante.carrera.id }}" carrera="{{ integrante.carrera.nombre }}" aliascarrera="{{ integrante.carrera.alias }}">
+                            <td style="text-align: right">{{ forloop.counter }}</td>
+                            <td style="text-align: center">{{ integrante.get_tipo_display }}</td>
+                            <td style="text-align: justify">
+                                {{ integrante.persona.nombre_completo_inverso }}<br>
+                                <span class="label label-info">{{ integrante.coordinacion.alias }}</span>
+                                <span class="label label-success">{{ integrante.carrera.alias }}</span>
+                            </td>
+                            <td style="text-align: center">
+                                {% if integrante.tipodocente %}
+                                    {{ integrante.tipodocente.nombre }} / {{ integrante.dedicacion.nombre }}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center">{{ integrante.get_funcion_display }}</td>
+                            <td style="text-align: center">{{ integrante.get_filiacion_display }}</td>
+                            <td style="text-align: justify">{{ integrante.trayectoriaprevia|substraerconpunto:100 }}</td>
+                            <td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-info editarpersona tu" idreg="{{ integrante.id }}" idfila="{{ forloop.counter }}" title="Editar"><i class="fa fa-edit"></i></a></td>
+                            <td style="text-align: center">
+                                {% if integrante.funcion != 1 %}
+                                    <a href="javascript:;" class="btn btn-tini btn-danger eliminarpersona tu" idreg="{{ integrante.id }}" idfila="{{ forloop.counter }}" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                {% else %}
+                                    &nbsp;
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="row-fluid">
+        <div class="table-responsive-xxl">
+            <table class="table table-bordered table-striped mb-0" id="tbdetalletecnologias">
+                <thead class="table-light">
+                    <tr>
+                        <th colspan="3">Tecnologías que domina</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 2%; text-align: center;">#</th>
+                        <th style="width: 95%; text-align: center;">Tecnología</th>
+                        <th style="width: 3%; text-align: center">
+                            <a href="javascript:;" id="btnagregatecnologia" class="btn btn-success btn-mini agregatecnologia" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Tecnología que domina"><i class="fa fa-plus"></i> </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="detalle_tecnologias">
+                    {% for tecnologia in tecnologias %}
+                        <tr class="detalletecnologia" id="filatecnologia_{{ forloop.counter }}">
+                            <td style="text-align: right">{{ forloop.counter }}</td>
+                            <td> <input type="hidden" id="id_tecnologia[]" name="id_tecnologia[]" value="{{ tecnologia.id }}">  <input class="validate[required]" autocomplete="off" style="text-align: left; width: 100%;" maxlength="250" id="tecnologia{{ forloop.counter }}" name="tecnologia[]" type="text" value="{{ tecnologia.descripcion }}" > <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div> </td>
+                            <td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminaritem_tecnologia" idreg="{{ tecnologia.id }}" idf="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_tecnologias_aux" value="OK">
+            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+        </div>
+    </div>
+    <div id="fieldset_colaboracion" class="col-md-12" style="float: left;">
+        <div class="input-group">
+            <div class="label-text col-md-3 col-sm-3 col-12"  style="display: table;height: 30px;">
+                <div style="display: table-cell; vertical-align: middle; line-height: 18px">
+                    <label for="id_colaboracion" style="padding-right: 10px;">Colaboración con otros grupos de investigación:</label>
+                </div>
+            </div>
+            <div class="control-group col-md-9 col-sm-9 col-12" style="float: left; width: 100">
+                <textarea name="colaboracion" cols="40" rows="5" col="12" class="form-control" id="id_colaboracion">{{ grupoinvestigacion.colaboracion }}</textarea>
+                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"></div>
+            </div>
+        </div>
+    </div>
+    <div class="row-fluid">
+
+    </div>
+    <div class="row-fluid">
+        <div class="table-responsive-xxl">
+            <table class="table table-bordered table-striped mb-0" id="tbcriteriosdirector">
+                <thead class="table-light">
+                    <tr>
+                        <th colspan="3">Requisitos para ser Director del grupo de investigación</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 2%; text-align: center;">#</th>
+                        <th style="width: 83%; text-align: center;">Requisito</th>
+                        <th style="width: 15%; text-align: center;">Marcar si cumple</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for requisito in requisitos %}
+                        <tr>
+                            <td style="text-align: center">{{ forloop.counter }}</td>
+                            <td style="text-align: justify">{{ requisito.requisito.descripcion }}</td>
+                            <td style="text-align: center">
+                                <input type="checkbox" class="js-switch requisitos" idreg="{{ requisito.id }}" idreq="{{ requisito.requisito.id }}" {% if requisito.requisito.numero == 1 %}disabled{% endif %} {% if requisito.cumpledir %}checked{% endif %} />
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_requisitos_aux" value="OK">
+            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+        </div>
+    </div>
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static"  id="itemspanelpersona" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered  modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i> <span class="paneltitlepersona">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodypersona">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar"> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspaneleditpersona" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-edit"></i>&nbsp;<span class="paneltitleeditpersona">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyeditpersona">
+                    <form id="frmEditPersona" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                        <table class="table table-bordered">
+                            <tr>
+                                <td><b>Tipo Persona:</b><input type="hidden" id="cantgruposvigentesedit" name="cantgruposvigentesedit" value=""/></td>
+                                <td colspan="3"><span id="tipopersonaedit"></span></td>
+                            </tr>
+                            <tr>
+                                <td><b>Persona:</b></td>
+                                <td colspan="3"><span id="nombrepersonaedit"></span></td>
+                            </tr>
+                            <tr>
+                                <td style="width: 20%;"><b>Coordinación:</b><input type="hidden" id="idcoordinacionedit" name="idcoordinacionedit" value=""/><input type="hidden" id="coordinacionedit" name="coordinacionedit" value=""/></td>
+                                <td style="width: 30%;">
+                                    <input type="text" autocomplete="off" id="aliascoordinacionedit" name="aliascoordinacionedit" value="" style="width: 98%;" disabled>
+                                </td>
+                                <td style="width: 20%;"><b>Carrera:</b><input type="hidden" id="idcarreraedit" name="idcarreraedit" value=""/><input type="hidden" id="carreraedit" name="carreraedit" value=""/></td>
+                                <td style="width: 30%;">
+                                    <input type="text" autocomplete="off" id="aliascarreraedit" name="aliascarreraedit" value="" style="width: 98%;" disabled>
+                                </td>
+                            </tr>
+                            <tr id="filatipoedit">
+                                <td style="width: 20%;"><b>Tipo:</b><input type="hidden" id="idtipoedit" name="idtipoedit" value=""/></td>
+                                <td style="width: 30%;">
+                                    <input type="text" maxlength="5" autocomplete="off" id="tipoedit" name="tipoedit" value="" style="width: 98%;" disabled>
+                                </td>
+                                <td style="width: 20%;"><b>Dedicación:</b><input type="hidden" id="iddedicacionedit" name="iddedicacionedit" value=""/></td>
+                                <td style="width: 30%;">
+                                    <input type="text" maxlength="5" autocomplete="off" id="dedicacionedit" name="dedicacionedit" value="" style="width: 98%;" disabled>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="width: 20%;"><b>Función:</b><input type="hidden" id="idfuncionedit" name="idfuncionedit" value=""/></td>
+                                <td style="width: 30%;">
+                                    <input type="text" maxlength="100" autocomplete="off" id="funcionedit" name="funcionedit" value="" style="width: 98%;" disabled>
+                                </td>
+                                <td colspan="2"></td>
+                            </tr>
+                            <tr>
+                                <td><b>Filiación:</b></td>
+                                <td colspan="3">
+                                    <select id="filiacionedit" name="filiacionedit" style="width: 100%" disabled>
+                                        <option value="" selected="selected">---------</option>
+                                        {% for filiacion in filiaciones %}
+                                            <option value="{{ filiacion.id }}">{{ filiacion.descripcion }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><b>Trayectoria previa en líneas de investigación:</b></td>
+                                <td colspan="3">
+                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="trayectoriaedit" name="trayectoriaedit" rows="5" disabled></textarea>
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                </td>
+                            </tr>
+                            <tr id="filajustificacionedit">
+                                <td><b>Justificación(de pertenecer a más de 2 grupos vigentes):</b></td>
+                                <td colspan="3">
+                                    <textarea style="width: 99%; text-transform: none;" cols="40" id="justificacionedit" name="justificacionedit" rows="3" disabled></textarea>
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success actualizarpersona"> Aceptar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static"  id="itemspanelagregapersonaxterna" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered  modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i> <span class="paneltitleagregapersonaxterna">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyagregapersonaxterna">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <link rel="stylesheet" href="/static/css/stylesfc.css">
+    <script type="text/javascript">
+        var switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+
+        $(function() {
+            $("body").initSwitchery();
+
+            lista_items1 = [];
+            let idprov = '{{ postulacion.provincia.id }}';
+            let idciud = '{{ postulacion.canton.id }}';
+            let rcargada = false;
+
+            $("#tipoestudio, #programa, #tituloobtener, #institucion, #pais, #provincia, #canton, #modalidad, #inicio, #fin").addClass("validate[required]");
+
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            $('#pais').change(function(){
+                $('#provincia, #canton').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let control = $(this);
+                let id = parseInt($("#pais").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'provincias', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#provincia').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                                if(!rcargada){
+                                    $("#provincia").val(idprov).trigger('change');
+                                }
+
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#provincia').change(function(){
+                $('#canton').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let control = $(this);
+                let id = parseInt($("#provincia").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'cantones', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#canton').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                                if(!rcargada){
+                                    $("#canton").val(idciud).trigger('change');
+                                    rcargada = true;
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            smoke.alert("Error de conexion.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            conectar_change_fileinput_evidencia=function() {
+                $(".archivosevidencia").unbind();
+                $(".archivosevidencia").change(function () {
+                    let id = $(this).get(0).files.length;
+                    let idf = $(this).attr('idf');
+                    $("#bgaevidencia_"+idf).html(id);
+
+                    if(id > 0)
+                        $("#archivoselecc"+idf).val("SI");
+                    else
+                        $("#archivoselecc"+idf).val("");
+
+                    actualizar_lista_evidenciaarchivo();
+                });
+            };
+
+            agregar_validacion_archivos = function (){
+                $(".archivorequisitos").each(function(){
+                    if($(this).attr('validar') == 'True'){
+                        $(this).addClass("validate[required]");
+                    }
+                });
+            };
+
+            actualizar_lista_evidenciaarchivo = function (){
+                lista_items1 = [];
+                let cf = 1;
+                $('input[name="archivo_evidencia[]"]').each(function() {
+                    if($(this).get(0).files.length > 0){
+                        let item = {
+                            nfila: $(this).attr('idf'),
+                            cfila: $(this).attr('idf')
+                        };
+                        lista_items1.push(item);
+                        cf ++;
+                    }
+                });
+            };
+
+            $(".guardar").click(function () {
+                envioformularioreg("/pro_becadocente", "editpostulacion", false);
+                return false;
+            });
+
+            envioformularioreg = function(url, action, destino){
+                let valido;
+                let formdata;
+
+                $("#frmPostular").validationEngine('attach',{ scroll: false });
+                valido = $("#frmPostular").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'editpostulacion'){
+                        formdata = new FormData($("#frmPostular")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result=='ok'){
+                                $.unblockUI();
+                                let urlDestino = "/pro_becadocente?action=postulaciones&idc={{ convocatoria.id|encrypt }}";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+
+            };
+
+            $(".cancelar").click(function () {
+                mensajeConfirmSwal("Cerrar pantalla sin guardar cambios", "¿Acepta cerrar la pantalla de Postulación sin haber guardado la información?", false, "/pro_becadocente", "", "", "/pro_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}");
+            });
+
+            $("#ausentismo").on("change" , function() {
+                if($("#ausentismo").is(":checked"))
+                    habilitarCamposAusentismo();
+                else
+                    inhabilitarCamposAusentismo();
+            });
+
+            inhabilitarCamposAusentismo = function (){
+                $("#tipopermiso").val("").trigger("change");
+                $("#tipopermiso").attr("disabled", "disabled");
+                $("#tiempomes").val("");
+                $("#tiempomes").attr("disabled", "disabled");
+                $("#tipolicencia").val("").trigger("change");
+                $("#tipolicencia").attr("disabled", "disabled");
+                $("#tipopermiso").removeClass("validate[required]");
+                $("#tiempomes").removeClass("validate[required, min[6], max[72]");
+                $("#tipolicencia").removeClass("validate[required]");
+            };
+
+            habilitarCamposAusentismo = function (){
+                $("#tipopermiso").removeAttr("disabled");
+                $("#tiempomes").removeAttr("disabled");
+                $("#tipolicencia").removeAttr("disabled");
+                $("#tipopermiso").addClass("validate[required]");
+                $("#tiempomes").addClass("validate[required, min[6], max[72]");
+                $("#tipolicencia").addClass("validate[required]");
+            };
+
+            $("#tienetematitulacion").on("change" , function() {
+                if($("#tienetematitulacion").is(":checked"))
+                    habilitarCamposTitulacion();
+                else
+                    inhabilitarCamposTitulacion();
+            });
+
+            inhabilitarCamposTitulacion = function (){
+                $("#tematitulacion").val("");
+                $("#tematitulacion").attr("disabled", "disabled");
+                $("#lineainvestigacion").val("").trigger("change");
+                $("#lineainvestigacion").attr("disabled", "disabled");
+                $("#tematitulacion").removeClass("validate[required]");
+                $("#lineainvestigacion").removeClass("validate[required]");
+            };
+
+            habilitarCamposTitulacion = function (){
+                $("#tematitulacion").removeAttr("disabled");
+                $("#lineainvestigacion").removeAttr("disabled");
+                $("#tematitulacion").addClass("validate[required]");
+                $("#lineainvestigacion").addClass("validate[required]");
+            };
+
+            $("#tiempomes").blur(function(){
+                numerico($(this), 0, 0, 0);
+            });
+
+            conectar_change_fileinput_evidencia();
+            agregar_validacion_archivos();
+
+            $("#pais").val('{{ postulacion.pais.id }}').trigger('change');
+
+            $("#tienetematitulacion").trigger('change');
+            {% if postulacion.tienetematitulacion %}
+                $("#tematitulacion").val("{{ postulacion.tematitulacion }}");
+                $("#lineainvestigacion").val('{{ postulacion.lineainvestigacion.id }}').trigger('change');
+            {% endif %}
+
+            $("#ausentismo").trigger('change');
+            {% if postulacion.ausentismo %}
+                $("#tipopermiso").val('{{ postulacion.tipopermiso }}').trigger('change');
+                $("#tiempomes").val('{{ postulacion.tiempomes }}');
+                $("#tipolicencia").val('{{ postulacion.tipolicencia }}').trigger('change');
+            {% endif %}
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_becadocente?action=postulaciones&idc={{ postulacion.convocatoria.id|encrypt }}{% endblock %}
+{% block canvas %}
+    <form name="frmPostular" id="frmPostular">{% csrf_token %}
+        <input type="hidden" name="action" value="editpostulacion">
+        <input type="hidden" name="archivoevaldoc" value="{{ archivocertificado }}">
+        <input type="hidden" name="id" value="{{ postulacion.id|encrypt }}">
+        <div class='col-lg-8 offset-lg-2 col-sm-12 col-12'>
+            {# TITULO #}
+            <div class="row">
+                <div class='row-fluid no-marging-bottom' style="margin-bottom: 3px;">
+                    <div class="headtitle">
+                        <h3 class="texto-blue">{{ title }}</h3>
+                        <h6>Postulación del docente</h6>
+                    </div>
+                </div>
+            </div>
+            {# TITULO #}
+            {# CUERPO DEL FORMULARIO #}
+            <div class="card">
+  	            <div class="card-body border-top border-5 rounded-3 border-dark-info pb-5 pt-5">
+                    {# FILA DATOS DEL DOCENTE #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped" id="tbdatosdocente">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="4">Datos del docente</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 20%;">Identificación:</td>
+                                        <td style="width: 30%;">{{ profesor.persona.identificacion }}</td>
+                                        <td style="width: 20%;">Tipo:</td>
+                                        <td style="width: 30%;">{{ profesor.nivelcategoria.nombre }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Dedicación:</td>
+                                        <td colspan="3">{{ profesor.dedicacion.nombre }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Nombres y Apellidos:</td>
+                                        <td colspan="3">{{ profesor.persona.nombre_completo_inverso }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Facultad:</td>
+                                        <td colspan="3">{{ profesor.coordinacion.nombre }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DATOS DEL DOCENTE #}
+                    {# FILA DATOS SOLICITUD #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped" id="tbdatossolicitud">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="4">Datos generales de la solicitud</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="width: 20%;">Tipo estudios:</td>
+                                        <td style="width: 80%;" colspan="3">
+                                            <select id="tipoestudio" name="tipoestudio" style="width: 50%;">
+                                                <option value="" selected>---------</option>
+                                                {% for tipo in tipoestudio %}
+                                                    <option value="{{ tipo.0 }}" {% if postulacion.tipoestudio == tipo.0 %}selected{% endif %}>{{ tipo.1 }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Nombre del programa:</td>
+                                        <td style="width: 80%;" colspan="3">
+                                            <textarea style="width: 100%;" cols="40" id="programa" name="programa" rows="2">{{ postulacion.programa }}</textarea>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Título a obtener:</td>
+                                        <td style="width: 80%;" colspan="3">
+                                            <textarea style="width: 100%;" cols="40" id="tituloobtener" name="tituloobtener" rows="2">{{ postulacion.tituloobtener }}</textarea>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Universidad:</td>
+                                        <td style="width: 80%;" colspan="3">
+                                            <select style="width: 99%;" id="institucion" name="institucion">
+                                                <option value="" selected>---------</option>
+                                                {% for universidad in universidades %}
+                                                    <option value="{{ universidad.id }}" {% if postulacion.institucion.id == universidad.id %}selected{% endif %} >{{ universidad.nombre }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">País:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 99%;" id="pais" name="pais">
+                                                <option value="" selected>---------</option>
+                                                {% for pais in paises %}
+                                                    <option value="{{ pais.id }}" {% if postulacion.pais.id == pais.id %}selected{% endif %}>{{ pais.nombre }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                        <td style="width: 20%;">Provincia:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 99%;" id="provincia" name="provincia">
+                                                <option value="" selected>---------</option>
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Ciudad:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 100%;" id="canton" name="canton">
+                                                <option value="" selected>---------</option>
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                        <td colspan="2"></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Inicio estudios:</td>
+                                        <td style="width: 30%;">
+                                            <input type="date" id="inicio" name="inicio" value="{{ postulacion.inicio|date:'Y-m-d' }}" />
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                        <td style="width: 20%;">Fin estudios:</td>
+                                        <td style="width: 30%;">
+                                            <input type="date" id="fin" name="fin" value="{{ postulacion.fin|date:'Y-m-d' }}" />
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Modalidad:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 99%;" id="modalidad" name="modalidad">
+                                                <option value="" selected>---------</option>
+                                                {% for modalidad in modalidades %}
+                                                    <option value="{{ modalidad.id }}" {% if postulacion.modalidad.id == modalidad.id %}selected{% endif %}>{{ modalidad.nombre }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                        <td style="width: 20%;">¿Dispone tema o proyecto para titulación?</td>
+                                        <td>
+                                            <input type="checkbox" class="js-switch" name="tienetematitulacion" id="tienetematitulacion" {% if postulacion.tienetematitulacion %}checked{% endif %} />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Tema o Proyecto de Investigación para Titulación:</td>
+                                        <td style="width: 80%;" colspan="3">
+                                            <textarea style="width: 100%;" cols="40" id="tematitulacion" name="tematitulacion" rows="3"></textarea>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Línea Investigación:</td>
+                                        <td colspan="3" style="width: 30%;">
+                                            <select style="width: 99%;" id="lineainvestigacion" name="lineainvestigacion">
+                                                <option value="" selected>---------</option>
+                                                {% for linea in lineasinvestigacion %}
+                                                    <option value="{{ linea.id }}">{{ linea.nombre }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">¿Requiere ausentarse de UNEMI?</td>
+                                        <td style="width: 30%;">
+                                            <input type="checkbox" class="js-switch" name="ausentismo" id="ausentismo" {% if postulacion.ausentismo %}checked{% endif %} />
+                                        </td>
+                                        <td style="width: 20%">Tipo Permiso:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 99%;" id="tipopermiso" name="tipopermiso">
+                                                <option value="" selected>---------</option>
+                                                {% for tipo in tipopermiso %}
+                                                    <option value="{{ tipo.0 }}">{{ tipo.1 }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width: 20%;">Tiempo permiso(meses):</td>
+                                        <td style="width: 30%;">
+                                            <input type="text" class="texto-input-text-area" maxlength="2" autocomplete="off" id="tiempomes" name="tiempomes" value="" style="width: 100%; text-align: right">
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                        <td style="width: 20%;">Tipo licencia:</td>
+                                        <td style="width: 30%;">
+                                            <select style="width: 99%;" id="tipolicencia" name="tipolicencia">
+                                                <option value="" selected>---------</option>
+                                                {% for tipo in tipolicencia %}
+                                                    <option value="{{ tipo.0 }}">{{ tipo.1 }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <tr>
+                                        <td style="width: 20%;">¿Puede impartir clases mientras estudia?</td>
+                                        <td colspan="3">
+                                            <input type="checkbox" class="js-switch" name="imparteclase" id="imparteclase" {% if postulacion.imparteclase %}checked{% endif %} />
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DATOS SOLICITUD #}
+                    {# FILA DE LOS REQUISITOS #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4">
+                            <table class="table table-bordered table-striped" id="tbrequisitos">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th colspan="5">Requisitos</th>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: center; width: 3%;">#</th>
+                                        <th style="text-align: center; width: 55%;">Requisito</th>
+                                        <th style="text-align: center; width: 17%;">Fuentes de información</th>
+                                        <th style="text-align: center; width: 5%;">...</th>
+                                        <th style="text-align: center; width: 18%;">Observación</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detalle in requisitos %}
+                                        <tr>
+                                            <td style="text-align: center">
+                                                <b>{{ detalle.requisito.numero }}</b>
+                                                {% if detalle.estado != 2 %}
+                                                    <input type="hidden" id="iddetalle[]" name="iddetalle[]" value="{{ detalle.id }}">
+                                                    <input type="hidden" id="numerorequisito[]" name="numerorequisito[]" value="{{ detalle.requisito.numero }}">
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: justify">
+                                                {{ detalle.requisito.descripcion|safe }}
+                                                {% if detalle.estado != 2 %}
+                                                    <input type="hidden" id="nfila_evidencia[]" name="nfila_evidencia[]" value="{{ detalle.requisito.numero }}">
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center">
+                                                {% if detalle.estado != 2 %}
+                                                    <label class="btn btn-default"><i class="fa fa-cloud-upload" aria-hidden="true"></i> Seleccionar <span id="bgaevidencia_{{ detalle.requisito.numero }}" class="badge">0</span><input type="file" style="color: transparent" class="archivosevidencia"  idf="{{ detalle.requisito.numero }}" id="archivo_evidencia[]" name="archivo_evidencia[]" hidden>   </label> <input class="archivorequisitos" validar="{% if detalle.estado == 3 or detalle.estado == 4 %}True{% else %}False{% endif %}" style="visibility: hidden; width: 0px; height: 0px; " type="text" id="archivoselecc{{ detalle.requisito.numero }}" value="">  <div class="help-text" style="font-size: xx-small; margin-bottom: 0; height: 13px; line-height: 13px"> </div>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: center">
+                                                {% if detalle.archivo %}
+                                                    <a target="_blank" href="{{ detalle.archivo.url }}" class="btn btn-mini btn-info tu" title="Descargar Documento"><i class="fa fa-download"></i> </a>
+                                                {% else %}
+                                                    &nbsp;
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: justify">
+                                                <span class="label label-{{ detalle.color_estado }}">{{ detalle.get_estado_display }}</span>
+                                                <br>
+                                                {{ detalle.observacion }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {# FILA DE LOS REQUISITOS #}
+                    {# FILA DE LOS BOTONES #}
+                    <div class="row">
+                        <div class="col-sm-12 px-4" style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:;" class="btn btn-success guardar"> Guardar</a>
+                            <a href="javascript:;" class="btn btn-danger cancelar"> Cancelar</a>
+                        </div>
+                    </div>
+                    {# FILA DE LOS BOTONES #}
+                </div>
+            </div>
+            {# CUERPO DEL FORMULARIO #}
+        </div>
+    </form>
+{% endblock %}

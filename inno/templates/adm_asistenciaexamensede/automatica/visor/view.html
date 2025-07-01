@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script>
+        const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+        window.addEventListener("load",async function(){
+
+        });
+
+        const loading = () =>{
+            var $div_loading = $('#el-templates [element="div-loading"]').clone();
+            $("#contenedor_div").html($div_loading);
+        }
+        const bienvenida = () =>{
+            var $div_bienvenida = $('#el-templates [element="div-bienvenida"]').clone();
+            $("#contenedor_div").html($div_bienvenida);
+        }
+        const enviarMensaje = (data) => {
+            console.log(data);
+            window.opener.postMessage(data, '*');
+            window.opener.focus();
+        }
+
+        const constructorData = (aData, hasAccess, message/*=undefined*/) =>{
+            const eMateriaAsignadaPlanificacionSedeVirtualExamen = aData.eMateriaAsignadaPlanificacionSedeVirtualExamen;
+            const eAulaPlanificacionSedeVirtualExamen = eMateriaAsignadaPlanificacionSedeVirtualExamen.aulaplanificacion;
+            const eLaboratorioVirtual = eAulaPlanificacionSedeVirtualExamen.aula;
+            const eBloque = eLaboratorioVirtual.bloque;
+            const eTurnoPlanificacionSedeVirtualExamen = eAulaPlanificacionSedeVirtualExamen.turnoplanificacion;
+            const eFechaPlanificacionSedeVirtualExamen = eTurnoPlanificacionSedeVirtualExamen.fechaplanificacion;
+            const eSedeVirtual = eFechaPlanificacionSedeVirtualExamen.sede;
+            const eMatriculaSedeExamen = eMateriaAsignadaPlanificacionSedeVirtualExamen.matriculasedeexamen
+            const eMateriaAsignada = eMateriaAsignadaPlanificacionSedeVirtualExamen.materiaasignada;
+            const eMateria = eMateriaAsignada.materia;
+            const eAsignatura = eMateria.asignatura;
+            const eMatricula = eMateriaAsignada.matricula;
+            const eInscripcion = eMatricula.inscripcion;
+            const eNivel = eMatricula.nivel;
+            const ePeriodo = eNivel.periodo;
+            const ePersona = eInscripcion.persona;
+            const div = $('#el-templates [element="div-result"]').clone();
+            var $result = $(div);
+            $("#periodo", $result).html(ePeriodo.nombre);
+            $("#nombre", $result).html(ePersona.nombre_completo);
+            $("#identificacion", $result).html(ePersona.documento);
+            $("#email", $result).html(ePersona.email);
+            if(eMatriculaSedeExamen){
+                if (eMatriculaSedeExamen.download_archivoidentidad){
+                    $("#btn_documento", $result).attr('href', eMatriculaSedeExamen.download_archivoidentidad);
+                    $("#btn_documento", $result).removeClass('hidden');
+                }else{
+                    $("#btn_documento", $result).addClass('hidden')
+                }
+                if (eMatriculaSedeExamen.download_archivofoto){
+                    $("#img-perfil", $result).attr('src', eMatriculaSedeExamen.download_archivofoto);
+                }
+            }else{
+                $("#btn_documento", $result).addClass('hidden')
+            }
+            $("#sede", $result).html(`<span style="color: #707070">SEDE:</span> <span class="text-warning">${eSedeVirtual.nombre ?? 'NO EXISTE SEDE'}</span>`);
+            $("#materia", $result).html(`<span style="color: #707070">MATERIA:</span> ${eAsignatura.nombre}`);
+            $("#hora", $result).html(`${eTurnoPlanificacionSedeVirtualExamen.horainicio} - ${eTurnoPlanificacionSedeVirtualExamen.horafin}`);
+            if (eBloque){
+                if (eBloque.alias){
+                    $("#bloque", $result).html(eBloque.alias);
+                }else{
+                    $("#bloque", $result).html(eBloque.descripcion);
+                }
+
+            }
+            else{
+                $("#bloque", $result).html('-');
+            }
+            $("#fecha", $result).html(`<span style="color: #707070">Fecha de examen: </span> <span class="fw-bold" style="color: #1C3247">${eFechaPlanificacionSedeVirtualExamen.fecha}</span>`);
+            $("#aula", $result).html(eLaboratorioVirtual.nombre ?? '-');
+            if (hasAccess){
+                $("#resultado", $result).html(`<span class="display-3 fw-bold text-success text-center">ACCESO PERMITIDO <i class="fa fa-check-circle text-success fw-bold"></i></span>`);
+            }else{
+                if (message){
+                    $("#resultado", $result).html(`<h4><span class="display-3 fw-bold text-danger text-center">ACCESO DENEGADO <i class="fa fa-times-circle text-danger fw-bold"></i></span></h4><p class="text-danger text-center display-5">${message}</p>`);
+                }
+                else{
+                    $("#resultado", $result).html(`<h4><span class="display-3 fw-bold text-danger text-center">ACCESO DENEGADO <i class="fa fa-times-circle text-danger fw-bold"></i></span></h4>`);
+                }
+            }
+            $("#contenedor_div").append($result);
+        }
+
+        const dataAccessGranted = async (aData) =>{
+            await constructorData(aData, true);
+
+        }
+
+        const dataAccessDenied = async (aData, message) =>{
+            await constructorData(aData, false, message);
+
+        }
+
+        const loadAjax = (data, url) => new Promise((resolve, reject) => {
+            $.ajax({
+                type: "POST",
+                url: url,
+                data: data,
+                success: function(response) {
+                    resolve({
+                        error: false,
+                        value: response
+                    });
+                },
+                error: function() {
+                    reject({
+                        error: true,
+                        message: "Error al enviar los datos."
+                    });
+                },
+                dataType: "json"
+            });
+
+        });
+
+        const recibirMensaje = async (evento) => {
+            //console.log(evento);
+            if (evento.data) {
+                const data = evento.data;
+                const action = data.action ?? undefined;
+                let access = false;
+                if (action === 'validateCode'){
+                    const value = data.value ?? {};
+                    const code = value.code ?? undefined;
+                    if (code){
+                        await loading();
+                        //await delay(1000);
+                        const idAula = $("#idAula").val();
+                        await loadAjax({
+                            'action': 'validateCode',
+                            'code': code,
+                            'id': idAula
+                        }, '/adm_asistenciaexamensede/automatica')
+                            .then(async response => {
+                                //console.log(response.value);
+                                if (response.value.result)
+                                {
+                                    $("#contenedor_div").html('');
+                                    await dataAccessGranted(response.value.aData);
+                                    const aData = {action: 'actionAccess', value:{
+                                            access: true,
+                                            message: undefined
+                                        }}
+                                    await enviarMensaje(aData);
+                                }
+                                else{
+                                    $("#contenedor_div").html('');
+                                    if (response.value.aData){
+                                        await dataAccessDenied(response.value.aData, response.value.message);
+
+                                    }else{
+                                        $("#contenedor_div").html(`<div class="mt-4 vh-100 row justify-content-center align-items-center" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="col-auto text-center"><h3><span class="display-3 fw-bold text-danger text-center">ACCESO DENEGADO <i class="fa fa-times-circle text-danger fw-bold"></i></span></h3><p class="text-danger text-center display-4">${response.value.message}</p></div></div>`);
+                                    }
+                                    const aData = {action: 'actionAccess', value:{
+                                            access: false,
+                                            message: response.value.message
+                                        }}
+                                    await enviarMensaje(aData);
+                                }
+                            })
+                            .catch(async error => {
+                                /*console.log(error);
+                                $.unblockUI();
+                                NotificationJG.error(error.message);*/
+                                $("#contenedor_div").html(`<div class="mt-4 vh-100 row justify-content-center align-items-center" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="col-auto text-center"><h3><span class="display-3 fw-bold text-danger text-center">ACCESO DENEGADO <i class="fa fa-times-circle text-danger fw-bold"></i></span></h3><p class="text-danger text-center display-4">${error.message}</p></div></div>`);
+                                const aData = {
+                                    action: 'actionAccess',
+                                    value:{
+                                        access: false,
+                                        message: error.message
+                                    }
+                                }
+                                await enviarMensaje(aData);
+                            });
+                        await delay(2000);
+                        await bienvenida();
+                        const aData = {
+                            action: 'actionLoad',
+                            value:{
+                                load : false,
+                            }
+                        }
+                        await enviarMensaje(aData);
+                    }
+                }
+            }
+        }
+
+
+        window.addEventListener('message', recibirMensaje);
+        $(document).ready(async function() {
+            await loading();
+            await delay(1000);
+            await bienvenida();
+            const aData = {action: 'actionLoad', value:{
+                    load : false
+                }}
+            await enviarMensaje(aData);
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <input type="hidden" name="idAula" id="idAula" value="{{ eAulaPlanificacionSedeVirtualExamen.id }}">
+    <div class="container px-4 px-lg-0">
+        <div class="bg-light rounded-3 py-3 px-4 px-xl-0" id="contenedor_div">
+
+        </div>
+    </div>
+    <div id="el-templates" style="display:none;">
+        <div element="div-bienvenida">
+            <div
+                    class="mt-4 vh-100 row justify-content-center align-items-center"
+                    style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;"
+            >
+                <div class="col-auto text-center">
+                    <div class="text-center mb-8">
+                        <h1 class="display-3 mb-3 fw-bold">{{ eTurnoPlanificacionSedeVirtualExamen.fechaplanificacion.sede.nombre }}</h1>
+                        <h2 class="display-3 mb-3 fw-bold text-warning">{{ eAulaPlanificacionSedeVirtualExamen.aula.nombre }}</h2>
+                        <h3 class="display-4 mb-3 fw-bold">{{ eTurnoPlanificacionSedeVirtualExamen.fechaplanificacion.fecha|datename }}</h3>
+                        <h4 class="display-4 mb-3 fw-bold">{{ eTurnoPlanificacionSedeVirtualExamen.horainicio|time:"h:i a" }} - {{ eTurnoPlanificacionSedeVirtualExamen.horafin|time:"h:i a" }}</h4>
+                        <p class="lead px-xl-8">Presenta tu código QR para verificar tu identidad</p>
+                    </div>
+                    <div class="mt-5 text-center">
+                        <img src="/static/img/lector_codigo.png" width="112" height="98" />
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <div element="div-loading">
+            <div
+                    class="mt-4 vh-100 row justify-content-center align-items-center"
+                    style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;"
+            >
+                <div class="col-auto text-center">
+                    <div class="spinner-grow text-warning" style="width: 3rem; height: 3rem;" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h3>Verificando la información, espere por favor...</h3>
+                </div>
+            </div>
+        </div>
+        <div element="div-result">
+            <div class="d-lg-flex align-items-center justify-content-between px-12">
+                <div class="d-flex align-items-center mb-4 mb-lg-0">
+                    <img src="/static/images/image.png" id="img-perfil" class="avatar-xxl img-fluid rounded-circle" alt="avatar">
+                    <div class="ms-3">
+                        <h2 class="mb-0" id="periodo" style="color: #FC7E00">PERIÓDO ACADÉMICO 1S2023</h2>
+                        <p><span style="color: #707070">Estudiante:</span> <span class="fw-bold" id="nombre" style="color: #1C3247">Demo prueba</span></p>
+                        <p><span style="color: #707070">Identificación:</span> <span class="fw-bold" id="identificacion" style="color: #1C3247">099999999</span></p>
+                        <p><span style="color: #707070">Correo electrónico:</span> <span class="fw-bold" id="email" style="color: #1C3247">tic@unemi.edu.ec</span></p>
+                        <!--<p class="mb-0">
+                            PNG or JPG no bigger than 800px wide and tall.
+                        </p>-->
+                    </div>
+                </div>
+                <div>
+                    <a href="#" id="btn_documento" target="_blank" class="btn btn-primary rounded-pill" style="background-color: #1C3247; color: white">Documento de identidad</a>
+                </div>
+            </div>
+            <div class="text-center my-1 p-2 align-middle" >
+                <h3 id="sede" style="color: #1C3247;" class="display-4">SEDE: </h3>
+            </div>
+            <div class="text-center my-1 p-2 align-middle" >
+                <h4 id="materia" style="color: #1C3247;" class="display-5">MATERIA: </h4>
+            </div>
+            <div class="row align-items-center my-1 g-1">
+                <div class="col-12 col-md-8 text-center">
+                    <label style="color: #707070;">HORA</label>
+                    <h2 class="fw-bold" style="color: #1C3247;" class="display-3" id="hora">-</h2>
+                </div>
+                <div class="col-12 col-md-4 text-center">
+                    <label style="color: #707070">BLOQUE</label>
+                    <h2 class="fw-bold" style="color: #1C3247;" class="display-3" id="bloque">-</h2>
+                </div>
+            </div>
+            <div class="row align-items-center my-1 g-1">
+                <div class="col-12 col-md-8 text-center">
+                    <h2 class="fw-bold" style="color: #1C3247;" class="display-3" id="fecha">-</h2>
+                </div>
+                <div class="col-12 col-md-4 text-center">
+                    <label style="color: #707070;">AULA</label>
+                    <h2 class="fw-bold" style="color: #1C3247;" class="display-3" id="aula">-</h2>
+                </div>
+            </div>
+            <div class="text-center my-1 p-2 align-middle" id="resultado" >
+
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extraJs %}
+
+{% endblock %}

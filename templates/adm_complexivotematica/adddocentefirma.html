@@ -1,0 +1,181 @@
+{% load sga_extras %}
+<script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+<script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+<link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+<input type='hidden' name='action' value='{{ action }}'/>
+<input type='hidden' name='id' id="id" value='{{ idgrupo }}'/>
+<div class="row-fluid ms-2">
+    {% for field in form %}
+        {% if field.field.widget.attrs.separator %}
+            {% if field.field.widget.attrs.blanklinebefore %}
+            {% endif %}
+            <div style="width: 100%; height: max-content">
+                <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                <span style="padding:0 10px; background: #f5f5f5;">
+                    {% if field.field.widget.attrs.separatortitle %}
+                        {{ field.field.widget.attrs.separatortitle }}
+                    {% endif %}
+                </span>
+                </h6>
+            </div>
+        {% endif %}
+        <div id="fieldset_{{ field.name }}" class="col-lg-{% if field.field.widget.attrs.col %}{{ field.field.widget.attrs.col }}{% else %}12{% endif %}" style="float: left; padding-right: 10px;">
+            <label class="control-label pr-2" for="id_{{ field.name }}">
+                <b>{{ field.label }}&nbsp;:</b></label>
+            <div style="width:{% if not field.field.widget.attrs.controlwidth %}100%{% else %}{{ field.field.widget.attrs.controlwidth }}{% endif %};">
+                {% if field.name == 'portada' %}
+                    <input type="file" name="{{ field.name }}"
+                           {% if filtro.portada %}data-default-file="/media/{{ filtro.portada }}"
+                           value="/media/{{ filtro.portada }}"{% endif %}
+                           class="form-control" id="id_{{ field.name }}" data-allowed-file-extensions="jpg png jpeg">
+                    {% if filtro.portada %}
+                        <a href="/media/{{ filtro.portada }}" target="_blank"><i class="fa fa-download"></i> Portada:
+                            /media/{{ filtro.portada }}</a>
+                    {% endif %}
+
+                {% else %}
+                    {% if field.field.widget.attrs.select2search %}
+                        <select id="id_{{ field.name }}_select2" style="width: 100%"
+                                {% if field.field.widget.attrs.disabled %}disabled=""{% endif %}>
+                            <option value="0" selected="selected">---------</option>
+                        </select>
+                        <input name="{{ field.name }}" id="id_{{ field.name }}" value="{{ field.value }}"
+                               hidden="hidden"
+                               type="hidden"
+                               {% if field.field.widget.attrs.descripcion %}descripcion="{{ field.field.widget.attrs.descripcion }}"{% endif %}
+                               class="select2hidden">
+                    {% else %}
+                        {{ field }}
+                    {% endif %}
+                {% endif %}
+                <p class="help-text">{{ field.help_text }} </p>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+<div class="row-fluid">
+    <div class="px-2" style="text-align: right; width: 100%">
+        <button type="button" id="formbutton" class="btn btn-success"><i class="fa fa-check-circle"></i> <b>Guardar</b></button>
+        <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><b> &times; Cancelar</b></a>
+    </div>
+</div>
+
+<script>
+    tooltips = function () {
+        $(".tl").tooltip({placement: "left"});
+        $(".tr").tooltip({placement: "right"});
+        $(".tu").tooltip({placement: "top"});
+        $(".tb").tooltip({placement: "bottom"});
+    };
+
+    $(function () {
+        $("select").select2({width: '100%'});
+
+        let requeridos = 'profesor';
+        requeridos.split(',').forEach(function (arg) {
+            let val = arg.trim();
+            $('#id_'+val).addClass("validate[required]");
+            $('#required_id_'+val).html('*');
+        });
+
+        tooltips();
+
+        $("#itemspanel form").validationEngine({autoHidePrompt:true, autoHideDelay:1000 });
+        $('#formbutton').click(function () {
+            var valid = $("#itemspanel form").validationEngine('validate');
+            if (valid){
+                bloqueointerface();
+                var formdata = new FormData($("#itemspanel form")[0]);
+                $.ajax({
+                    type: "POST",
+                    url: '{{ request.path }}',
+                    data: formdata,
+                    success: function(data) {
+                        if ((data.result === 'ok') || (data.result)) {
+                            location.reload();
+                        } else {
+                            if (data.form) {
+                                $(".mensaje_error").empty()
+                                data.form.forEach(function (val, indx) {
+                                    var keys = Object.keys(val);
+                                    keys.forEach(function (val1, indx1) {
+                                        $("#errorMessage" + val1).html('* '+val[val1]);
+                                    });
+                                });
+                            }
+                            $.unblockUI();
+                            debugger;
+                            alertaDanger(data.result);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        alertaDanger(data.mensaje);
+                    },
+                    dataType: "json",
+                    cache: false,
+                    contentType: false,
+                    processData: false
+                });
+            }else{
+                $.unblockUI();
+                setInterval(function() {
+                    $('.help-text').html("");
+                }, 8000);
+            }
+
+        });
+
+        ItemsDisplay = function (item) {
+             if (item.text) {
+                 return $('<span>' + item.text + '</span>');
+             } else {
+                 if (item.name) {
+                     return $('<span>' + item.name + '</span>');
+                 } else {
+                     return '---------';
+                 }
+             }
+         };
+
+         $('#id_profesor').trigger('change');
+
+         $("#id_profesor").select2({
+             placeholder: "Buscar Persona",
+             allowClear: true,
+             width: '100%',
+             ajax: {
+                 url: function (params) {
+                     return "{{ request.path }}?action=buscardocente&q=" + params.term;
+                 },
+                 dataType: 'json',
+                 delay: 400,
+                 data: function (params) {
+                     return {
+                         q: params.term,
+                         page: params.page
+                     };
+                 },
+                 processResults: function (data, params) {
+                     params.page = params.page || 1;
+                     return {
+                         results: data.results,
+                         pagination: {
+                             more: (params.page * 30) < data.total_count
+                         }
+                     };
+                 },
+                 cache: true
+             },
+             escapeMarkup: function (markup) {
+                 return markup;
+             },
+             minimumInputLength: 1,
+             templateResult: ItemsDisplay,
+             templateSelection: ItemsDisplay
+         }).on("select2:select", function (evt) {
+             $("#id_profesor").attr({"value": (evt.params.data.id)});
+         });
+    });
+</script>
+

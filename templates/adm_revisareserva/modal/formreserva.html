@@ -1,0 +1,363 @@
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <style>
+
+    /* Formateamos el label que servirá de contenedor */
+        .switch {
+          position: relative;
+          display: inline-block;
+          width: 33px;
+          height: 20px;
+          border-radius: 20px;
+        }
+
+        /* Ocultamos el checkbox html */
+        .switch input {
+          display:none;
+        }
+
+        /* Formateamos la caja del interruptor sobre la cual se deslizará la perilla de control o slider */
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(213,216,220,0.74);
+          -webkit-transition: .4s;
+          transition: .4s;
+        }
+
+        /* Pintamos la perilla de control o slider usando el selector before */
+        .slider:before {
+          position: absolute;
+          content: "";
+          height: 20px;
+          width: 20px;
+          left: 0px;
+          bottom: 0px;
+          box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+          background-color: white;
+          -webkit-transition: .4s;
+          transition: .4s;
+        }
+
+        /* Cambiamos el color de fondo cuando el checkbox esta activado */
+        input:checked + .slider {
+          background-color: rgba(17,218,35,0.56);
+        }
+
+        /* Deslizamos el slider a la derecha cuando el checkbox esta activado */
+        input:checked + .slider:before {
+          -webkit-transform: translateX(15px);
+          -ms-transform: translateX(15px);
+          transform: translateX(15px);
+        }
+
+        /* Aplicamos efecto de bordes redondeados en slider y en el fondo del slider */
+        .slider.round {
+          border-radius: 30px;
+        }
+
+        .slider.round:before {
+          border-radius: 50%;
+        }
+    </style>
+    <script>
+        var switchery;
+        var secciones=[];
+        $("select").select2({width: '100%'});
+        $(function () {
+            let elems = Array.prototype.slice.call(document.querySelectorAll('.js-switch'));
+            elems.forEach(function (html) {
+                var switchery = new Switchery(html, {
+                    size: 'small',
+                    color: 'rgba(17,218,35,0.56)',
+                    secondaryColor: 'rgba(213,216,220,0.74)'
+                });
+            });
+            {% if actividad.numacompanantes > 0 %}
+                let clicktercero = document.querySelector('#id_tercero')
+                clicktercero.onchange = function() {
+                    $(".grupointerno").empty()
+                    $(".alert-msj").empty()
+                    if ($(this).is(':checked') === true) {
+                        $(".grupointerno").append(`<b style="font-size: 12px">Acompañantes internos:</b>
+                                <select name="grupointerno[]" multiple="multiple" id="grupointerno" class="form-control">
+                                        <option></option>
+                                </select>`)
+                        $("#grupointerno").select2({
+                            width:'100%',
+                            placeholder:'Buscar por cédula, apellidos o nombres',
+                            language: {
+                                inputTooShort: function () {
+                                    return "Ingresa al menos un caracter...";
+                                },
+                                "noResults": function () {
+                                    return "Sin resultados";
+                                },
+                                "searching": function () {
+                                    return "Buscando...";
+                                }
+                            },
+                            allowClear : true,
+                            debug: true,
+                            ajax: {
+                                delay: 250,
+                                type: 'POST',
+                                url: '{{request.path}}',
+                                data: function (params) {
+                                    return {
+                                        term: params.term,
+                                        'action': 'buscarpersonas',
+                                        'idpersona':'{{ perfil.persona.id }}'
+                                    };
+                                },
+                                processResults: function (data) {
+                                    return {
+                                        results: data
+                                    };
+
+                                },
+                            },
+                            minimumInputLength: 1,
+                        })
+                        $(".alert-msj").append(`<h6 style="color:#FC7E00" class="fs-6 text-secondary">Cantidad máxima de acompañantes permitidos {{ actividad.numacompanantes }}</small>`)
+                    }
+                 }
+            {% endif %}
+
+            $('#reservarturno').on('click', function () {
+                    bloqueointerface()
+                    var info= document.getElementsByName("infoImplemento[]");
+                    console.log(info);
+                    $.ajax({
+                        type: "POST",
+                        url: `{{ request.path }}`,
+                        data: {
+                            'action': 'reservar',
+                            'id': '{{ horario.id }}',
+                            'fecha':'{{ fecha }}',
+                            'tercero':clicktercero.checked
+
+                        },
+                        success: function (data) {
+                            $.unblockUI()
+                            if (data.result === 'ok') {
+                                cargarbusqueda()
+                                $("#itemspanel #close").click()
+                            } else {
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI()
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json"
+                    });
+                })
+
+            $('.seccion').change(function(){
+              if ($(this).is(':checked') === true) {
+                  secciones.push($(this).attr('id'))
+                  $(this).val(secciones)
+                }else {
+                   let pos = secciones.indexOf($(this).attr('id'))
+                   secciones.splice(pos, 1)
+                   $(this).val(secciones)
+                }
+            })
+
+            $('#id_tipotercero').select2({
+                    placeholder: 'Seleccionar tipo',
+                    allowClear: true,
+                    minimumResultsForSearch:-1,
+                    width:"100%"}).on('select2:select', function (e) {
+                   var data = $("#id_tipotercero option:selected").val()
+                    $(".tipo_acompanante").empty()
+                   if (data==1){
+                       $(".tipo_acompanante").append(`<b style="font-size: 12px">Familiares:</b>
+                            <select name="familiares[]" multiple="multiple" id="familiares" class="form-control">
+                                {% for familiar in familiares %}
+                                    <option value="{{ familiar.id }}">{{ familiar.nombre }}</option>
+                                {% endfor %}
+                            </select>`)
+                        $("select").select2({width: '100%'});
+                   }else if(data==2){
+                       $(".tipo_acompanante").append(`<b style="font-size: 12px">Número de acompañantes:</b>
+                        <div class="calendar__info" style="height: 30px">
+                            <div class="rounded-start text-center" style="width: 25%; background-color: transparent; border-right: 1px solid #22374C">
+                                <a style="padding: 10px 40% 10px 50%;" id="restar" href="javascript:void(0);">-</a>
+                            </div>
+                            <div class="" style="width: 50%">
+                                <input required name="cantidad" id="id_cantidad" min="1" max="32" placeholder="0" value="0" style="width: 100%; text-align: center; border:0px; color:#22374C; font-size: 14px">
+                            </div>
+                            <div class="rounded-end text-center" style="width: 25%; background-color: transparent; border-left: 1px solid #22374C">
+                                <a style="color:#22374C;padding: 10px 50% 10px 40%; " id="sumar" href="javascript:void(0);">+</a>
+                            </div>
+                        </div>`)
+                        $('#id_cantidad').val(1)
+                       {#Validar solo digitos en cantidad#}
+                        $("#id_cantidad").keypress(function (e){
+                            return solodigitos(e)
+                            })
+                        solodigitos = function (e) {
+                         if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                            return false;
+                         }
+                    };
+                        $("#sumar").click(function (){
+                let cant=0
+                if ($("#id_cantidad").val()){
+                    cant=parseInt($("#id_cantidad").val())
+                }
+                 $("#id_cantidad").val(cant+1)
+                })
+
+                        $("#restar").click(function (){
+                 let cant=0
+                 if ($("#id_cantidad").val()){
+                     cant=parseInt($("#id_cantidad").val())
+                 }
+                if (cant > 1){
+                    $("#id_cantidad").val(cant-1)
+                }
+            })
+                    }
+            })
+            $("#compromiso").change(function (){
+                if ($(this).is(':checked') && $("#id_horario").val()){
+                    $("#submit1").removeAttr('disabled')
+                }else{
+                    $("#submit1").attr('disabled','disabled')
+                }
+                })
+            });
+        function ocultar(){
+            $('.fam').attr('hidden','hidden')
+            $('#familiares').attr('disabled','disabled')
+            $('#familiares').val(null).trigger('change')
+            $(".textfam").text('')
+            $('.cant').attr('hidden','hidden')
+            $('#id_cantidad').attr('disabled','disabled')
+            $('#id_cantidad').val(0)
+            $('#id_tipotercero').val(0).trigger('change')
+            $('#id_tipotercero').attr('disabled','disabled')
+        }
+
+        function cargarsecciones(seleccion){
+            $("#secciones").empty()
+            $(".turnos").removeClass('btn-outline-orange-active')
+            $("#sec"+seleccion).addClass('btn-outline-orange-active')
+            if ($("#compromiso").is(':checked')){
+                $("#submit1").removeAttr('disabled')
+            }
+            $("#id_horario").val(seleccion)
+            {% for horario in horarios %}
+                if ("{{ horario.id }}" == seleccion){
+                    $('#secciones').append(`
+                     <ul class="menuPanel" style="grid-gap: 5px;grid-template-columns: repeat(auto-fill,minmax(90px, 1fr));">
+                        {% for seccion in secciones %}
+                            <li style="background-color: white; width: 90px; color: #4d4d4d">
+                        {% if seccion.fondo %}
+                            <img src="{{ seccion.fondo.url }}" alt="Carril" class="oscurecer-img" style="height: 50px; width: 100%">
+                        {% endif %}
+                        {% with cupos=seccion|args:fecha|args:horario.id|call:"cupo_disponible_seccion" %}
+                             <p style="font-size: 10px; line-height: 12px">
+                                <b>{{ seccion.nombre }}</b>
+                                <br>
+                                <b>Disponible: {{ cupos }}</b>
+                            </p>
+
+                                {% if cupos == 0 %}
+                                    {% if seccion.icono %}
+                                    <div style="margin:0px; padding:0px; text-aling:center;" title="Carril lleno">
+                                        <img src="{{seccion.icono.url}}" alt="natacion" style="width: 30px; height: 30px;">
+                                    </div>
+                                    {% endif %}
+                                {% else %}
+                                <div style="margin-bottom: 10px">
+                                <label class="switch">
+                                    <input type="checkbox" name="seccion[]" id="{{ seccion.id }}" value="{{ seccion.id }}" class="js-switch seccion">
+                                    <div class="slider round"></div>
+                                </label>
+                                 </div>
+                                {% endif %}
+
+                            {% endwith %}
+                        </li>
+                        {% endfor %}
+                </ul>`);
+                }
+            {% empty %}
+                 $("#submit1").removeAttr('disabled')
+            {% endfor %}
+        }
+
+</script>
+{% endblock %}
+{% block canvas %}
+    <input type="hidden" name="fecha" value="{{ fecha }}">
+    <input type="hidden" name="idperfil" value="{{ perfil.id }}">
+    <input type="hidden" name="action" value="reservar">
+    <div class="card p-3 row" style="flex-direction: row;">
+        <div class="col-12">
+            <h6 style="margin-bottom: 2px; color: #0b2f44">{{ perfil.persona.nombre_completo_minus }}</h6>
+            <h6 style="margin-bottom: 2px; color: #0b2f44" data-bs-toggle="tooltip" title="{{ actividad|lower|capfirst }}">{{ actividad.nombre|lower|capfirst }}</h6>
+            <h6 style="margin-bottom: 2px; color: #0b2f44"> {{ horariodia.get_dia_display|lower|capfirst }} {{ fecha }}</h6>
+            <h6 style="color:#FC7E00; margin-top: 10px ">Seleccione un turno disponible: </h6>
+            <div class="row row-cols-lg-2 row-cols-md-4 row-cols-sm-3 row-cols-1">
+                <input type="hidden" value="" name="horario" id="id_horario" required>
+                {% for horario in horarios %}
+                    {% with turnos=horario|args:fecha|call:"cupos_reservados" %}
+                        {% if turnos > 0 %}
+                            {% with disponible=horario|args:fecha|call:"horario_disponible" %}
+                                {% if disponible %}
+                                     <div class="col">
+                                        <a href="javascript:void(0);" onclick="cargarsecciones('{{ horario.id }}')" id="sec{{ horario.id }}" class="btn btn-outline-orange turnos" style="border-radius: 5px; padding: 5px; width: 100%; font-size: 10px">De {{ horario.turno.comienza }} a {{ horario.turno.termina }}/{{ turnos }} cupos</a>
+                                    </div>
+                                {% endif %}
+                            {% endwith %}
+                        {% endif %}
+                    {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        <div id="secciones" class="se col-12"></div>
+        {% if actividad.numacompanantes > 0 %}
+            <div class="col-12">
+                <small class="fw-bold" style="font-size: 12px; color: #0b2f44">Incluir acompañantes?</small>
+                <input type="checkbox" name="tercero" id="id_tercero" class="js-switch">
+            </div>
+        {% endif %}
+        <div class="col-12">
+            <div class="grupointerno">
+            </div>
+        </div>
+{#        <div class="col-12">#}
+{#            <div class="grupoexterno">#}
+{#            </div>#}
+{#        </div>#}
+        <div class="alert-msj"></div>
+        <div class="contenedor" >
+            <div class="principal align-middle" style="width: 20px">
+                <input type="checkbox" required name="compro" id="compromiso" data-bs-toggle="tooltip">
+            </div>
+            <div class="sidebar lh-1" style="width: 90%">
+                <small class="texto-blue"> He leído y he aceptado las políticas y prohibiciones de uso de las áreas deportivas.
+                    <a href="{{ request.path }}?action=verpoliticas" target="_blank"> Ver políticas</a></small>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-6 col-sm-6" style="text-align: right; margin-top: 20px">
+            <a href="/alu_reservapolideportivo" class="btn btn-cian-secondary" style="width: 100%;">Cancelar</a>
+        </div>
+        <div class="col-6 col-sm-6" style="margin-top: 20px">
+            <button type="submit" id="submit1" class="btn btn-cian-secondary" style="width: 100%" disabled>Reservar</button>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,428 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        let switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#5DADE2'});
+                }
+            });
+        };
+
+        $(function(){
+            $("body").initSwitchery();
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#id_fechaatencion, #id_tipopaciente, #id_tipoatencion, #id_motivo").addClass("validate[required]");
+            $("#id_diagnostico, #id_enfermedad, #id_tratamiento, #id_accion").addClass("validate[required]");
+
+            let fecha = "{{ fecha|date:"Y-m-d" }}";
+            let hora = "{{ hora }}";
+            let accionbuscar = "buscarenfermedad";
+            let nf_producto = 0;
+            let secuenciaproducto = 0;
+            let idfilaedit = "";
+
+            lista_items1 = [];//Productos
+
+            $("#id_proximacita").change(function () {
+                limpiarCamposProximaCita();
+                if ($(this).is(':checked')) {
+                    habilitarCamposProximaCita();
+                } else {
+                    inhabilitarCamposProximaCita();
+                }
+            });
+
+            limpiarCamposProximaCita = function (){
+                $("#id_fechacita").val(fecha);
+                $("#id_horacita").val(hora);
+                $("#id_indicaciones").val("");
+            };
+
+            habilitarCamposProximaCita = function (){
+                $("#id_fechacita").attr('disabled', false);
+                $("#id_horacita").attr('disabled', false);
+                $("#id_indicaciones").attr('disabled', false);
+                $("#id_fechacita").addClass("validate[required]");
+                $("#id_horacita").addClass("validate[required]");
+                $("#id_indicaciones").addClass("validate[required]");
+            };
+
+            inhabilitarCamposProximaCita = function (){
+                $("#id_fechacita").attr('disabled', true);
+                $("#id_horacita").attr('disabled', true);
+                $("#id_indicaciones").attr('disabled', true);
+                $("#id_fechacita").removeClass("validate[required]");
+                $("#id_horacita").removeClass("validate[required]");
+                $("#id_indicaciones").removeClass("validate[required]");
+            };
+
+            $("#cantidadedit").blur(function () {
+                numerico($(this), 0, 999, 0);
+            });
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '-------------------------------------------';
+                }
+
+            };
+
+            $("#id_enfermedad").select2({
+                placeholder: "-------------------------------------------",
+                language: {
+                    inputTooShort: function () {
+                        return "Ingresa al menos un caracter...";
+                    },
+                    "noResults": function () {
+                        return "Sin resultados";
+                    },
+                    "searching": function () {
+                        return "Buscando...";
+                    }
+                },
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return `/box_medical?action=${accionbuscar}&q=${params.term}`;
+                    },
+                    dataType: 'json',
+                    delay: 400,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        // parse the results into the format expected by Select2
+                        // since we are using custom formatting functions we do not need to
+                        // alter the remote JSON data, except to indicate that infinite
+                        // scrolling can be used
+                        params.page = params.page || 1;
+
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+
+            }).on("select2:unselect", function (evt) {
+
+            });
+
+            agregarFilaDefaultProducto = function (){
+                let filadefault = '<tr id="fila_default_producto">'+
+                              '<td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE INSUMOS ENTREGADOS</td>'+
+                              '</tr>';
+                $("#detalle_productos").append(filadefault);
+            };
+
+            borrarFilaDefaultProducto = function (){
+                $("#fila_default_producto").remove();
+            };
+            
+            $(".agregarproducto").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/box_medical",
+                    data: {'action': 'addmedicacionentregar'},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodyproducto").html(data.data);
+                            $(".paneltitleproducto").html(data.title);
+                            $("#itemspanelproducto").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelproducto .agregar").click(function () {
+                $("#frmProducto").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmProducto").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarProducto()){
+                        borrarFilaDefaultProducto();
+
+                        idproducto = $('#auxproducto_select2').attr("idp");
+                        descripcion = $('#auxproducto_select2').attr("descripcion");
+                        cantidad = $("#cantidad").val();
+                        stock = $("#stockactual").val();
+
+                        secuenciaproducto ++;
+                        nf_producto ++;
+
+                        nueva_fila = `<tr class="detalleproductos" id="filaproducto_${nf_producto}" idreg="0"  idproducto="${idproducto}" descripcion="${descripcion}" cantidad="${cantidad}" stock="${stock}">`+
+                            '<td style="text-align: right">'+secuenciaproducto.toString()+'</td>'+
+                            '<td style="text-align: justify">'+descripcion+'</td>'+
+                            '<td style="text-align: right">'+ cantidad +'</td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-info editarproducto" idreg="0" idfila="'+nf_producto.toString()+'" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar"><i class="fa fa-edit"></i></a></td>'+
+                            '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarproducto" idreg="0" idfila="'+nf_producto.toString()+'" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                            '</tr>';
+
+                        $("#detalle_productos").append(nueva_fila);
+                        $("#detalle_productos").find(".editarproducto").tooltip();
+                        $("#detalle_productos").find(".eliminarproducto").tooltip();
+                        $(".editarproducto").unbind("click.editarproducto");
+                        $(".editarproducto").bind("click.editarproducto", editarProducto);
+                        $(".eliminarproducto").unbind("click.eliminarproducto");
+                        $(".eliminarproducto").bind("click.eliminarproducto", eliminarProducto);
+                        actualizarListaProducto();
+                        $('#itemspanelproducto').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarProducto = function (){
+                let idprod = $('#auxproducto_select2').attr("idp");
+                let descripcion = $('#auxproducto_select2').attr("descripcion");
+                let repetido = false;
+
+                if($('.detalleproductos[idproducto="'+idprod+'"]').length > 0){
+                    repetido = true;
+                }
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "El producto: <b>" + descripcion + "</b> ya ha sido agregado al detalle de Medicación entregada");
+                    return false;
+                }
+                return true;
+            };
+
+            editarProducto = function() {
+                let idreg = $(this).attr('idreg');
+                idfilaedit = $(this).attr('idfila');
+
+                $(".paneltitleeditproducto").html("Editar Medicación a Entregar");
+
+                //Obtengo la fila actual de la tabla
+                let filaTabla=$("#filaproducto_"+idfilaedit);
+                //Obtengo texto de los atributos de esa fila
+                idproducto = filaTabla.attr("idproducto");
+                descripcion = filaTabla.attr("descripcion");
+                cantidad = filaTabla.attr("cantidad");
+                stock = filaTabla.attr("stock");
+
+                $("#descripcionproductoedit").html(descripcion);
+                $("#cantidadedit").val(cantidad);
+                $("#stockactualedit").val(stock);
+
+                habilitarCamposEditProducto();
+                $("#itemspaneleditproducto").modal({backdrop:'static'}).modal('show');
+            };
+
+            habilitarCamposEditProducto = function (){
+                $("#cantidadedit").prop('disabled', false);
+                $("#cantidadedit").addClass(`validate[required, min[1], max[${$("#stockactualedit").val()}]`);
+            };
+
+            $(".actualizarproducto").click(function() {
+                $("#frmEditProducto").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmEditProducto").validationEngine('validate', { scroll: false });
+
+                if(valido){
+                    cantidad = $("#cantidadedit").val();
+
+                    //Obtengo la fila actual de la tabla
+                    let filaTabla=$("#filaproducto_"+idfilaedit);
+                    //Edito los atributos de la fila
+                    filaTabla.attr('cantidad', cantidad);
+
+                    //Edito el texto o contenido html de las celdas
+                    filaTabla.find("td:eq(2)").text(`${cantidad}`);
+
+                    actualizarListaProducto();
+                    $('#itemspaneleditproducto').modal('hide');
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            eliminarProducto = function() {
+                let idf = $(this).attr("idfila");
+                $(this).tooltip('hide');
+                $("#filaproducto_"+idf).remove();
+
+                secuenciaproducto = 0;
+                $("#tbdetalleproductos tbody tr").each(function (index) {
+                    secuenciaproducto ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaproducto.toString());
+                    });
+                });
+
+                if(secuenciaproducto == 0)
+                    agregarFilaDefaultProducto();
+
+                actualizarListaProducto();
+            };
+
+            actualizarListaProducto = function () {
+                lista_items1 = [];
+                $(".detalleproductos").each(function(){
+                    let item = {
+                        idreg: $(this).attr('idreg'),
+                        idproducto: $(this).attr('idproducto'),
+                        cantidad: $(this).attr('cantidad')
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            $("#id_enfermedad").val("").trigger("change");
+            inhabilitarCamposProximaCita();
+            limpiarCamposProximaCita();
+            $("#id_motivo, #id_diagnostico, #id_tratamiento").css("padding", "3px");
+            $("#id_motivo, #id_diagnostico, #id_tratamiento").css("resize", "none");
+            $("#id_motivo, #id_diagnostico, #id_tratamiento, #id_indicaciones").css("text-transform", "uppercase");
+        });
+    </script>
+{% endblock %}
+{% block atras %}/box_medical?id={{ paciente.id|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/box_medical{% endblock %}
+{% block formdestinationswal %}/box_medical?action=consultamedicaprevias&id={{ paciente.id|encrypt }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addconsultamedica'/>
+    <input type='hidden' name='id' id='id' value='{{ paciente.id|encrypt }}'/>
+    {% if idmatricula %}
+        <input type='hidden' name='idmatricula' value="{{ idmatricula|encrypt }}"/>
+    {% endif %}
+    {% if idcita %}
+        <input type='hidden' name='idcita' value="{{ idcita|encrypt }}"/>
+    {% endif %}
+{% endblock %}
+{% block formback %}/box_medical{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div style="width: 100%; height: max-content; display: inline-block">
+        <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_requisitos" style="padding:0 10px; background: white;">Medicación Entregada</span></h6>
+    </div>
+    <div class="row-fluid">
+        <div class="table-responsive-xxl">
+            <table class="table table-bordered table-striped" id="tbdetalleproductos">
+                <thead class="table-light">
+                    <tr>
+                        <th colspan="5">Medicación Entregada</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 2%; text-align: center; text-transform: none">#</th>
+                        <th style="width: 80%; text-align: center; text-transform: none">Descripción</th>
+                        <th style="width: 18%; text-align: center; text-transform: none">Cantidad</th>
+                        <th colspan="2" style="width: 3%; text-align: center">
+                            <a href="javascript:;" id="btnagregarproducto" class="btn btn-success btn-mini agregarproducto" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Medicación"><i class="fa fa-plus"></i> </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="detalle_productos">
+                    <tr id="fila_default_producto">
+                        <td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE INSUMOS ENTREGADOS</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+{% block extraalerts %}
+    
+    <div class="modal fade static"  id="itemspanelproducto" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered  modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-plus"></i> <span class="paneltitleproducto">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyproducto">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success agregar"> Agregar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal fade static"  id="itemspaneleditproducto" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-edit"></i>&nbsp;<span class="paneltitleeditproducto">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodyeditproducto">
+                    <form id="frmEditProducto" style="width: 100%; margin-bottom: 0px;padding-left: 0px;padding-top: 0px; padding-right: 0px; padding-bottom: 0px">
+                        <table class="table table-bordered">
+                            <tr>
+                                <td><b>Producto:</b></td>
+                                <td colspan="3"><span id="descripcionproductoedit"></span></td>
+                            </tr>
+                            <tr>
+                                <td style="width: 20%;"><b>Stock Actual:</b></td>
+                                <td style="width: 30%;">
+                                    <input type="text" autocomplete="off" id="stockactualedit" name="stockactualedit" value="" style="width: 98%; text-align: right" disabled>
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                </td>
+                                <td style="width: 20%;"><b>Cantidad:</b></td>
+                                <td style="width: 30%;">
+                                    <input type="text" autocomplete="off" maxlength="3" id="cantidadedit" name="cantidadedit" value="" style="width: 98%; text-align: right" disabled>
+                                    <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success actualizarproducto"> Aceptar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    
+{% endblock %}

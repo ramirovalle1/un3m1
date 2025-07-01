@@ -1,0 +1,255 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        let carreras = [];
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 5 });
+            $("#id_fechadesde, #id_fechahasta").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); profesor();});
+            $("#id_fechadesde, #id_fechahasta, #id_numerohora,#id_instirucion, #id_sectoreconomico, #id_estadopreinscripcion, #id_tipoinstitucion, #id_sectoreconomico, #id_empresaempleadora, #id_otraempresaempleadora").addClass("validate[required]");
+            $("#id_numerohora").blur(function(){
+                numerico($(this), 0, 2000, 0);
+            });
+            $("#id_estadopreinscripcion").change(function () {
+                ocultar_campos()
+            });
+            ocultar_campos=function () {
+                if ($("#id_estadopreinscripcion").val() == 3 || $("#id_estadopreinscripcion").val() == 4){
+                    $("#fieldset_tipo").hide();
+                    $("#fieldset_fechadesde").hide();
+                    $("#fieldset_fechahasta").hide();
+                    $("#fieldset_numerohora").hide();
+                    $("#fieldset_tutorunemi").hide();
+                    $("#fieldset_supervisor").hide();
+                    $("#fieldset_empresaempleadora").hide();
+                    $("#fieldset_otraempresaempleadora").hide();
+                    $("#fieldset_departamento").hide();
+                    $("#fieldset_tipoinstitucion").hide();
+                    $("#fieldset_sectoreconomico").hide();
+                    $("#fieldset_periodoevidencia").hide();
+                }else{
+                    if ($("#id_estadopreinscripcion").val() == 2) {
+                        $("#fieldset_tipo").show();
+                        $("#fieldset_fechadesde").show();
+                        $("#fieldset_fechahasta").show();
+                        $("#fieldset_numerohora").show();
+                        $("#fieldset_tutorunemi").show();
+                        $("#fieldset_supervisor").show();
+                        $("#fieldset_empresaempleadora").show();
+                        $("#fieldset_otraempresaempleadora").show();
+                        $("#fieldset_departamento").show();
+                        $("#fieldset_tipoinstitucion").show();
+                        $("#fieldset_sectoreconomico").show();
+                        $("#fieldset_periodoevidencia").show();
+                    }
+                }
+            };
+
+            bloquear = function () {
+                if($('#id_vigente').is(':checked')){
+                    $('#id_fechahasta').val("").removeClass("validate[required]").attr({'disabled': 'disabled'});
+                }else{
+                    $('#id_fechahasta').addClass("validate[required]").removeAttr('disabled');
+                }
+
+            };
+
+            $("#id_vigente").click(function(){
+                bloquear();
+            });
+
+            bloquear();
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+            $("#id_supervisor_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/reportes?action=data&model=Profesor&p=1&s=10&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_supervisor").attr({"value":(evt.params.data.id)});
+            });
+
+            profesor = function () {
+                $('#contenidocentral_periodo').hide();
+                $('#id_tutorunemi').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                if($('#id_inscripcion').val()>0 && $('#id_fechadesde').val() && $('#id_fechahasta').val()) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "GET",
+                        url: "{{ request.path }}",
+                        data: {'action': 'listaprofesordistributivo', 'idi': $('#id_inscripcion').val(), 'fd': $('#id_fechadesde').val(), 'fh': $('#id_fechahasta').val()
+                        },
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $('#id_tutorunemi').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                                for (dato in data.results) {
+                                    $('#id_tutorunemi').append('<option value="' + data.results[dato][0] + '">' + data.results[dato][1] + '</option>')
+                                }
+                                $('#id_periodoevidencia').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                                for (dato in data.periodoevidencias) {
+                                    $('#id_periodoevidencia').append('<option value="' + data.periodoevidencias[dato][0] + '">' + data.periodoevidencias[dato][1] + '</option>')
+                                }
+                                $('#id_periodoevidencia').val(data.perevid);
+                                $('#id_periodoevidencia').change();
+                                document.getElementById('contenidocentral_periodo').innerHTML = '<div class="alert alert-info">' +
+                                    '<a href="javascript:;" class="close" data-dismiss="alert">×</a>' +
+                                    '<h4 class="alert-heading">AVISO</h4>' + data.mensaje + '</div>';
+                                $('#contenidocentral_periodo').show();
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            smoke.alert("Error al enviar los datos.");
+                        },
+                        dataType: "json"
+                    });
+                }
+            };
+            $("#id_empresaempleadora").change(function () {
+                if ($(this).val()) {
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").prop("disabled", true);
+                }else{
+                    $("#id_otraempresaempleadora").empty();
+                    $("#id_otraempresaempleadora").prop("disabled", false);
+                }
+            });
+            if ($("#id_otraempresaempleadora").val().length>0){
+                $("#id_empresaempleadora").val(0);
+                $("#id_empresaempleadora").change();
+                $("#id_empresaempleadora").prop("disabled", true);
+            }
+            $("#id_otraempresaempleadora").change(function () {
+                if ($(this).val().length>0){
+                    $("#id_empresaempleadora").val(0);
+                    $("#id_empresaempleadora").change();
+                    $("#id_empresaempleadora").prop("disabled", true);
+                }else{
+                    $("#id_empresaempleadora").val(0);
+                    $("#id_empresaempleadora").change();
+                    $("#id_empresaempleadora").prop("disabled", false);
+                }
+            });
+            profesor();
+            $("#id_inscripcion").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                url: '{{ request.path }}',
+                dataType: 'json',
+                type: 'GET',
+                //delay: 250,
+                data: function (params) {
+                    return {
+                        action: 'alumnoscarrera',
+                        term: params.term,
+                        carreras_ids: $('#id_carreras').val(),
+                        id: {{ preinscripcion.id }},
+                        excludes: JSON.stringify($(this).val())
+                    };
+                },
+                processResults: function (data) {
+                    return {
+                        results: data
+                    };
+                },
+                complete: function (xhr, status) {
+                    //console.log('Petición realizada');
+                    //console.log(status);
+                }
+
+            },
+                minimumInputLength: 1,
+            })
+            $("#id_carreras").select2().on('select2:select', function (e) {
+                $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'itinerariocarrera',
+                    'id': $(this).val()
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbodymatricula').html(data.data);
+                        $('#itemspanelmatricula .paneltitlematricula').html(text);
+                        $("#itemspanelmatricula").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+
+        });
+            $('#id_carreras').on('change', function(e){
+                if ($(this).val() !== null){
+                    carreras = [];
+                    $.each($(this).val(), function (key, value){
+                        carreras.push(value);
+                    })
+                }
+            {#    $.get({{ request.path }}, {#}
+            {#    'action': 'alumnoscarrera',#}
+            {#    'carreras': carreras,#}
+            {#    'id': {{ preinscripcion.id|encrypt }}#}
+            {##}
+            {# }, function (data) {#}
+            {#    if (data.results) {#}
+            {#        console.log(data);#}
+            {# }, 'json')#}
+            })
+
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ request.path }}?action=listapreinscritos&id={{ preinscripcion.id|encrypt }}{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}{{ request.path }}{% endblock %}
+{% block formdestination %}{{ request.path }}?action=listapreinscritos&id={{ preinscripcion.id|encrypt }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='gestionar_preins_indmasivo'/>
+    <input type='hidden' name='id' value="{{ preinscripcion.id }}_{{ idcar }}_{{ idest }}"/>
+    <div id="contenidocentral_periodo"></div>
+{% endblock %}
+{% block formback %}{{ request.path }}?action=listapreinscritos&id={{ preinscripcion.id|encrypt }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}

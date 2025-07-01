@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% load humanize %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+
+    <script type="text/javascript">
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 1});
+
+            busqueda = function () {
+                bloqueointerface();
+                var term = $("#searchinput").val().toUpperCase().trim();
+                var ide = $("#id_estado").val();
+                if (term.length > 0) {
+                    location.href = "/adm_admision?s=" + term + "&ide=" + ide;
+                } else {
+                    location.href = "/adm_admision?ide=" + ide;
+                }
+            };
+
+            $(".informacionsolicitud").click(function () {
+                var tipo = "3";
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/librosbiblioteca",
+                    data: {'action': 'solicitudes', 'tipo': tipo},
+                    success: function (data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $("#detallesolicitudmodal_body").html(data.html);
+                            $("#detallesolicitudmodal").modal({"backdrop": "static", "width": "1000px"}).modal("show");
+                            $('.confirmacionmodal').bind('click.conectar_confirmacion', conectar_confirmacion);
+                        } else {
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error de conexión.");
+                    },
+                    dataType: "json"
+                });
+                return false;
+            });
+
+            $("#detallesolicitudmodal_cerrar").click(function () {
+                $("#detallesolicitudmodal").modal("hide");
+            });
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+            var h = $(window).height() - 332;
+            var table = $('#example').DataTable({
+                "sPaginationType": "full_numbers",
+                "sDom": 'T<"clear">lfrtip',
+                "paging": false,
+                "ordering": false,
+                "info": false,
+                "searching": false,
+                // "scrollY": h,
+                "order": [[2, 'asc']],
+                "columnDefs": [{"visible": false, "targets": 1}],
+                "drawCallback": function (settings) {
+                    var api = this.api();
+                    var rows = api.rows({page: 'current'}).nodes();
+                    var last = null;
+                    api.column(1, {page: 'current'}).data().each(function (group, i) {
+                        if (last !== group) {
+                            $(rows).eq(i).before(
+                                '<tr class="group"><td colspan="14" height="30" bgcolor="#f1f1f1">' + group + '</td></tr>'
+                            );
+                            last = group
+                        }
+                    });
+                    $('[data-toggle="tooltip"]').tooltip();
+                }
+            });
+            $("#btn_cerrar").click(function () {
+                $(".itemspaneldetalle_tlibro").modal("hide");
+            });
+            $(".detallelibro").click(function () {
+                var id = $(this).attr('idl');
+                $.get("/librosbiblioteca", {'action': 'detalle_libro', 'id': id}, function (data) {
+                    if (data.result == 'ok') {
+                        $.unblockUI();
+                        $(".panelbodydetalle_libro").html(data.data);
+                        $(".itemspaneldetalle_tlibro").modal({backdrop: 'static', width: '1000px'}).modal('show');
+                    }
+                }, 'json');
+            });
+        });
+
+        function seleccionar(valor) {
+            $("#tipobusqueda").val(valor)
+        }
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModa2(id, text, action, idmaestriaadmision) {
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idmaestriaadmision': idmaestriaadmision,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbodymatricula').html(data.data);
+                        $('#itemspanelmatricula .paneltitlematricula').html(text);
+                        $("#itemspanelmatricula").modal({backdrop: 'static', width: '900'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+    </script>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+{% endblock %}
+{% block atras %}/{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Gestión de programas de maestría de posgrado</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="card mb-4">
+            <div class="card-header border-bottom-0">
+                <div class="col-lg-3 col-md-3 col-3">
+                    <div class="d-md-flex align-items-center">
+                        <div class="dropbottom">
+                            <a href="javascript:void(0);"
+                               class="btn btn-info me-2"
+                               data-bs-toggle="dropdown" aria-haspopup="true"
+                               aria-expanded="false"><i class="fa fa-ellipsis-v text-black-50 fs-6"></i> Acciones
+                            </a>
+
+                            <a class="btn btn-success"
+                               onclick="formModal('','ADICIONAR PROGRAMA','addmaestriaadmision')"
+                               href="javascript:void(0);"><i class="fa fa-plus"></i> Adicionar
+                            </a>
+
+                            <ul class="dropdown-menu" x-placement="right-start">
+                                <span class="dropdown-header">ACCIONES</span>
+                                <li class="dropdown-item">
+                                    <a href="/adm_admision?action=configuracionfirma"><i class="fa fa-gear"></i>
+                                        Configurar firma responsables</a>
+                                </li>
+                                <li class="dropdown-item">
+                                    <a href="/adm_admision?action=listarequisito" class="bloqueo_pantalla"><span
+                                            class="fa fa-list"></span> Requisitos
+                                    </a>
+                                </li>
+                                <li class="dropdown-item">
+                                    <a href="/adm_admision?action=listformatocarrerapreins"><i
+                                            class="fa fa-list"></i>
+                                        Configuración formatos para pre inscritos
+                                    </a>
+                                </li>
+                                <li class="dropdown-item">
+                                    <a href="/adm_admision?action=listacomprobantes"><i class="fa fa-list"></i>
+                                        Comprobantes
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 col-md-3 col-sm-12 pb-3">
+            <i class="fa fa-search tu" title="Nombres"></i> Estado:
+            <div class="input-group mb-2">
+                <select name="es" id="id_estado" style="width: 100%">
+                    <option value="0" {% if not ide %}selected{% endif %}>----Todos----</option>
+                    <option value="1" {% if ide == 1 %} selected {% endif %}>Homologación configurada</option>
+                    <option value="2" {% if ide == 2 %} selected {% endif %}>Homologación no configurada</option>
+                    <option value="3" {% if ide == 3 %} selected {% endif %}>Ofertada</option>
+                    <option value="4" {% if ide == 4 %} selected {% endif %}>No ofertada</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-lg-6 col-md-3 col-sm-12 pb-3">
+            <i class="fa fa-search tu" title="Nombres"></i> Busqueda:
+            <div class="input-group mb-2">
+                <input class='form-control' type='text' id='searchinput' name="s" value='{{ search }}' autocomplete="off"
+                       placeholder="Buscar solicitud por cedula o pasaporte o apellidos..."/>
+                <div class="input-group-append">
+                    <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()" id="button-addon2"><i
+                            class="fa fa-search"></i></a>
+                    {% if url_vars %}
+                        <a title="Ver todo" href="/adm_admision" class="btn btn-default tr refreshbutton">
+                            <i class="fas fa-sync-alt"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row-fluid'>
+        <div class='col-lg-12'>
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <table class='tabla_responsive table table-bordered table-striped'>
+                        <thead>
+                        <tr>
+                            <th style="width: 5%;text-align: center;">Código</th>
+                            <th style="width: 35%;text-align: center;">Carrera</th>
+                            <th style="width: 35%;text-align: center;">Detalles del programa</th>
+                            <th style="width: 15%;text-align: center;">Estado</th>
+                            <th style="width: 10%;text-align: center;">Acciones</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for peradmision in periodosadmision %}
+                            <tr>
+                                <td style="text-align: center; font-size: 14px" data-title='Código'>{{ peradmision.id }}</td>
+                                <td style="text-align: center; font-size: 14px" data-title='Programa'>
+                                    {{ peradmision.carrera|lower|capfirst }}<br>
+                                    {% if peradmision.tiene_requisitos_homologacion %}<span style="color: #198754!important; font-weight: bold; font-size:14px">Configuró requisitos de homologación</span>{% else %}<span style="color: #FE9900!important; font-weight: bold; font-size:14px">Requisitos de homologación no configurados</span>{% endif %}
+                                </td>
+                                <td style="text-align: left; font-size: 14px" data-title='Descripción'>
+                                    <b><i class="fa fa-university"></i> Programa:</b> {{ peradmision.descripcion|lower|capfirst }}<br>
+                                    <b><i class="fa fa-moon"></i> Modalidad:</b> {{ peradmision.carrera.get_modalidad_display|lower|capfirst }}<br>
+                                    {% if peradmision.carrera.malla.tiene_itinerario_malla_especialidad %}
+                                        <b><i class="fa fa-graduation-cap"></i> Menciones:</b><br>
+                                            <ol>
+                                                {% for mencion in peradmision.menciones %}
+                                                    <li>{{ mencion.nombre|lower|capfirst }}</li>
+                                                {% endfor %}
+                                            </ol>
+                                    {% elif peradmision.carrera %}
+                                        <b><i class="fa fa-graduation-cap"></i> Mención:</b> {{ peradmision.carrera.mencion|lower|capfirst }}<br>
+                                    {% else %}
+                                        <b><i class="fa fa-graduation-cap"></i> Mención:</b> <span style="color: #dc3545!important; font-weight: bold; font-size:14px">Sin mención</span><br>
+                                    {% endif %}
+                                    <b><i class="fa fa-briefcase"></i> Titulo a obtener:</b> {{ peradmision.carrera.titulo_otorga_con_sin_mencion|lower|capfirst }}<br>
+                                    <b><i class="fa fa-calendar"></i> Fecha de creación</b> {{ peradmision.fecha_creacion|date:"d-m-Y" }}
+                                </td>
+                                <td style="text-align: center; font-size: 14px"
+                                    data-title='Descripción'>
+                                    {% if peradmision.ofertada %}
+                                        <span style="color: #198754!important; font-weight: bold; font-size:14px">Ofertada</span>{% else %}
+                                        <span style="color: #dc3545!important; font-weight: bold; font-size:14px">No ofertada</span>{% endif %}
+                                </td>
+                                <td style="text-align: center" data-title='Acciones'>
+                                    <div class="dropbottom">
+                                        <a href="javascript:void(0);"
+                                           class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                           data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                           aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                        </a>
+                                        <ul class="dropdown-menu" x-placement="right-start">
+                                            <span class="dropdown-header">ACCIONES</span>
+                                            <li class="dropdown-item">
+                                                {% if perms.sga.puede_ver_todo_admisionposgrado or perms.posgrado.change_requisitosmaestria %}
+                                                    {% if perms.sga.puede_permisos_admisionposgrado %}
+                                                        <a onclick="formModal('{{ peradmision.id|encrypt }}','EDITAR PROGRAMA','editarmaestriaadmision')"
+                                                           href="javascript:void(0);"><span class="fa fa-edit "></span>
+                                                            Editar</a>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </li>
+                                            <li class="dropdown-item">
+                                                <a href='/adm_admision?action=listadocohortes&id={{ peradmision.id|encrypt }}'
+                                                   class="bloqueo_pantalla"><span class="fa fa-list "></span> Listado de
+                                                    Cohortes</a>
+                                            </li>
+                                            <li class="dropdown-item">
+                                                <a href='/adm_admision?action=listarequisitoshomologacion&id={{ peradmision.id }}'
+                                                   class="bloqueo_pantalla"><span class="fa fa-list "></span> Planificar requisitos de homologación</a>
+                                            </li>
+                                            <li class="dropdown-item">
+                                                <a onclick="formModal('{{ peradmision.id|encrypt }}','COPIAR REQUISITOS DE HOMOLOGACIÓN','copiarrequisitos')"
+                                                   href="javascript:void(0);"><span class="fa fa-pencil"></span>
+                                                    Copiar requisitos</a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="11">
+                                    No hay programas abiertos
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="text-muted fs-6">
+                        {% widthratio periodosadmision|length 1 page.number as value %}
+                        <caption> Mostrando
+                            {% if not paging.num_pages == page.number %}{{ value }}{% else %}
+                                {% if paging.num_pages == 1 %}
+                                    {{ periodosadmision|length }}{% else %}{% with len=periodosadmision|length %}
+                                        {% widthratio 10 1 page.number|add:"-1" as val %}{{ val|add:len }}{% endwith %}
+                                {% endif %}{% endif %} de {{ eTotal }}</caption>
+
+                    </div>
+                </div>
+                <div class="card-footer border-top-0">
+                    {% include 'paginacionb4.html' %}
+                </div>
+                </div>
+            </div>
+        </div>
+
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

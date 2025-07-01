@@ -1,0 +1,308 @@
+{% load sga_extras %}
+{% load humanize %}
+{% block extraheading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+    <script>
+        $(function(){
+            $("select").select2({minimumResultsForSearch: 5 });
+
+            var mostrarboton = '{% if permite_modificar %}S{% else %}N{% endif %}';
+
+            $("#estadopago").addClass("validate[required]");
+
+            $('#estadopago').change(function() {
+                var control = $(this);
+                $("#observacion").val("");
+                valor = control.val();
+
+                if(valor == '11' || valor == ''){
+                    $("#observacion").prop('disabled', true).removeClass("validate[required]");
+                    if(valor == '11') {
+                        $("#rubro").prop('disabled', false).addClass("validate[required]");
+                    }else {
+                        $("#rubro").prop('disabled', true).removeClass("validate[required]");
+                        $("#rubro").val('').trigger('change');
+                    }
+                }
+                else{
+                    $("#observacion").prop('disabled', false).addClass("validate[required]");
+                    $("#rubro").prop('disabled', true).removeClass("validate[required]");
+                    $("#rubro").val('').trigger('change');
+                }
+            });
+
+            $("#estadopago").val('').trigger("change");
+
+            {% if not permite_modificar %}
+                $("#guardarvalidapago").css('display','none');
+            {% else %}
+                $("#guardarvalidapago").css('display','inline-block');
+            {% endif %}
+
+
+            $('#guardarvalidapago').click(function () {
+                $("#formulario").validationEngine('attach',{ scroll: false });
+                var valid = $("#formulario").validationEngine('validate', { scroll: false });
+
+                if(valid){
+                    bloqueointerface();
+                    var formdata = new FormData($("#formulario")[0]);
+                    $.ajax({
+                        type: "POST",
+                        url: "/adm_refinanciamientoposgrado",
+                        data: formdata,
+                        success: function(data) {
+                            if (data.result=='ok'){
+                                //$.unblockUI();
+                                //$('#itemspanelvalidarsolicitud').modal('hide');
+                                //elaborarpropuesta("'"+$("#id").val()+"'");
+                                //location.href = "/rec_devoluciondinero?estadodocumento={{ estadodocumento }}";
+                                location.href = "/adm_refinanciamientoposgrado";
+                            } else {
+                                $.unblockUI();
+                                smoke.alert(data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            smoke.alert("Error de conexión.");
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+
+            $('.nav-tabs a').on('shown.bs.tab', function(event){
+                var x = $(event.target).parent().index();        // active tab
+                if(x == 0 && mostrarboton == 'S')
+                    $("#guardarvalidapago").css('display','inline-block');
+                else
+                    $("#guardarvalidapago").css('display','none');
+            });
+
+            if(mostrarboton == 'S')
+                $("#guardarvalidapago").css('display','inline-block');
+            else
+                $("#guardarvalidapago").css('display','none');
+
+            //$("#estadopago").trigger('refresh');
+        });
+    </script>
+{% endblock %}
+{% block canvas %}
+    <div class="tabbable">
+        <ul class="nav nav-tabs">
+            <li class="active"><a class="tabs" href="#1" data-toggle="tab"><i class="fa fa-check-square"></i> Revisión y Validación</a></li>
+            <li><a class="tabs" href="#2" data-toggle="tab"><i class="fa fa-file-pdf-o"></i> Comprobante de Pago</a></li>
+            <li><a class="tabs" href="#3" data-toggle="tab"><i class="fa fa-table"></i> Tabla Amortización Anterior</a></li>
+            <li><a class="tabs" href="#4" data-toggle="tab"><i class="fa fa-table"></i> Tabla por Refinanciamiento</a></li>
+        </ul>
+        <div class="tab-content" style="overflow: inherit">
+            <div class="tab-pane active" id="1">
+                {% if permite_modificar %}
+                    <form name="formulario" id="formulario">
+                        <table class="table table-bordered table-striped" >
+                            <tbody>
+                                <tr>
+                                    <td colspan="4"><strong>Datos de la Solicitud</strong>
+                                        <input type='hidden' name='id' id='id' value='{{ ids|encrypt }}' />
+                                        <input type='hidden' name='action' value='validarpago' />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>N° Solicitud / Fecha:</strong></td>
+                                    <td colspan="3"><span class="label label-success">{{ solicitud.id|stringformat:"05d" }}</span> <span class="label label-info">{{ solicitud.fecha_creacion|date:"Y-m-d" }}</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Solicitante:</strong></td>
+                                    <td colspan="3">{{ solicitud.persona.nombre_completo_inverso }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Programa/Cohorte:</strong></td>
+                                    <td colspan="3">{{ solicitud.matricula.inscripcion.carrera.nombre }} /
+                                        {{ solicitud.matricula.nivel.periodo.nombre }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Motivo Refinanciamiento:</strong></td>
+                                    <td colspan="3" style="text-align: justify">
+                                        {% if solicitud.motivo != 5 %}
+                                            {{ solicitud.get_motivo_display }}
+                                        {% else %}
+                                            {{ solicitud.otromotivo }}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Pago Requerido:</strong></td>
+                                    <td><span class="label label-info">$ {{ solicitud.pagorequerido|floatformat:2|intcomma }}</span></td>
+                                    <td style="text-align: center"><strong>Total Refinanciar:</strong></td>
+                                    <td><span class="label label-success">$ {{ solicitud.montorefinanciar|floatformat:2|intcomma }}</span></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="4"><strong>Aprobación/Rechazo Pago</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Estado:</strong></td>
+                                    <td colspan="3">
+                                        <select id="estadopago" name="estadopago" style="width: 400px">
+                                            <option value="" selected>---------</option>
+                                            {% for estadosol in estadossolicitud %}
+                                                <option value="{{ estadosol.valor }}">{{ estadosol.observacion }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <td><strong>Rubro Asignado:</strong></td>
+                                    <td colspan="3">
+                                        <select id="rubro" name="rubro" style="width: 98%">
+                                            <option value="" selected>---------</option>
+                                            {% for rubro in rubros %}
+                                                <option value="{{ rubro.id }}">{{ rubro.nombre }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <td><strong>Observaciones:</strong></td>
+                                    <td colspan="3">
+                                        <textarea id="observacion" name="observacion" value="" style="width: 95%; text-transform: uppercase"></textarea>
+                                        <div class="help-text"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                {% else %}
+
+                    <table class="table table-bordered table-striped" >
+                        <tbody>
+                            <tr>
+                                <td colspan="4"><strong>Datos de la Solicitud</strong></td>
+                            </tr>
+                            <tr>
+                                <td width="20%"><strong>N° Solicitud / Fecha:</strong></td>
+                                <td colspan="3"><span class="label label-success">{{ solicitud.id|stringformat:"05d" }}</span> <span class="label label-info">{{ solicitud.fecha_creacion|date:"Y-m-d" }}</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Solicitante:</strong></td>
+                                <td colspan="3">{{ solicitud.persona.nombre_completo_inverso }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Programa/Cohorte:</strong></td>
+                                <td colspan="3">{{ solicitud.matricula.inscripcion.carrera.nombre }} /
+                                    {{ solicitud.matricula.nivel.periodo.nombre }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Motivo Refinanciamiento:</strong></td>
+                                <td colspan="3" style="text-align: justify">
+                                    {% if solicitud.motivo != 5 %}
+                                        {{ solicitud.get_motivo_display }}
+                                    {% else %}
+                                        {{ solicitud.otromotivo }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pago Requerido:</strong></td>
+                                <td><span class="label label-info">$ {{ solicitud.pagorequerido|floatformat:2|intcomma }}</span></td>
+                                <td><strong>Total Refinanciar:</strong></td>
+                                <td><span class="label label-success">$ {{ solicitud.montorefinanciar|floatformat:2|intcomma }}</span></td>
+                            </tr>
+                            <tr>
+                                <td colspan="4"><strong>Aprobación/Rechazo Pago</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Estado:</strong></td>
+                                <td colspan="3"><span class="{{ solicitud.estado.clase }}">{{ solicitud.estado.observacion }}</span> </td>
+{#                                <td><strong>Monto a Devolver $:</strong></td>#}
+{#                                <td>{% if solicitud.montodevolver %}<span class="label label-info" >{{ solicitud.montodevolver|floatformat:2|intcomma }}</span>{% endif %}</td>#}
+                            </tr>
+                            <tr>
+                                <td><strong>Observaciones:</strong></td>
+                                <td colspan="3" style="text-align: justify">{{ solicitud.observacion }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                {% endif %}
+            </div>
+
+            <div class="tab-pane" id="2">
+                <iframe border=0 frameborder=0 height=600px width=820 src="{{ comprobante }}"></iframe>
+            </div>
+
+            <div class="tab-pane" id="3">
+                <table class="table table-bordered table-striped" >
+                    <thead>
+                        <th width="5%" style="text-align: center">ID</th>
+                        <th width="30%" style="text-align: center">Rubro</th>
+                        <th width="10%" style="text-align: center">Valor</th>
+                        <th width="10%" style="text-align: center">Fecha Emisión</th>
+                        <th width="10%" style="text-align: center">Fecha Vence</th>
+                        <th width="10%" style="text-align: center">Fecha Pago</th>
+                        <th width="10%" style="text-align: center">Pagado</th>
+                        <th width="10%" style="text-align: center">Saldo</th>
+                        <th width="5%" style="text-align: center">Vencido</th>
+                    </thead>
+                    <tbody>
+                        {% for rubro in compromisoanterior %}
+                            <tr>
+                                <td style="text-align: center">{{ rubro.0 }}</td>
+                                <td style="text-align: justify">{{ rubro.1 }}</td>
+                                <td style="text-align: right">$ {{ rubro.2|floatformat:2|intcomma }}</td>
+                                <td style="text-align: center">{{ rubro.3|date:"Y-m-d" }}</td>
+                                <td style="text-align: center">{{ rubro.4|date:"Y-m-d" }}</td>
+                                <td style="text-align: center">{{ rubro.5|date:"Y-m-d" }}</td>
+                                <td style="text-align: right">$ {{ rubro.6|floatformat:2|intcomma }}</td>
+                                <td style="text-align: right">$ {{ rubro.7|floatformat:2|intcomma }}</td>
+                                <td style="text-align: center">{{ rubro.8 }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="tab-pane" id="4">
+                <table class="table table-bordered table-striped" >
+                    <thead>
+                        <th width="10%" style="text-align: center">#</th>
+                        <th width="45%" style="text-align: center">Cuota</th>
+                        <th width="15%" style="text-align: center">Valor</th>
+                        <th width="15%" style="text-align: center">Fecha Emisión</th>
+                        <th width="15%" style="text-align: center">Fecha Vence</th>
+                    </thead>
+                    <tbody>
+                        {% for rubro in compromisonuevo %}
+                            <tr>
+                                <td style="text-align: center">{{ rubro.0 }}</td>
+                                <td style="text-align: justify">{{ rubro.1 }}</td>
+                                <td style="text-align: right">$ {{ rubro.2|floatformat:2|intcomma }}</td>
+                                <td style="text-align: center">{{ rubro.3|date:"Y-m-d" }}</td>
+                                <td style="text-align: center">{{ rubro.4|date:"Y-m-d" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

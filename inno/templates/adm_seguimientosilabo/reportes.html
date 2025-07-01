@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+
+    <script>
+        $(function(){
+            console.log('Welcome ' + '{{ persona.nombres|title }}' + '...')
+
+            $('#id_reporte').change(function (e) {
+                let id = $(this).val();
+                $('#id_periodoactual').val(null).trigger('change');
+                if (id === '{{ 1|encrypt }}') {
+                    $('#id_periodoactual').select2('destroy');
+                    $('#id_periodoactual').attr('multiple', 'multiple');
+                    $('#id_periodoactual').select2({multiple: true});
+                } else {
+                    $('#id_periodoactual').select2('destroy');
+                    $('#id_periodoactual').removeAttr('multiple');
+                    $('#id_periodoactual').select2({multiple: false});
+                }
+            });
+
+            $(".gallerypdf").fancybox({
+                openEffect: 'elastic',
+                closeEffect: 'elastic',
+                autoSize: true,
+                width:'90%',
+                type: 'iframe',
+                iframe: {
+                    preload: false // fixes issue with iframe and IE
+                }
+            });
+
+            $('select').select2();
+
+            $('#id_anio').on('change', function(e){
+                let a = $(this).val();
+                let t = $('#id_reporte').val();
+                bloqueointerface()
+                $.get('{{ request.path }}', {'action': 'load-periodos-consulta', 'a': a, 't': t}, function (data) {
+                    $('#id_periodoactual').empty().val(null).trigger('change');
+                    if (data.result === 'ok') {
+                        data.periodos.forEach(p => {
+                            let option = `<option value="${p[0]}">${p[1]}</option>`
+                            $('#id_periodoactual').append(option).trigger('change');
+                        })
+                        $.unblockUI();
+                    } else {
+                        $.unblockUI()
+                        mensajeDanger(data.mensaje);
+                    }
+
+                });
+            });
+            $('.btn-execute-previsualizer').click(function (data) {
+                bloqueointerface();
+                let formdata = new FormData($('#id_formulariofiltros')[0]);
+                $.ajax({
+                    type: "POST",
+                    url: '{{ request.path }}',
+                    data: formdata,
+                    success: function(data) {
+                        if(data.result=='ok'){
+                            $.unblockUI();
+                            $('.main-content').html(data.html);
+                            $('.btn-download-file').attr('href', data.fileurl).removeClass('disabled');
+                        }else{
+                            $.unblockUI();
+                            mensajeWarning(data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                    },
+                    dataType: "json",
+                    cache: false,
+                    contentType: false,
+                    processData: false
+                });
+            });
+
+            $('#id_periodoactual').on('change', function (e) {
+                $('.btn-download-file').attr('href', 'javascript:;').addClass('disabled');
+                $('.main-content').html(`<br><br><br><center><img src="/static/images/coverbalcon.png" width="350" height="250"/></center>`);
+            });
+
+            $('#id_anio').trigger('change');
+        });
+    </script>
+    <style>
+        .modulecard-fade:hover {
+            transform: scale(.99);
+            background: #EAF2F8;
+        }
+
+        ::-webkit-scrollbar {width: 10px; height: 10px;}
+
+        ::-webkit-scrollbar-track {background-color: #E7F0F8;}
+
+        ::-webkit-scrollbar-thumb {background-color: #A8B4BF;}
+
+    </style>
+{% endblock %}
+{% block canvas %}
+    <div class="container">
+        <div class='row'>
+            <div class='col-lg-12 d-flex justify-content-between'>
+                <div class="headtitle ps-0 ms-0">
+                    <h3 class="my-0 py-0">{{ title }}</h3>
+                    <h6 class="ms-2">{{ coordinadorcarrera.carrera|title2 }} {{ decanofacultad.coordinacion }}</h6>
+                </div>
+                <div class="btn-group mt-2">
+                    <a href="javascript:;" class="btn btn-primary btn-execute-previsualizer rounded-1 me-1"><i class="bi bi-eye"></i> Visualizar</a>
+                    <a href="javascript:;" class="btn btn-success btn-download-file rounded-1 gallerypdf disabled"><i class="bi bi-download"></i> Descargar reporte</a>
+                </div>
+            </div>
+        </div>
+        <br>
+        <form id="id_formulariofiltros" type="POST">
+            <div class="row">
+                <input type="hidden" name="action" value="{{ action }}">
+{#                <div class="col-sm-3">#}
+{#                    <b>Carrera <span class="text-danger">*</span>:</b>#}
+{#                    <select name="c" id="id_carrera">#}
+{#                        <option value="0">-------</option>#}
+{#                        {% for carrera in carreras %}#}
+{#                            <option value="{{ carrera.pk }}" {% if carrera.pk == carreraselected %}selected{% endif %}>{{ carrera.nombre }}</option>#}
+{#                        {% endfor %}#}
+{#                    </select>#}
+{#                </div>#}
+                <div class="col-sm-3">
+                    <b>Nombre del reporte <span class="text-danger">*</span>:</b><br>
+                    <select name="t" id="id_reporte">
+                        {% for r in reportes %}
+                            <option value="{{ r.type|encrypt }}">{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-3">
+                    <b>Año de consulta <span class="text-danger">*</span>:</b><br>
+                    <select name="a" id="id_anio">
+                        {% for a in anioconsulta %}
+                            <option value="{{ a }}">{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-3 periodo-actual-multiple">
+                    <b>Periodo de consulta <span class="text-danger">*</span>:</b><br>
+                    <select name="periodos" id="id_periodoactual" multiple></select>
+                </div>
+                <div class="col-sm-3 periodo-actual" style="display:none">
+                    <b>Periodo de consulta:</b><br>
+                    <select name="periodo" id="id_periodo"></select>
+                </div>
+            </div>
+        </form>
+        <br>
+        <div class="row">
+            <div class="col-sm-12 main-content">
+                <br><br><br>
+                <center>
+                    <img src="/static/images/coverbalcon.png" width="350" height="250"/>
+                </center>
+            </div>
+        </div>
+    </div>
+{% endblock %}

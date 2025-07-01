@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <script type="text/javascript" src='/static/js/jquery.validationEngine.js?v=1.0.0'></script>
+    <script type="text/javascript" src='/static/js/jquery.validationEngine-es.js?v=1.0.0' ></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/validationEngine.jquery.css?v=1.0.0"/>
+    <link rel="stylesheet" href="/static/css/bloques.css">
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <script type="text/javascript">
+        $(document).on('select2:opening.disabled', ':disabled', function() { return false; });
+        $(function() {
+            $("select").select2({minimumResultsForSearch: 5, width: '100%' });
+
+            let servselecc = 0;
+
+            $('[data-bs-toggle="tooltip"]').on('click', function () {
+                $(this).tooltip('hide');
+            });
+
+            $("#estadocita").change(function (){
+                busqueda();
+            });
+
+            $("#search").click(function() {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function(e) {
+                if(e.keyCode == 13) {
+                    $("#search").trigger("click");
+                }
+            });
+
+            busqueda = function () {
+                let term = $("#searchinput").val().toUpperCase().trim();
+                let estadocita = $("#estadocita").val();
+                if (term.length > 0)
+                    location.href = `/adm_asesoriainvestigacion?s=${$("#searchinput").val().toUpperCase()}&estadocita=${estadocita}`;
+                else
+                    location.href = `/adm_asesoriainvestigacion?estadocita=${estadocita}`;
+            };
+
+            $(".gestionarcita").click(function() {
+                let id = $(this).attr('id');
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_asesoriainvestigacion",
+                    data: {'action': 'gestionarcita', 'id': id},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodygestionarcita").html(data.data);
+                            $(".paneltitlegestionarcita").html(data.title);
+                            $("#itemspanelgestionarcita").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelgestionarcita").on("hidden.bs.modal", function () {
+                clearTimeout($("#timeoutid").val());
+            });
+
+            enviarFormulario = function(url, action){
+                let valido;
+                let formdata;
+                if(action == 'addcita'){
+                    $("#frmAddCita").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmAddCita").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'finalizaractividad'){
+                    $("#frmFinalizarActividad").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFinalizarActividad").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'cancelarcita'){
+                    $("#frmCancelarCita").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmCancelarCita").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'finalizaractividaddia'){
+                    $("#frmFinalizarActividadDia").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmFinalizarActividadDia").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'subiranexos'){
+                    $("#frmSubirAnexo").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmSubirAnexo").validationEngine('validate', { scroll: false });
+                }
+                else if(action == 'cambioresponsable'){
+                    $("#frmCambioResponsable").validationEngine('attach',{ scroll: false });
+                    valido = $("#frmCambioResponsable").validationEngine('validate', { scroll: false });
+                }
+
+                if(valido){
+                    bloqueointerface();
+                    if(action == 'addcita')
+                        formdata = new FormData($("#frmAddCita")[0]);
+                    else if(action == 'finalizaractividad')
+                        formdata = new FormData($("#frmFinalizarActividad")[0]);
+                    else if(action == 'cancelarcita')
+                        formdata = new FormData($("#frmCancelarCita")[0]);
+                    else if(action == 'finalizaractividaddia'){
+                        try {
+                            for (instance in CKEDITOR.instances ) {
+                                CKEDITOR.instances[instance].updateElement();
+                            }
+                        } catch (err){
+                            console.log(err.message);
+                        }
+                        formdata = new FormData($("#frmFinalizarActividadDia")[0]);
+                    }
+                    else if(action === 'subiranexos'){
+                        formdata = new FormData($("#frmSubirAnexo")[0]);
+                        formdata.append("lista_items1", JSON.stringify(lista_items1));
+                        formdata.append("lista_items2", JSON.stringify(lista_items2));
+                        formdata.append("lista_items3", JSON.stringify(lista_items3));
+                    }
+                    else if(action === 'cambioresponsable'){
+                        formdata = new FormData($("#frmCambioResponsable")[0]);
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        action: action,
+                        url: url,
+                        data: formdata,
+                        success: function(data) {
+                            if(data.result == 'ok'){
+                                $.unblockUI();
+                                urlDestino = "/adm_asesoriainvestigacion";
+                                mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                            }else{
+                                $.unblockUI();
+                                if(data.swalType == 'warning')
+                                    mensajeWarningSwal(data.titulo, data.mensaje);
+                                else
+                                    mensajeErrorSwal(data.titulo, data.mensaje);
+                            }
+                        },
+                        error: function() {
+                            $.unblockUI();
+                            mensajeErrorSwal("No se puede guardar", "Error al enviar los datos")
+                        },
+                        dataType: "json",
+                        cache: false,
+                        contentType: false,
+                        processData: false
+                    });
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            };
+
+            cargarAgenda = function (idgest, idserv, idresp, estado, anio, semana, tv, tm){
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_asesoriainvestigacion",
+                    data: {'action': 'cargaragenda', 'idgest': idgest, 'idserv': idserv, 'idresp': idresp, 'estado': estado, 'anio': anio, 'semana': semana, 'tv': tv, 'tm': tm},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".agenda").html(data.data);
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            };
+
+            $('#servicio').change(function(){
+                cargarAgenda($("#gestion").val(), $("#servicio").val(), $("#responsable").val(), $("#estado").val(), {{ anio }}, {{ semana }}, '{{ tipovista }}', '');
+            });
+
+            $('#responsable').change(function(){
+                cargarAgenda($("#gestion").val(), $("#servicio").val(), $("#responsable").val(), $("#estado").val(), {{ anio }}, {{ semana }}, '{{ tipovista }}', '');
+            });
+
+            $('#estado').change(function(){
+                cargarAgenda($("#gestion").val(), $("#servicio").val(), $("#responsable").val(), $("#estado").val(), {{ anio }}, {{ semana }}, '{{ tipovista }}', '');
+            });
+
+            $("#servicio").prop('selectedIndex', servselecc).trigger('change');
+            $("#gestion").prop('selectedIndex', {% if tipovista != 'RS' %}0{% else %}1{% endif %}).trigger('change');
+            $("#responsable").prop('selectedIndex', {% if tipovista != 'RS' %}0{% else %}1{% endif %}).trigger('change');
+        });
+    </script>
+{% endblock %}
+{% block atras %}{{ enlaceatras }}{% endblock %}
+{% block canvas %}
+    {# TITULO PANTALLA #}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Gestión de Citas para Asesorías en Investigación y Gestiones Administrativas</h6>
+            </div>
+        </div>
+    </div>
+    {# TITULO PANTALLA #}
+    <div class="container-fluid">
+        <div class='row'>
+            <div class="col-sm-12 pb-2">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Configuraciones <i class="fa fa-angle-down"></i></button>
+                    <div class="dropdown-menu">
+                        {% if tipovista == 'CI' or tipovista == 'RG' or tipovista == 'SL' %}
+                            <a class="dropdown-item" href="/adm_asesoriainvestigacion?action=servicios"><i class="fa fa-cogs"></i>&nbsp;Servicios Ofertados</a>
+                            <a class="dropdown-item" href="/adm_asesoriainvestigacion?action=enlacesatencionvirtual"><i class="fa fa-chalkboard"></i>&nbsp;Enlaces Atención Virtual</a>
+                        {% endif %}
+                        <a class="dropdown-item" href="/adm_asesoriainvestigacion?action=horariosservicios"><i class="fa fa-table"></i>&nbsp;Horarios de los Servicios</a>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-cian-opacity dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Consultas <i class="fa fa-angle-down"></i></button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item" href="/adm_asesoriainvestigacion?action=citasasesoria"><i class="fa fa-list"></i>&nbsp;Listado Citas Asesorías</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="form-row pb-0 pt-0 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xxl-5">
+            <div class="col pe-2 pb-1">
+                <i class="fa fa-cubes tu" title="Gestión"></i> Gestión:<br>
+                <select id="gestion" name="gestion" {% if tipovista == 'RS' %}disabled{% endif %}>
+                    <option value="0" selected>TODOS</option>
+                    {% for gestion in gestiones %}
+                        <option value="{{ gestion.id }}">{{ gestion.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col pe-2 pb-1">
+                <i class="fa fa-cogs tu" title="Servicio"></i> Servicio:<br>
+                <select id="servicio" name="servicio">
+                    <option value="0" selected>TODOS (EXCEPTO GESTIÓN)</option>
+                    {% for servicio in servicios %}
+                        <option value="{{ servicio.id }}">{{ servicio.nombre }} ({{ servicio.gestion.abreviatura }})</option>
+                    {% endfor %}
+                    <option value="-1" selected>TODOS</option>
+                </select>
+            </div>
+            <div class="col pe-2 pb-1">
+                <i class="fa fa-users tu" title="Responsable"></i> Responsable:<br>
+                <select id="responsable" name="responsable" {% if tipovista == 'RS' %}disabled{% endif %}>
+                    <option value="" selected>TODOS</option>
+                    {% for responsable in responsables %}
+                        <option value="{{ responsable.id }}">{{ responsable.nombre_completo_inverso }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col pe-2 pb-1">
+                <i class="fa fa-traffic-light tu" title="Estado"></i> Estado:<br>
+                <select id="estado" name="estado">
+                    <option value="" selected>TODOS</option>
+                    {% for estado in estados %}
+                        <option {% if estado.id == estadoid %}selected{% endif %} value="{{ estado.id }}">{{ estado.descripcion }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="agenda">
+
+        </div>
+
+
+{#        <div class="form-row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xxl-5">#}
+{#            <div class="col pe-2 pt-0">#}
+{#                <div class="calendar">#}
+{#                    <div class="calendar__info">#}
+{#                        <div class="calendar__prev rounded-start tu" title="Anterior" style="height: 30px">#}
+{#                            <a class="cambiarmes" tm="ant" ids="{{ idserv }}" anio="{{ anio }}" mes="{{ mes }}" style="width: 100%; height: 100%" href="javascript:;"><i class="arrow-left"></i></a>#}
+{#                        </div>#}
+{#                        <div class="calendar__month" style="height: 30px">SEMANA</div>#}
+{#                        <div class="calendar__next rounded-end tu" title="Siguiente" style="height: 30px">#}
+{#                            <a class="cambiarmes" tm="sig" ids="{{ idserv }}" anio="{{ anio }}" mes="{{ mes }}" style="width: 100%; height:100%" href="javascript:;"><i class="arrow-rigth"></i></a>#}
+{#                        </div>#}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+{#        <div class="row task-kanban-container">#}
+{#            <div class="col-lg-12 p-0">#}
+{#                <div class="containerMenu">#}
+{#                    <div class="menuPanelCard">#}
+{##}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+{#    #}
+
+    </div>
+
+    <div class="modal fade static"  id="itemspanelgestionarcita" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-user-cog"></i>&nbsp;<span class="paneltitlegestionarcita">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body panelbodygestionarcita">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-success guardar"> Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal"> Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

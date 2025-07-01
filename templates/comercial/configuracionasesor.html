@@ -1,0 +1,579 @@
+{% extends 'comercial/basecomercial.html' %}
+{% load sga_extras %}
+{% block content %}
+    <script type="text/javascript">
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 1});
+
+            busqueda = function () {
+                var term = $("#searchinput").val().toUpperCase().trim();
+                var idc = $("#id_cohorte").val();
+                var ide = $("#id_estado").val();
+
+                if (term.length > 0) {
+                    bloqueointerface();
+                    location.href = "/comercial?action=configuracionasesor&s=" + term + "&idc=" + idc + "&ide=" + ide;
+                } else {
+                    bloqueointerface();
+                    location.href = "/comercial?action=configuracionasesor&idc=" + idc + "&ide=" + ide;
+                }
+                return false;
+            };
+
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $(".eliminar_territorio").click(function () {
+                var id = $(this).attr("idi");
+                var nombre = $(this).attr("nombre");
+                var asesor = $(this).attr("nombreasesor")
+
+                var idc = $("#id_cohorte").val();
+                var ide = $("#id_estado").val();
+
+                var url = "/comercial";
+                var action = "eliminarterritorio";
+                var urlDestino = "/comercial?action=configuracionasesor&idc=" + idc + "&ide=" + ide;
+                mensajeConfirmSwal("Eliminar territorio", "Se procederá a desvincular al asesor <b>" + asesor + "</b> del territorio <b>" + nombre + "</b>.", true, url, action, id, urlDestino);
+            });
+
+            selectorcontratos = $(".selectorcontratos");
+
+            actulizarvalor = function () {
+                var seleccionados = $(".selectorcontratos:checked");
+                var suma = 0;
+                seleccionados.each(function () {
+                    suma += 1;
+                });
+                $("#totalleads").html(`Leads seleccionados: ${suma}`);
+            };
+
+            todos = $("#todos");
+
+            todos.click(function () {
+                if (todos.prop('checked')) {
+                    selectorcontratos.prop('checked', true);
+                } else {
+                    selectorcontratos.prop('checked', false);
+                }
+                actulizarvalor();
+            });
+
+            selectorcontratos.change(function () {
+                actulizarvalor();
+            });
+
+            selectorcontratos.prop("checked", false);
+
+
+            $(".metamasiva").click(function () {
+                var idc = $(this).attr('idc')
+                var ids;
+                var contador = 0;
+                var seleccionados = $(".selectorcontratos:checked");
+                var lista;
+                {#var maestria = $("#id_maestria").val();#}
+                {#var cohorte = $("#id_cohorte").val();#}
+                console.log(seleccionados);
+                ids = '';
+                seleccionados.each(function () {
+                    if (ids.length > 0) {
+                        ids += ",";
+                    }
+                    ids += $(this).attr('rid');
+                    contador += 1;
+                });
+                console.log(ids);
+                var url = "/comercial";
+                var action = "addmetamasiva";
+                var urlDestino = "/comercial?action=configuracionasesor&idc={{ idc }}&ide={{ ide }}";
+                mensajeConfirmSwalmoda("Asignación masiva de cohortes", "Se procederá a asignar a <b>" + contador + "</b> asesores comerciales la siguiente cohorte: <b>{{ cohorte }}</b>. En caso de que desee eliminar la cohorte asignada debe hacerlo individualmente.", true, url, action, ids, idc, urlDestino);
+            });
+
+        });
+
+        function mensajeConfirmSwalmoda(titulo, mensaje, ajaxprocess, url, action, id, idc, urlDestino) {
+            Swal.fire({
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                allowEnterKey: false,
+                type: 'question',
+                title: titulo,
+                html: mensaje,
+                confirmButtonText: 'Aceptar',
+                showCancelButton: true,
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    if (!ajaxprocess) {
+                        bloqueointerface();
+                        location.href = urlDestino;
+                    } else {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                                idc:idc,
+                            },
+                            success: function (data) {
+                                if (data.result == 'ok') {
+                                    if (data.showSwal) {
+                                        $.unblockUI();
+                                        mensajeSuccessSwal(data.titulo, data.mensaje, urlDestino);
+                                    } else {
+                                        location.href = urlDestino;
+                                    }
+                                } else {
+                                    $.unblockUI();
+                                    if (data.swalType == 'warning')
+                                        mensajeWarningSwal(data.titulo, data.mensaje);
+                                    else
+                                        mensajeErrorSwal(data.titulo, data.mensaje);
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                }
+            })
+        }
+
+        function formModalHistorial(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanelhistory .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodalhistory').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodalhistory').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanelhistory .paneltitle').html(text.toUpperCase());
+                        $("#itemspanelhistory").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+    </script>
+
+    <style type="text/css">
+        .offcanvas-header {
+            background-color: #1c3247;
+            height: 68px;
+            align-items: center;
+            border-bottom: 10px solid #FE9900;
+        }
+
+        #offcanvasRightLabel {
+            font-size: 15px;
+            color: white;
+            font-family: 'Arial',
+            sans-serif;
+            padding-top: 12px;
+        }
+
+        a h4 {
+            padding-left: 20px;
+            padding-bottom: 15px;
+            padding-top: 15px
+        }
+
+        .accordion-button {
+            background-color: #fff;
+        }
+
+        a h4:hover,
+        .accordion-button:hover {
+            background-color: #D6EAF8;
+        }
+
+        .btn-close {
+            background: transparent url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3E%3Cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3E%3C/svg%3E") 50%/.75rem auto no-repeat !important;
+            border: 0;
+            border-radius: .25rem;
+            box-sizing: content-box;
+            color: #fff;
+            height: .75rem;
+            opacity: 1;
+            font-weight: bold;
+            padding: .25em;
+            width: .75rem
+        }
+
+    </style>
+
+    <div class="card mb-2 mt-1">
+        <div class="card-header">
+            <h4 class="mb-0"><b><i class="fa fa-user-plus"></i> {{ title }}</b></h4>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class="col-lg-5 col-md-3 col-sm-12">
+            <i class="fa fa-university tu" title="Cohortes"></i> Cohortes/Maestrías:
+            <div class="input-group mb-2">
+                <select name="co" id="id_cohorte" style="width: 100%">
+                    <option value="0" {% if not idc %}selected{% endif %}>----Todos----</option>
+                    {% for eCohorte in eCohortes %}
+                        <option {% if idc == eCohorte.id %}selected{% endif %} value="{{ eCohorte.id }}">{{ eCohorte.maestriaadmision.descripcion|title }} - {{ eCohorte.descripcion|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-3 col-sm-12">
+            <i class="fa fa-cog tu" title="Estado"></i> Estados:
+            <div class="input-group mb-2">
+                <select name="m" id="id_estado" style="width: 100%">
+                    <option value="0" {% if not ide %}selected{% endif %}>----Todos----</option>
+                    <option {% if ide == 1 %}selected{% endif %} value="1">Asesor comercial</option>
+                    <option {% if ide == 2 %}selected{% endif %} value="2">Asesor de territorio</option>
+                    <option {% if ide == 3 %}selected{% endif %} value="3">Asesor activo</option>
+                    <option {% if ide == 4 %}selected{% endif %} value="4">Asesor inactivo</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-3 col-sm-12">
+            <form method="GET">
+                <i class="fa fa-search tu" title="Buscador"></i> Buscador:
+                <div class="input-group">
+                    <input class='searchinput form-control' type='text' id='searchinput' value='{{ search }}'
+                           autocomplete="off"
+                           name="s"
+                           placeholder="Nombres, Apellidos, Cédula"/>
+                    <div class="input-group-append">
+                        {#                        <button class="btn btn-primary" type="submit" id="button-addon2"><i#}
+                        {#                                class="fa fa-search"></i></button>#}
+                        <a href="javascript:;"
+                           id='search' class='btn btn-primary'><i class="fa fa-search "></i></a>
+
+                        {% if url_vars %}
+                            <a href="{{ request.path }}?action=configuracionasesor" id='allresults' class='btn btn-default'><span
+                                    class="fa fa-refresh "></span>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-5 col-md-3 col-sm-12">
+            <b id="totalleads">Seleccionados: 0</b> |
+            {% if idc > 0 %}
+                <a href="javascript:;"
+                   class="btn btn-info btn-mini tu metamasiva" idc="{{ idc }}">
+                    <span class="fa fa-plus-circle"></span> Asignar cohorte
+                </a>
+            {% endif %}
+            <a href="javascript:void(0);"
+               onclick="formModalHistorial('0','Añadir asesor','addasesor', true)"
+               class="btn btn-success btn-mini tu">
+                <span class="fa fa-plus-circle"></span> Adicionar asesor
+            </a>
+        </div>
+        <div class="col-lg-7 col-md-3 col-sm-12" style="text-align: right;">
+            <b>Total de asesores: </b><span style="color: #3a87ad!important; font-weight: bold; font-size:12px">{{ eTotal }}</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body border-top border-6 rounded-3 border-dark-info">
+            <table class='tabla_responsive table table-hover table-bordered' style="margin-top: 0px!important;">
+                <thead class="table-light cabecera-fija">
+                <tr>
+                    <th style="background-color: #f5f4f8;text-align: center; width:5%">
+                        {% if idc > 0 %}
+                            <input type="checkbox" id="todos">
+                        {% endif %}
+                    </th>
+                    <th style="text-align: center; width: 30%">Datos del asesor</th>
+                    <th style="text-align: center; width: 30%">Detalle</th>
+                    <th style="text-align: center; width: 15%">Territorio</th>
+                    <th style="text-align: center; width: 10%">Estado</th>
+                    <th style="text-align: center;width: 5%"></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for asesor in asesores %}
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if idc > 0  and asesor.activo %}
+                                {% with result=asesor|args:idc|call:'tiene_meta_cohorte' %}
+                                    {% if not result %}
+                                        <input type="checkbox" class="selectorcontratos" rid="{{ asesor.id }}">
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: left; vertical-align: middle">
+                            <div class="mb-3" style="max-width: 540px;">
+                                <div class="row g-0">
+                                    <div class="col-md-3 text-center">
+                                        {% if asesor.persona.foto.foto %}
+                                            <img class="img-fluid rounded-circle" width="50px"
+                                                 src="https://sga.unemi.edu.ec{{ asesor.persona.foto.foto.url }}">
+                                        {% else %}
+                                            {% if asesor.persona.sexo_id == 1 %}
+                                                <img class="img-fluid rounded-circle" width="50px"
+                                                     src="/static/images/iconos/mujer.png">
+                                            {% else %}
+                                                <img class="img-fluid rounded-circle" width="50px"
+                                                     src="/static/images/iconos/hombre.png">
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-9">
+                                        <div class="">
+                                            <small class="card-text"><i
+                                                    class="fa fa-address-card tu"
+                                                    title="Cédula"></i>
+                                                {% if asesor.persona.cedula %}
+                                                    {{ asesor.persona.cedula }} {% else %}
+                                                    {{ asesor.persona.pasaporte }} {% endif %}
+                                                | {{ asesor.persona.usuario.username }} |
+                                                {% if persona.usuario.is_superuser %}
+                                                    <span style="color: #3a87ad!important; font-weight: bold; font-size:12px">{{ asesor.id }}</span>{% endif %}
+                                            </small><br>
+                                            <small class="card-text"><i
+                                                    class="fa fa-user tu"
+                                                    title="Nombre completo"></i>
+                                                <b>{{ asesor.persona.nombre_completo_inverso|title }}</b>
+                                            </small><br>
+                                            <small class="card-text">
+                                                {% if asesor.persona.telefono %}
+                                                    <i class="fa fa-phone tu" title="Teléfono"></i>
+                                                    {{ asesor.persona.telefono }}
+                                                    <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ asesor.persona.telefono }}&text=Hola {{ asesor.persona }}'
+                                                       target="_blank" class="btn btn-mini btn-success tu"
+                                                       title="Enviar mensaje por whatsapp">
+                                                        <i class="fa fa-whatsapp"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </small><br>
+                                            <small class="card-text">
+                                                <i class="fa fa-envelope tu" title="Correo"></i>
+                                                <a href="mailto:{{ asesor.persona.email }}">{{ asesor.persona.email }}</a>
+                                            </small>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td style="text-align: left; vertical-align: middle">
+                            <b>Rol:</b> {{ asesor.rol|lower|capfirst }}<br>
+                            <b>F.Inicio:</b>
+                            {{ asesor.fecha_desde|date:"d-m-Y" }}
+                            <br>
+                            <b>F.Fin:</b>
+                            {{ asesor.fecha_hasta|date:"d-m-Y" }}<br>
+                            <b>Reservaciones: </b> <span style="color: #FE9900!important; font-weight: bold; font-size:14px">{{ asesor.cantidad_reservaciones_pendientes }}</span><br>
+                            <b>Asignados: </b> {{ asesor.asignados }}|
+                            <b>Atendidos: </b> {{ asesor.atendidos }}|<br>
+                            <b>Por atender: </b> {{ asesor.no_atendidos }}|
+                            <b>Ventas: </b> {{ asesor.ventas_obtenidas }}<br>
+{#                            <div class="accordion accordion-flush" id="items_{{ asesor.id }}">#}
+{#                                <div class="accordion-item">#}
+{#                                    <h4 class="accordion-header">#}
+{#                                        <button class="accordion-button collapsed py-2"#}
+{#                                                type="button" data-bs-toggle="collapse"#}
+{#                                                data-bs-target="#id_descripcion_{{ asesor.id }}" aria-expanded="true">#}
+{#                                            <h6 class="mb-0 texto-blue"><i#}
+{#                                                    class="fa fa-calendar-check-o dropdown-item-icon"></i>#}
+{#                                                Cohortes asignadas al asesor comercial#}
+{#                                            </h6>#}
+{#                                        </button>#}
+{#                                    </h4>#}
+{#                                    <div id="id_descripcion_{{ asesor.id }}"#}
+{#                                         class="accordion-collapse collapse"#}
+{#                                         data-bs-parent="#items_{{ asesor.id }}"#}
+{#                                         aria-expanded="false">#}
+{#                                        <div class="accordion-body">#}
+{#                                            <p class="lh-15">#}
+{#                                            <ol>#}
+{#                                                {% for meta in asesor.cohortesasignadas %}#}
+{#                                                    <li>{{ meta.cohorte|lower|capfirst }}</li>#}
+{#                                                {% endfor %}#}
+{#                                            </ol>#}
+{#                                            </p>#}
+{#                                        </div>#}
+{#                                    </div>#}
+{#                                </div>#}
+{#                            </div>#}
+                        </td>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if asesor.rol.id != 6 %}
+                                <span style="color: #3a87ad!important; font-weight: bold; font-size:14px">Oficina</span>
+                                <br>
+                            {% else %}
+                                {% if asesor.territorios %}
+                                    {% for territorio in asesor.territorios %}
+                                        <div class="btn-group"
+                                             style="margin-right: 3px; margin-bottom: 2px; margin-left: 0;">
+                                            <a href="javascript:;"
+                                               class="btn btn-tini">{{ territorio.canton.nombre|title }}</a>
+                                            {% if not forloop.last %}, {% endif %}
+
+                                            <a href="javascript:;"
+                                               class="btn btn-tini eliminar_territorio btn-danger"
+                                                idi="{{ territorio.id }}" nombre="{{ territorio.canton.nombre }}"
+                                                nombreasesor="{{ asesor.persona.nombre_completo_inverso }}"><i
+                                                    class="fa fa-minus"></i></a>
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <span style="color: #dc3545!important; font-weight: bold; font-size:14px">Sin territorio asignado</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center; vertical-align: middle">
+                            {% if asesor.activo %}
+                                <span style="color: #198754!important; font-weight: bold; font-size:14px">Activo</span> |<br>
+                            {% else %}
+                                <span style="color: #dc3545!important; font-weight: bold; font-size:14px">Inactivo</span> |<br>
+                            {% endif %}
+                            {% if idc > 0 %}
+                                {% with result=asesor|args:idc|call:'tiene_meta_cohorte' %}
+                                    {% if result %}
+                                        <span style="color: #198754!important; font-weight: bold; font-size:14px">Meta asignada</span>
+                                    {% else %}
+                                        <span style="color: #dc3545!important; font-weight: bold; font-size:14px">Sin meta asignada</span>
+                                    {% endif %}
+                                {% endwith %}
+                            {% endif %}
+                        </td>
+                        <td style="vertical-align: middle">
+                            <div class="text-center">
+                                <button class="text-center btn btn-default btn-reiniciar-acordeones" type="button"
+                                        data-bs-toggle="offcanvas"
+                                        data-bs-target="#offcanvasRight_{{ asesor.id }}"
+                                        aria-controls="offcanvasRight"
+                                        style="border: none; background-color: transparent"><i
+                                        class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                </button>
+                            </div>
+                            <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasRight_{{ asesor.id }}"
+                                 aria-labelledby="offcanvasRightLabel">
+                                <div class="offcanvas-header">
+                                    <h2 id="offcanvasRightLabel"><span style="margin-right: 10px;"><i
+                                            class="fas fa-user"></i></span>
+                                        {{ asesor.persona }}</h2>
+                                    <button type="button" class="btn-close text-reset"
+                                            data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                                </div>
+
+                                <div class="offcanvas-body" style="padding-top: 1rem; padding-bottom: 1rem">
+                                    <div class="accordion accordion-flush" id="accordionGrupo_{{ asesor.id }}">
+
+                                        <a data-bs-dismiss="offcanvas"
+                                           onclick="formModalHistorial('{{ asesor.id }}','Editar asesor: {{ asesor.persona.nombre_completo_inverso }}','editasesor', true)"
+                                           href="javascript:void(0);">
+                                            <h4 class="mb-0"><i class="fa fa-pencil"></i> Editar asesor</h4>
+                                        </a>
+
+                                        <a data-bs-dismiss="offcanvas"
+                                           href="/comercial?action=leadsregistrados&id={{ asesor.id }}">
+                                            <h4 class="mb-0"><i class="fa fa-users"></i> Ver reservaciones</h4>
+                                        </a>
+
+                                        {% if asesor.rol.id == 6  and asesor.activo %}
+                                            <a data-bs-dismiss="offcanvas"
+                                               onclick="formModalHistorial('{{ asesor.id }}','Asignar territorio','asignarterritorio', true)"
+                                               href="javascript:void(0);">
+                                                <h4 class="mb-0"><i class="fa fa-globe"></i> Asignar territorio</h4>
+                                            </a>
+                                        {% endif %}
+
+                                        <a data-bs-dismiss="offcanvas"
+                                           href="/comercial?action=verasignaciones&id={{ asesor.id }}">
+                                            <h4 class="mb-0"><i class="fa fa-school"></i> Ver maestrías asignadas</h4>
+                                        </a>
+
+                                        <a data-bs-dismiss="offcanvas"
+                                           href="/comercial?action=verasignacionescohorte&id={{ asesor.id }}">
+                                            <h4 class="mb-0"><i class="fa fa-university"></i> Ver cohorte asignadas</h4>
+                                        </a>
+
+                                        <a data-bs-dismiss="offcanvas"
+                                           href="/comercial?action=verasignacionesconvenio&id={{ asesor.id }}">
+                                            <h4 class="mb-0"><i class="fa fa-building"></i> Ver convenios asignados</h4>
+                                        </a>
+                                    </div><!-- Fin acordeon general  -->
+                                </div> <!-- canvas body  -->
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="15">NO EXISTEN REGISTROS</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% include 'paginacionb4.html' %}
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelhistory" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalhistory">
+                    <button type="button" class="btn btn-warning cerrar" data-bs-dismiss="modal"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

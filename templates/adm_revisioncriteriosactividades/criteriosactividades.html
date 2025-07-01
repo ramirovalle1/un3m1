@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen" />
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <style>
+        table#exampleinv tbody tr.info:hover td, table#examplevinc tbody tr.info:hover td {
+            background-color: inherit;
+        }
+    </style>
+    <script type="text/javascript">
+
+        function formModal(id, tipocriterio, text, action, tiporevisor, footer = true, idsubactividad = 0) {
+            $('#itemspanel .panelbody').empty();
+            !footer ? $('#itemspanel #footermodal').hide() : null;
+            idsubactividad && $('#itemspanel .modal-header').hide();
+            !idsubactividad && $('#itemspanel .modal-header').show();
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'tipocriterio': tipocriterio,
+                    'tiporevisor': tiporevisor,
+                    'ids': idsubactividad,
+                },
+                success: function (data) {
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#itemspanel #footermodal').hide();
+                        }
+                        debugger;
+                        $('#itemspanel .panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show').on('hidden.bs.modal', function (e) {
+                            //Do something on modal hidden
+                        });
+                        $.unblockUI();
+                    } else {
+                        $.unblockUI();
+                        NotificationJG.error(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    NotificationJG.error("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+        $(function() {
+            var elems = Array.prototype.slice.call(document.querySelectorAll('.switchery'));
+            elems.forEach(function (html) {
+                var switchery = new Switchery(html, {size: 'small', color: '#ffaa46'});
+            });
+
+            $(".descargarevidenciafaltantes").click(function() {
+                var numeromes = $(this).attr('numeromes');
+                var nommes = $(this).attr('nommes');
+
+                Swal.fire({
+                    html: '<b>¿Está seguro de generar excel de evidencias faltantes mes de ' + nommes + '?</b>',
+                    text: "Esta acción es irreversible",
+                    type: 'info',
+                    showCancelButton: true,
+                    allowOutsideClick: false,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Sí, deseo hacerlo',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        Swal.fire({
+                            title: 'Generando excel',
+                            text: 'Por favor, espere...',
+                            allowOutsideClick: false,
+                            showCancelButton: false,
+                            showConfirmButton: false,
+                            willOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+
+                        setTimeout(function() {
+                            $.ajax({
+                                type: 'GET',
+                                url: 'adm_revisioncriteriosactividades',
+                                async: false,
+                                data: {
+                                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                                    action: 'descargarevidenciasfaltantes',
+                                    mes: numeromes,
+                                    nommes: nommes,
+                                },
+                                dataType: 'json',
+                                beforeSend: function() {
+                                    // ... código de preparación antes de enviar la solicitud ...
+                                }
+                            }).done(function(response) {
+                                // Manejar la respuesta JSON recibida desde Django
+                                console.log(response.status); // Acceder a la propiedad 'status' en la respuesta
+
+                                if (response.status === 'ok') {
+                                    // Realizar acciones después de recibir la respuesta "ok"
+                                    Swal.fire({
+                                        title: 'Archivo generado',
+                                        icon: 'success',
+                                        text: 'El archivo excel se ha generado correctamente.',
+                                        showCancelButton: false,
+                                        confirmButtonColor: '#3085d6',
+                                        confirmButtonText: 'Aceptar',
+                                        allowOutsideClick: false,
+                                        onClose: () => {
+                                            // Realizar acciones adicionales después de cerrar el cuadro de diálogo
+                                        }
+                                    });
+                                } else {
+                                    // ... manejar otros casos de respuesta ...
+                                }
+                            }).fail(function(jqXHR, textStatus, errorThrown) {
+                                // ... manejo de errores ...
+                            }).always(function() {
+                                // ... código a ejecutar siempre ...
+                            });
+                        }, 100);
+                    }
+                });
+            });
+            $(".evidenciasfaltantes").click(function(){
+                $("#modalmesesperiodo").modal({"backdrop":"static", "width": "400"}).modal("show");
+            })
+            $(".navegalink").click(function() {
+                actualizartables();
+                setTimeout(function(){
+                    {#alert('ggg')#}
+                    $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+                },5)
+
+            });
+
+            $('.trigger-action-modal').click(function (e) {
+                $('#itemspanel_acciones .paneltitle').html($('.trigger-action-modal span').html())
+                $('#itemspanel_acciones').modal({'backdrop': 'static'}).modal('show');
+            });
+
+            $('#itemspanel_acciones .submit').click(function (e) {
+                bloqueointerface();
+                var formdata = new FormData($('#itemspanel_acciones form')[0]);
+                $.ajax({
+                    type: "POST",
+                    url: "{{ request.path }}",
+                    data: formdata,
+                    success: function (data) {
+                        if (data.result === 'ok') {
+                            $('#itemspanel_acciones').modal('hide');
+                            mensajeInfo('Se han actualizado ' + data.count + ' bitácoras del mes de ' + data.month);
+                        } else {
+                            mensajeDanger(data.mensaje);
+                        }
+
+                        $.unblockUI();
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        var msg = '';
+                        if (jqXHR.status === 0) {
+                            msg = 'Not connect: Verify Network.';
+                        } else if (jqXHR.status == 404) {
+                            msg = 'Requested page not found [404]';
+                        } else if (jqXHR.status == 500) {
+                            msg = 'Internal Server Error [500].';
+                        } else if (textStatus === 'parsererror') {
+                            msg = 'Requested JSON parse failed.';
+                        } else if (textStatus === 'timeout') {
+                            msg = 'Time out error.';
+                        } else if (textStatus === 'abort') {
+                            msg = 'Ajax request aborted.';
+                        } else {
+                            msg = 'Uncaught Error: ' + jqXHR.responseText;
+                        }
+
+                        $.unblockUI();
+                        mensajeDanger("Error al enviar los datos: " + msg);
+                    },
+                    dataType: "json",
+                    cache: false,
+                    contentType: false,
+                    processData: false
+                });
+            });
+
+        });
+
+        function actualizartables() {
+            {% if criterios_docencia %}
+                $(document).ready(function() {
+                    var table = $('#exampledoc').DataTable({
+                        "sPaginationType": "full_numbers",
+                        "sDom": 'T<"clear">lfrtip',
+                        "ordering": false,
+                        "retrieve": true,
+                        {#"searching": false,#}
+                        "paging":   false,
+                        "info":     false,
+                        "order": [[ 2, 'asc' ]],
+                        "columnDefs": [{ "visible": false,"targets": 1 }],
+                        "drawCallback": function ( settings ) {
+                            var api = this.api();
+                            var rows = api.rows( {page:'current'} ).nodes();
+                            var last=null;
+                            api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                                if ( last !== group ) {
+                                    $(rows).eq( i ).before(
+                                        '<tr class="group"><td colspan="9" height="30" bgcolor= "#f1f1f1" style="text-align: justify;"><strong><i class="fa fa-asterisk"><div></div></i> '+group+'</strong></td></tr>'
+                                    );
+                                    last = group
+                                }
+                            });
+                            $('[data-toggle="tooltip"]').tooltip();
+                        }
+                    });
+                    {#$($.fn.dataTable.tables(true)).DataTable().columns.adjust();#}
+                } );
+            {% endif %}
+            {% if criterios_investigacion %}
+                $(document).ready(function() {
+                    var tableinv = $('#exampleinv').DataTable({
+                        "sPaginationType": "full_numbers",
+                        "sDom": 'T<"clear">lfrtip',
+                        "ordering": false,
+                        "autoWidth": true,
+                        "retrieve": true,
+                        {#"searching": false,#}
+                        "paging":   false,
+                        "info":     false,
+                        "order": [[ 2, 'asc' ]],
+                        "columnDefs": [{ "visible": false,"targets": 1 }],
+                        "drawCallback": function ( settings ) {
+                            var api = this.api();
+                            var rows = api.rows( {page:'current'} ).nodes();
+                            var last=null;
+                            api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                                if ( last !== group ) {
+                                    $(rows).eq( i ).before(
+                                        '<tr class="group"><td colspan="2" height="30" bgcolor= "#f1f1f1" style="text-align: justify;"><strong><i class="fa fa-asterisk"><div></div></i> '+group+'</strong></td></tr>'
+                                    );
+                                    last = group
+                                }
+                            });
+                            $('[data-toggle="tooltip"]').tooltip();
+                        }
+                    });
+                    {#tableinv.columns.adjust();#}
+                } );
+            {% endif %}
+            {% if criterios_vinculacion %}
+                $(document).ready(function() {
+                    var tablevin = $('#examplevinc').DataTable({
+                        "sPaginationType": "full_numbers",
+                        "sDom": 'T<"clear">lfrtip',
+                        "retrieve": true,
+                        "ordering": false,
+                        {#"searching": false,#}
+                        "paging":   false,
+                        "info":     false,
+                        "order": [[ 2, 'asc' ]],
+                        "columnDefs": [{ "visible": false,"targets": 1 }],
+                        "drawCallback": function ( settings ) {
+                            var api = this.api();
+                            var rows = api.rows( {page:'current'} ).nodes();
+                            var last=null;
+                            api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                                if ( last !== group ) {
+                                    $(rows).eq( i ).before(
+                                        '<tr class="group"><td colspan="8" height="30" bgcolor= "#f1f1f1" style="text-align: justify;"><strong><i class="fa fa-asterisk"><div></div></i> '+group+'</strong></td></tr>'
+                                    );
+                                    last = group
+                                }
+                            });
+                            $('[data-toggle="tooltip"]').tooltip();
+                        }
+                    });
+                    {#tablevin.columns.adjust();#}
+                    {#$($.fn.dataTable.tables(true)).DataTable().columns.adjust();#}
+                } );
+            {% endif %}
+            {% if criterios_gestion %}
+                $(document).ready(function() {
+                    var tableges = $('#exampleges').DataTable({
+                        "sPaginationType": "full_numbers",
+                        "sDom": 'T<"clear">lfrtip',
+                        "ordering": false,
+                        "retrieve": true,
+                        {#"searching": false,#}
+                        "paging":   false,
+                        "info":     false,
+                        "order": [[ 2, 'asc' ]],
+                        "columnDefs": [{ "visible": false,"targets": 1 }],
+                        "drawCallback": function ( settings ) {
+                            var api = this.api();
+                            var rows = api.rows( {page:'current'} ).nodes();
+                            var last=null;
+                            api.column(1, {page:'current'} ).data().each( function ( group, i ) {
+                                if ( last !== group ) {
+                                    $(rows).eq( i ).before(
+                                        '<tr class="group"><td colspan="8" height="30" bgcolor= "#f1f1f1" style="text-align: justify;"><strong><i class="fa fa-asterisk"><div></div></i> '+group+'</strong></td></tr>'
+                                    );
+                                    last = group
+                                }
+                            });
+                            $('[data-toggle="tooltip"]').tooltip();
+                        }
+                    });
+                    {#tableges.columns.adjust();#}
+                } );
+            {% endif %}
+        }
+        actualizartables();
+    </script>
+{% endblock %}
+{% block atras %}/adm_revisioncriteriosactividades{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3>{{ title }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <div class='row' style="margin-left: 0px">
+            <div class='col-sm-12' style="margin-left: 0px">
+                <div class="dropdown">
+                    <!-- nnuevo Boton reportes -->
+                    <button id="btnGroupDrop1" type="button" class="btn btn-default dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                         Acciones <span class="caret "></span>
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1" style="">
+                        {% if persona.id == 25320 or persona.id == 26985 or persona.id == 37121 and meses %}
+                            <li><a id="update-state-form" href="javascript:;" class="dropdown-item trigger-action-modal"><i class="fa fa-refresh" style="margin-right: 5px;font-size:9px;" aria-hidden="true"></i> <span>Actualizar estado de bitácoras por mes</span></a></li>
+                        {% endif %}
+                    </ul>
+                    <button id="btnGroupDrop1" type="button" class="btn btn-default dropdown-toggle"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fa fa-list-alt"></i> Reportes <span class="caret "></span>
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
+                        <li>
+                            <a type="button" class="dropdown-item evidenciasfaltantes" href="javascript:void(0)">
+                                <i class="fa fa-list" style="margin-right: 5px;"></i><strong> Evidencias faltantes</strong>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/adm_revisioncriteriosactividades?action=descargarusuariosrevisores" target="_blank" type="button" class="dropdown-item">
+                                <i class="fa fa-file-excel" style="margin-right: 5px;"></i><strong> Usuarios revisores</strong>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="?action=aprobadores-sin-actividad-asociada" target="_blank" type="button" class="dropdown-item">
+                                <i class="fa fa-file-excel" style="margin-right: 5px;"></i><strong> Revisores sin actividad asociada</strong>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <br>
+        <div id="no-more-tables"><!-- inicio no more tables#-->
+            <div class='row-fluid'>
+                <div class='span12'>
+                    <div class="card mb-4">
+                        <div class="card-body border-top border-6 rounded-3 border-dark-info table-responsive">
+                            <ul class="nav nav-tabs">
+                                <li class="nav-item">
+                                    <a class="nav-link navegalink {% if t == 1 or not t %}active{% endif %}" data-bs-toggle="tab" href="#doc">DOCENCIA</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link navegalink {% if t == 2 %}active{% endif %}" data-bs-toggle="tab" href="#inv">INVESTIGACIÓN</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link navegalink {% if t == 3 %}active{% endif %}" data-bs-toggle="tab" href="#ges">GESTIÓN</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link navegalink {% if t == 4 %}active{% endif %}" data-bs-toggle="tab" href="#vin">VINCULACIÓN</a>
+                                </li>
+                            </ul>
+                            <div class="tab-content">
+                                <div class="tab-pane container {% if t == 1 or not t %}active{% else %}fade{% endif %}" id="doc">
+                                    <br>
+                                    <table class='table table_primary table_striped' id="exampledoc">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th>Criterio</th>
+                                            <th>Actividad</th>
+                                            <th style="width: 100px; text-align: center"><i class="fa fa-group"></i></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for cd in criterios_docencia %}
+                                            <tr>
+                                                <td style="text-align: justify;">
+                                                    {#                                                    <ul>#}
+                                                    <a class="fa fa-angle-double-right"></a>
+                                                    {{ cd.criterio }}
+                                                    {% if cd.articulo %}<br/>
+                                                        <i style="font-size: 9px; text-align: justify;">{{ cd.articulo|default_if_none:'' }}</i>
+                                                    {% endif %}
+                                                    {#                                                    </ul>#}
+                                                </td>
+                                                <td >{{ cd.actividad.nombre|default:'---' }}</td>
+                                                {#                                        <td style="text-align: center">{{ cd.actividades_docenciaperiodo }}</td>#}
+                                                <td style="text-align: center">
+                                                    <a onclick="formModal('{{ cd.id }}',1, 'AGREGAR USUARIO', 'add', {{ tiporevisor|encrypt }})" href="javascript:void(0);"
+                                                           href="javascript:;" class='btn btn-success'><span class="fa fa-user-plus"></span><span class="contador-subatividad-{{ cd.pk }}">{{ cd.totalrevisores }}</span>
+                                                    </a>
+{#                                                    {% if not periodo.finalizo %}#}
+{#                                                        #}
+{#                                                    {% endif %}#}
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="6">NO EXISTEN CRITERIOS DE DOCENCIA</td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="tab-pane container {% if t == 2 %}active{% else %}fade{% endif %}" id="inv">
+                                    <br>
+                                    <table class='table table_primary table_striped' id="exampleinv">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th>Criterio</th>
+                                            <th>Actividad</th>
+                                            <th style="width: 100px; text-align: center"><i class="fa fa-group"></i></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for ci in criterios_investigacion %}
+                                            <tr>
+                                                <td style="text-align: justify;">
+                                                    {{ ci.criterio }}<br/>
+                                                    <i style="font-size: 9px; text-align: justify;">{{ ci.articulo|default_if_none:'' }}</i>
+                                                    <br>
+                                                    <div class="row">
+                                                        <div class="col-sm-12">
+                                                            {% get_actividades_actividad_macro ci tiporevisor|encrypt as actividades %}
+                                                            <div class="accordion ms-4 me-3" id="accordionExample">
+                                                                {% for act in actividades %}
+                                                                    <div class="accordion-item">
+                                                                        <h2 class="accordion-header" id="heading{{ act.pk }}">
+                                                                            <button style="border-left:5px solid #1c3247!important;" class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ act.pk }}" aria-expanded="true" aria-controls="collapse{{ act.pk }}">
+                                                                                {{ act }}
+                                                                            </button>
+                                                                        </h2>
+                                                                        <div id="collapse{{ act.pk }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="heading{{ act.pk }}" data-bs-parent="#accordionExample">
+                                                                            <div class="accordion-body">
+                                                                                <div class="container">
+                                                                                    <table class="" style="width:100%;color:black;">
+                                                                                        <thead>
+                                                                                            <tr>
+                                                                                                <td style="width:60%!important;font-weight: bold;border-left: 1px solid #0000!important;">Subactividad</td>
+                                                                                                <td style="width:15%!important;font-weight: bold;">Fecha inicio</td>
+                                                                                                <td style="width:15%!important;font-weight: bold;">Fecha fin</td>
+                                                                                                <td style="width:10%!important;font-weight: bold;text-align:center;"></td>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            {% for sb in act.get_subactividades %}
+                                                                                                <tr>
+                                                                                                    <td>
+                                                                                                        <i class="bi bi-caret-right"></i>
+                                                                                                        {{ sb.criterio }}
+                                                                                                    </td>
+                                                                                                    <td style=""><i class="bi bi-calendar-week"></i> {{ sb.fechainicio|date:"d/m/Y" }}</td>
+                                                                                                    <td style=""><i class="bi bi-calendar-week"></i> {{ sb.fechafin|date:"d/m/Y" }}</td>
+                                                                                                    <td style="text-align:center;">
+                                                                                                        <a onclick="formModal('{{ ci.id }}', 2, '', 'add', '{{ tiporevisor|encrypt }}', true, {{ sb.pk }})" href="javascript:void(0);" href="javascript:;" class='btn btn-success'>
+                                                                                                            <span class="fa fa-user-plus"></span> <span class="contador-subatividad-{{ sb.pk }}">{{ sb.get_total_revisores|default:"0" }}</span>
+                                                                                                        </a>
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                            {% endfor %}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <hr class="py-0 my-0" style="border-color: #f0f0f0">
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td >
+                                                    {{ ci.actividad.nombre|default:'---' }}
+                                                </td>
+                                                <td style="text-align: center">
+                                                    {% if not ci.es_actividad_macro %}
+                                                        <a onclick="formModal('{{ ci.id }}',2, 'AGREGAR REVISOR DE EVIDENCIA', 'add', {{ tiporevisor|encrypt }})" href="javascript:void(0);" href="javascript:;" class='btn btn-success'><span class="fa fa-user-plus"></span><span class="contador-subatividad-{{ ci.pk }}">{{ ci.totalrevisores }}</span></a>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="7">NO EXISTEN CRITERIOS DE INVESTIGACION</td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="tab-pane container {% if t == 3 %}active{% else %}fade{% endif %}" id="ges">
+                                    <br>
+                                    <table class='table table_primary table_striped' id="exampleges">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th>Criterio</th>
+                                            <th>Actividad</th>
+                                            <th style="width: 100px; text-align: center"><i class="fa fa-group"></i></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for cg in criterios_gestion %}
+                                            <tr>
+                                                <td style="text-align: justify;">
+                                                    {{ cg.criterio }}<br/>
+                                                    <i style="text-align: justify;">{{ cg.articulo|default_if_none:'' }}</i>
+                                                </td>
+                                                <td >{{ cg.actividad.nombre|default:'---' }}</td>
+                                                <td style="text-align: center">
+                                                    <a onclick="formModal('{{ cg.id }}',3, 'AGREGAR REVISOR DE EVIDENCIA', 'add', {{ tiporevisor|encrypt }})" href="javascript:void(0);"
+                                                           href="javascript:;" class='btn btn-success'>
+                                                        <span class="fa fa-user-plus"></span> <span class="contador-subatividad-{{ cg.pk }}">{{ cg.totalrevisores }}</span>
+                                                    </a>
+{#                                                    {% if not periodo.finalizo %}#}
+{#                                                        #}
+{#                                                    {% endif %}#}
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="6">NO EXISTEN CRITERIOS DE GESTION</td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="tab-pane container {% if t == 4 %}active{% else %}fade{% endif %}" id="vin">
+                                    <br>
+                                    <table class='table table_primary table_striped' id="examplevinc">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th>Criterio</th>
+                                            <th>Actividad</th>
+                                            <th style="width: 100px; text-align: center"><i class="fa fa-group"></i></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for cv in criterios_vinculacion %}
+                                            <tr>
+                                                <td style="text-align: justify;">
+                                                    {{ cv.criterio }}<br/>
+                                                    <i style="text-align: justify;">{{ cv.articulo|default_if_none:'' }}</i>
+                                                    <br>
+                                                    <div class="row">
+                                                        <div class="col-sm-12">
+                                                            {% get_actividades_actividad_macro cv tiporevisor|encrypt as actividades %}
+                                                            <div class="accordion ms-4 me-3" id="accordionExample">
+                                                                {% for act in actividades %}
+                                                                    <div class="accordion-item">
+                                                                        <h2 class="accordion-header" id="heading{{ act.pk }}">
+                                                                            <button style="border-left:5px solid #1c3247!important;" class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ act.pk }}" aria-expanded="true" aria-controls="collapse{{ act.pk }}">
+                                                                                {{ act|lower|capfirst }}
+                                                                            </button>
+                                                                        </h2>
+                                                                        <div id="collapse{{ act.pk }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="heading{{ act.pk }}" data-bs-parent="#accordionExample">
+                                                                            <div class="accordion-body">
+                                                                                <div class="container">
+                                                                                    <table class="" style="width:100%;color:black;">
+                                                                                        <thead>
+                                                                                            <tr>
+                                                                                                <td style="width:60%!important;font-weight: bold;border-left: 1px solid #0000!important;">Subactividad</td>
+                                                                                                <td style="width:15%!important;font-weight: bold;">Fecha inicio</td>
+                                                                                                <td style="width:15%!important;font-weight: bold;">Fecha fin</td>
+                                                                                                <td style="width:10%!important;font-weight: bold;text-align:center;"></td>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            {% for sb in act.get_subactividades %}
+                                                                                                <tr>
+                                                                                                    <td>
+                                                                                                        <i class="bi bi-caret-right"></i>
+                                                                                                        {{ sb.criterio }}
+                                                                                                    </td>
+                                                                                                    <td style=""><i class="bi bi-calendar-week"></i> {{ sb.fechainicio|date:"d/m/Y" }}</td>
+                                                                                                    <td style=""><i class="bi bi-calendar-week"></i> {{ sb.fechafin|date:"d/m/Y" }}</td>
+                                                                                                    <td style="text-align:center;">
+                                                                                                        <a onclick="formModal('{{ cv.id }}', 4, '', 'add', '{{ tiporevisor|encrypt }}', true, {{ sb.pk }})" href="javascript:void(0);" href="javascript:;" class='btn btn-success'>
+                                                                                                            <span class="fa fa-user-plus"></span> <span class="contador-subatividad-{{ sb.pk }}">{{ sb.get_total_revisores|default:"0" }}</span>
+                                                                                                        </a>
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                            {% endfor %}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <hr class="py-0 my-0" style="border-color: #f0f0f0">
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                </td>
+                                                <td >{{ cv.actividad.nombre|default:'---' }}</td>
+                                                <td style="text-align: center">
+                                                    {% if not cv.es_actividadmacro %}
+                                                        <a onclick="formModal('{{ cv.id }}',4, 'AGREGAR REVISOR DE EVIDENCIA', 'add', {{ tiporevisor|encrypt }})" href="javascript:void(0);" href="javascript:;" class='btn btn-success'>
+                                                            <span class="fa fa-user-plus"></span> <span class="contador-subatividad-{{ cv.pk }}">{{ cv.totalrevisores }}</span>
+                                                        </a>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="6">NO EXISTEN CRITERIOS DE VINCULACIÓN</td>
+                                            </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h4><b class="paneltitle ps-3">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn btn-close btn-default btn-ghost rounded-circle p-3" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row-fluid panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel2" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h4><b class="paneltitle ps-3">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn btn-close btn-default btn-ghost rounded-circle p-3" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row-fluid panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="modalmesesperiodo" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="paneltitle">MESES DEL PERIODO LECTIVO</h3>
+                </div>
+                <div class="modal-body panelbodymesesperiodo">
+                    <table class="table table-bordered table-striped">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width: 700px;text-align: center">MES</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for lmes in listadomeses %}
+                            <tr>
+                                <td style="width: 700px;text-align: center">
+                                    <a href="/adm_revisioncriteriosactividades?action=descargarevidenciasfaltantes&mes={{ lmes|date:"m" }}" target="_blank" class="btn btn-mini" numeromes="{{ lmes|date:"m" }}" nommes="{{ lmes|nombremes|upper }}" aniomes="{{ lmes|date:"Y" }}">
+                                        {#                                    <a href="javascript:void(0)" class="btn btn-mini descargarevidenciafaltantes" numeromes="{{ lmes|date:"m" }}" nommes="{{ lmes|nombremes|upper }}">#}
+                                        <i class="fa fa-file-excel"></i> DESCARGAR FALTANTES {{ lmes|nombremes|upper }}
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <table class="pull-right">
+                        <tr>
+                            <td><button type="button" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times"></i> Cerrar</button></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade static" id="itemspanel_acciones" style="display: none;">
+        <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-md">
+            <div class="modal-content px-2">
+                <div class="modal-header border-0">
+                    <div class="headtitle mt-3 ms-0"><h4 class="ps-1 py-0 paneltitle"></h4></div>
+                    <button type="button" class="btn btn-close btn-default rounded-circle p-3 my-0" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="actualizar_estado_revision_mes">
+                        <div class="row">
+                            <div class="col-sm-6">
+                                <b>Mes: <b class="text-danger">*</b></b> <br>
+                                <select name="m" id="id_mes">
+                                    {% for m in meses %}
+                                        <option value="{{ m.0 }}">{{ m.1|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <b>Estado: <b class="text-danger">*</b></b><br>
+                                <select name="e" id="id_estado">
+                                    {% for e in estados %}
+                                        <option value="{{ e.0 }}">{{ e.1|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-sm-12">
+                                <b>Nuevo estado: <b class="text-danger">*</b></b><br>
+                                <select name="e_er" id="id_estado">
+                                    {% for e in estados %}
+                                        <option value="{{ e.0 }}">{{ e.1|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-sm-12">
+                                <b>¿Valida porcentaje?: <b class="text-danger">*</b></b><br>
+                                <input type="checkbox" name="v" id="id_porcentaje" class="switchery"><br>
+                                <small class="text-danger" style="font-size:9px;">*Si se habilita esta opción se actualizarán solo las bitácoras con porcentaje menor a 100%.</small>
+                            </div>
+                        </div>
+                    </form>
+                    <br>
+                </div>
+                <div class="modal-footer border-0 pe-2">
+                    <a href="javascript:;" class="btn btn-success py-2 me-1 submit"><i class="fa fa-refresh" style="font-size:9px"></i> Actualizar</a>
+                    <a href="javascript:;" class="btn btn-danger py-2" data-bs-dismiss="modal"><i class="fa fa-times" style="font-size:9px"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

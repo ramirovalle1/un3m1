@@ -1,0 +1,622 @@
+{% extends "ajaxform.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <link rel="stylesheet" href="/static/css/stylesfc.css?v=3">
+    <link href="/static/switchery/switchery.min.css" rel="stylesheet"/>
+    <script src="/static/switchery/switchery.min.js"></script>
+    <script type="text/javascript">
+        var switchery = {};
+        $.fn.initSwitchery = function () {
+            //Init CheckBox Style
+            var searchBy = ".js-switch";
+            $(this).find(searchBy).each(function (i, html) {
+                debugger;
+                if (!$(html).next().hasClass("switchery")) {
+                    //switchery[html.getAttribute('id')] = new Switchery(html, $(html).data());
+                    switchery[html.getAttribute('id')] = new Switchery(html, {size: 'small', color: '#264763'});
+                }
+            });
+        };
+
+        $(function(){
+            let tipos = JSON.parse("{{ tipos|safe }}".replace(/'/g, '"'));
+            let filiaciones = JSON.parse("{{ filiaciones|safe }}".replace(/'/g, '"'));
+            let nf_participante = secuenciaparticipante = {{ totalparticipantes }};
+            lista_items1 = [];
+
+            $("body").initSwitchery();
+
+            $("#id_titulo, #id_resumen, #id_revista, #id_estadopublicacion").addClass("validate[required]");
+            $("#id_campoamplio, #id_campoespecifico, #id_campodetallado, #id_lineainvestigacion").addClass("validate[required]");
+            $("#id_sublineainvestigacion").addClass("validate[required]");
+
+            $("#fieldset_nombrerevista").hide();
+            $("#fieldset_tipoproyecto").hide();
+            $("#fieldset_proyectointerno").hide();
+            $("#fieldset_proyectoexterno").hide();
+            $("#fieldset_grupoinvestigacion").hide();
+
+            $('#id_revista').change(function(){
+                $("#id_baseindexada").val("");
+                let control = $(this);
+                let id = parseInt(control.val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'datosrevista', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                $("#id_baseindexada").val(data.baseindexada);
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#id_existerevista").change(function () {
+                if ($(this).is(':checked')) {
+                    $("#id_nombrerevista").attr('disabled', false);
+                    $("#id_nombrerevista").val("");
+                    $("#id_nombrerevista").addClass("validate[required]");
+                    $("#fieldset_nombrerevista").show();
+
+                    $("#id_revista").attr('disabled', true);
+                    $("#id_revista").val(0).trigger('change');
+                    $("#id_revista").removeClass("validate[required]");
+                } else {
+                    $("#id_nombrerevista").attr('disabled', true);
+                    $("#id_nombrerevista").val("");
+                    $("#id_nombrerevista").removeClass("validate[required]");
+                    $("#fieldset_nombrerevista").hide();
+
+                    $("#id_revista").attr('disabled', false);
+                    $("#id_revista").val(0).trigger('change');
+                    $("#id_revista").addClass("validate[required]");
+                }
+            });
+
+            $('#id_estadopublicacion').change(function(){
+                if($(this).val() != ''){
+                    if($(this).val() == '1'){
+                        habilitarCamposPublicado();
+                        deshabilitarCamposAceptadoPublicacion();
+                    }else{
+                        habilitarCamposAceptadoPublicacion();
+                        deshabilitarCamposPublicado();
+                    }
+                }else{
+                    deshabilitarCamposPublicado();
+                    deshabilitarCamposAceptadoPublicacion();
+                }
+            });
+
+            habilitarCamposPublicado = function (){
+                {% if solicitudpublicacion.estadopublicacion == 1 %}
+                    $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista").addClass("validate[required]");
+                {% else %}
+                    $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista, #id_archivoportada, #id_archivoarticulo").addClass("validate[required]");
+                {% endif %}
+                $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista, #id_archivoportada, #id_archivoarticulo").prop("disabled", false);
+                $("#fieldset_fechapublicacion, #fieldset_enlace, #fieldset_numerorevista, #fieldset_volumenrevista, #fieldset_paginaarticulorevista, #fieldset_archivoportada, #fieldset_archivoarticulo").show();
+            };
+
+            deshabilitarCamposPublicado = function (){
+                $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista").val("");
+                $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista, #id_archivoportada, #id_archivoarticulo").removeClass("validate[required]");
+                $("#id_fechapublicacion, #id_enlace, #id_numerorevista, #id_volumenrevista, #id_paginaarticulorevista, #id_archivoportada, #id_archivoarticulo").prop("disabled", true);
+                $("#fieldset_fechapublicacion, #fieldset_enlace, #fieldset_numerorevista, #fieldset_volumenrevista, #fieldset_paginaarticulorevista, #fieldset_archivoportada, #fieldset_archivoarticulo").hide();
+            };
+
+            habilitarCamposAceptadoPublicacion = function (){
+                {% if solicitudpublicacion.estadopublicacion == 2 %}
+                    $("#id_fechaaceptacion").addClass("validate[required]");
+                {% else %}
+                    $("#id_fechaaceptacion, #id_archivocarta").addClass("validate[required]");
+                {% endif %}
+                $("#id_fechaaceptacion, #id_fechatentpublicacion, #id_archivocarta").prop("disabled", false);
+                $("#fieldset_fechaaceptacion, #fieldset_fechatentpublicacion, #fieldset_archivocarta").show();
+            };
+
+            deshabilitarCamposAceptadoPublicacion = function (){
+                $("#id_fechaaceptacion, #id_fechatentpublicacion").val("");
+                $("#id_fechaaceptacion, #id_archivocarta").removeClass("validate[required]");
+                $("#id_fechaaceptacion, #id_fechatentpublicacion, #id_archivocarta").prop("disabled", true);
+                $("#fieldset_fechaaceptacion, #fieldset_fechatentpublicacion, #fieldset_archivocarta").hide();
+            };
+
+            $('#id_campoamplio').change(function(){
+                $('#id_campoespecifico, #id_campodetallado').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let control = $(this);
+                let id = parseInt($("#id_campoamplio").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'subareaconocimiento', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_campoespecifico').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#id_campoespecifico').change(function(){
+                $('#id_campodetallado').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let control = $(this);
+                let id = parseInt($("#id_campoespecifico").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'subareaespecificaconocimiento', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_campodetallado').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $('#id_lineainvestigacion').change(function(){
+                $('#id_sublineainvestigacion').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                let control = $(this);
+                let id = parseInt($("#id_lineainvestigacion").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'sublineainvestigacion', 'id': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    $('#id_sublineainvestigacion').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                }
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $("#id_provieneproyecto").change(function () {
+                if ($(this).is(':checked')) {
+                    $("#id_tipoproyecto").attr('disabled', false);
+                    $("#id_proyectointerno").attr('disabled', false);
+                    $("#id_proyectoexterno").attr('disabled', false);
+                    $("#id_tipoproyecto").val(0).trigger('change');
+                    $("#id_tipoproyecto").addClass("validate[required]");
+                    $("#id_proyectointerno").addClass("validate[required]");
+                    $("#id_proyectoexterno").addClass("validate[required]");
+                    $("#fieldset_tipoproyecto, #fieldset_proyectointerno").show();
+                } else {
+                    $("#id_tipoproyecto").attr('disabled', true);
+                    $("#id_proyectointerno").attr('disabled', true);
+                    $("#id_proyectoexterno").attr('disabled', true);
+                    $("#id_tipoproyecto").val(0).trigger('change');
+                    $("#id_tipoproyecto").removeClass("validate[required]");
+                    $("#id_proyectointerno").removeClass("validate[required]");
+                    $("#id_proyectoexterno").removeClass("validate[required]");
+                    $("#fieldset_tipoproyecto, #fieldset_proyectointerno").hide();
+                }
+            });
+
+            $('#id_tipoproyecto').change(function(){
+                $('#id_proyectointerno').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $('#id_proyectoexterno').empty().append('<option value="">---------</option>').val(0).trigger("change");
+                $("#fieldset_proyectointerno").show();
+                $("#fieldset_proyectoexterno").hide();
+
+                let control = $(this);
+                let id = parseInt($("#id_tipoproyecto").val());
+                if (id > 0) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: "POST",
+                        url: "/api",
+                        data: {'a': 'proyectoinvestigacion', 'tipo': id},
+                        success: function (data) {
+                            $.unblockUI();
+                            if (data.result == 'ok') {
+                                for (elemento in data.lista) {
+                                    if(id != 3){
+                                        $('#id_proyectointerno').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                    }
+                                    else{
+                                        $('#id_proyectoexterno').append('<option value="' + data.lista[elemento][0] + '">' + data.lista[elemento][1] + '</option>');
+                                    }
+                                }
+
+                                if(id !=3){
+                                    $("#fieldset_proyectointerno").show();
+                                    $("#fieldset_proyectoexterno").hide();
+                                }
+                                else{
+                                    $("#fieldset_proyectoexterno").show();
+                                    $("#fieldset_proyectointerno").hide();
+                                }
+
+                            } else {
+                                control.val(0).trigger("change");
+                                mensajeErrorSwal("No se puede consultar", data.mensaje);
+                            }
+                        },
+                        error: function () {
+                            $.unblockUI();
+                            control.val(0).trigger("change");
+                            mensajeErrorSwal("No se puede consultar", "Error de conexión");
+                        },
+                        dataType: "json"
+                    });
+                }
+            });
+
+            $(".agregaparticipante").click(function() {
+                bloqueointerface();
+                $.ajax({
+                    type: "GET",
+                    url: "/pro_produccioncientifica",
+                    data: {'action': 'addparticipante'},
+                    success: function(data) {
+                        $.unblockUI();
+                        if (data.result == 'ok') {
+                            $(".panelbodypersona").html(data.data);
+                            $(".paneltitlepersona").html(data.title);
+                            $("#itemspanelpersona").modal({backdrop:'static'}).modal('show');
+                        } else {
+                            mensajeErrorSwal("No se puede consultar", data.mensaje);
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeErrorSwal("No se puede consultar", "Error al enviar los datos")
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $("#itemspanelpersona .agregar").click(function () {
+                let nuevafila;
+                let idregtipopersona, idpersona, nombres, tipopersona, idtipo, tipo, idfiliacion, filiacion;
+                let campotipo, campofiliacion;
+                let valoresSelectTip, valoresSelectFil, opcion, seleccionado;
+                $("#frmPersona").validationEngine('attach',{ scroll: false });
+                let valido = $("#frmPersona").validationEngine('validate', { scroll: false });
+                if(valido){
+                    if(validarAgregarPersona()){
+                        idregtipopersona = $('#auxpersona_select2').attr("value");
+                        idpersona = $('#auxpersona_select2').attr("idp");
+                        tipopersona = $('#auxpersona_select2').attr("tipopersona");
+                        nombres = $('#auxpersona_select2').attr("nombre");
+                        idtipo = $("#tipo").val();
+                        tipo = $("#tipo").find('option:selected').text();
+                        idfiliacion = $("#filiacion").val();
+                        filiacion = $("#filiacion").find('option:selected').text();
+                        valoresSelectTip = '<option value="">---------</option>';
+
+                        borrarFilaDefaultParticipante();
+                        secuenciaparticipante ++;
+                        nf_participante ++;
+
+                        for (let tip of tipos) {
+                            if(idtipo == `${tip.id}`)
+                                seleccionado = 'selected';
+                            else
+                                seleccionado = '';
+
+                            opcion = `<option value="${tip.id}" ${seleccionado}>${tip.descripcion}</option>`;
+                            valoresSelectTip += opcion;
+                        }
+                        campotipo = `<select style="width: 100%;" class="tipo" id="tipo${nf_participante}" name="tipo[]" >${valoresSelectTip}</select>`;
+
+                        valoresSelectFil = '<option value="">---------</option>';
+                        for (let fili of filiaciones) {
+                            if(idfiliacion == `${fili.id}`)
+                                seleccionado = 'selected';
+                            else
+                                seleccionado = '';
+
+                            opcion = `<option value="${fili.id}" ${seleccionado}>${fili.descripcion}</option>`;
+                            valoresSelectFil += opcion;
+                        }
+                        campofiliacion = `<select style="width: 100%;" class="filiacion" id="filiacion${nf_participante}" name="filiacion[]" >${valoresSelectFil}</select>`;
+
+                        nueva_fila = '<tr class="detalleparticipantes" id="filaparticipante_'+nf_participante.toString()+'" idreg="0" idpe="'+idpersona+'" nombre="'+nombres+'">' +
+                                    '<td style="text-align: right">'+secuenciaparticipante.toString()+'</td>'+
+                                    '<td style="text-align: justify"><input type="hidden" id="iddetpar[]" name="iddetpar[]" value="0"><input type="hidden" id="tipopersona[]" name="tipopersona[]" value="'+tipopersona+'"><input type="hidden" id="idregtipopersona[]" name="idregtipopersona[]" value="'+idregtipopersona+'">'+nombres+'</td>'+
+                                    '<td style="text-align: left">'+campotipo+' <div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div>  </td>'+
+                                    '<td style="text-align: left">'+campofiliacion+'<div class="help-text" style="color: #dc1414; font-size: xx-small; margin-bottom: 0;"> </div></td>'+
+                                    '<td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarparticipante" idreg="0" idfila="'+nf_participante.toString()+'" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>'+
+                                    '</tr>';
+
+                        $("#detalle_participantes").append(nueva_fila);
+                        $("#tipo"+nf_participante.toString()).addClass("validate[required]");
+                        $("#filiacion"+nf_participante.toString()).addClass("validate[required]");
+                        $("#detalle_participantes").find(".eliminarparticipante").tooltip();
+                        $("#detalle_participantes").find(".tipo").select2();
+                        $("#detalle_participantes").find(".filiacion").select2();
+                        $(".eliminarparticipante").unbind("click.eliminarparticipante");
+                        $(".eliminarparticipante").bind("click.eliminarparticipante", eliminarParticipante);
+
+                        $('#itemspanelpersona').modal('hide');
+                    }
+                }else{
+                    setTimeout(function() {
+                        $('.help-text').html("");
+                    }, 8000);
+                    $.unblockUI();
+                }
+            });
+
+            validarAgregarPersona = function (){
+                let idper = $('#auxpersona_select2').attr("idp");
+                let npersona = $('#auxpersona_select2').attr("nombre");
+                let repetido = false;
+
+                if($('.detalleparticipantes[idpe="'+idper+'"]').length > 0)repetido = true;
+
+                if(repetido){
+                    mensajeWarningSwal("Atención!!!", "La persona: <b>" + npersona + "</b> ya ha sido agregada al detalle de participantes de la publicación");
+                    return false;
+                }
+
+                return true;
+            };
+
+            agregarFilaDefaultParticipante = function (){
+                let filadefault = '<tr id="fila_default_participantes">'+
+                                '<td colspan="5" style="text-align: center">NO EXISTEN DETALLES DE PARTICIPANTES DE LA PUBLICACIÓN</td>'+
+                                '</tr>';
+                $("#detalle_participantes").append(filadefault);
+                $("#id_participantes_aux").addClass("validate[required]");
+                $("#id_participantes_aux").val("");
+            };
+
+            borrarFilaDefaultParticipante = function (){
+                $("#fila_default_participantes").remove();
+                $("#id_participantes_aux").removeClass("validate[required]");
+            };
+
+            eliminarParticipante = function() {
+                let idf = $(this).attr("idfila");
+                let idreg = $(this).attr("idreg");
+                $(this).tooltip('hide');
+                $("#filaparticipante_"+idf).remove();
+
+                if(idreg != '0'){
+                    let item = {
+                        idreg: idreg
+                    };
+                    lista_items1.push(item);
+                }
+
+                secuenciaparticipante = 0;
+                $("#tbdetalleparticipantes tbody tr").each(function (index) {
+                    secuenciaparticipante ++;
+                    $(this).children("td").each(function (index2) {
+                        if(index2 == 0)
+                            $(this).html(secuenciaparticipante.toString());
+                    });
+                });
+
+                if(secuenciaparticipante == 0)
+                    agregarFilaDefaultParticipante();
+
+            };
+
+            $("#id_titulo, #id_resumen").css("padding", "3px");
+            $("#id_titulo, #id_resumen").css("resize", "none");
+            $("#id_baseindexada").css("cursor" , "not-allowed");
+
+            if($('#id_existerevista').attr('checked')){
+                $("#id_nombrerevista").attr('disabled', false);
+                $("#id_nombrerevista").addClass("validate[required]");
+                $("#fieldset_nombrerevista").show();
+
+                $("#id_revista").attr('disabled', true);
+                $("#id_revista").val(0).trigger('change');
+                $("#id_revista").removeClass("validate[required]");
+            }else{
+                $("#id_nombrerevista").attr('disabled', true);
+                $("#id_nombrerevista").val("");
+                $("#id_nombrerevista").removeClass("validate[required]");
+                $("#fieldset_nombrerevista").hide();
+
+                $("#id_revista").attr('disabled', false);
+                $("#id_revista").addClass("validate[required]");
+            }
+
+            if($('#id_provieneproyecto').attr('checked')){
+                $("#fieldset_tipoproyecto, #fieldset_proyectointerno").show();
+                $("#id_tipoproyecto").addClass("validate[required]");
+                if($("#id_tipoproyecto").val() != "3"){
+                    $("#fieldset_proyectointerno").show();
+                    $("#fieldset_proyectoexterno").hide();
+                    $("#id_proyectointerno").addClass("validate[required]");
+                    $("#id_proyectoexterno").removeClass("validate[required]");
+
+                }else{
+                    $("#fieldset_proyectointerno").hide();
+                    $("#fieldset_proyectoexterno").show();
+                    $("#id_proyectoexterno").addClass("validate[required]");
+                    $("#id_proyectointerno").removeClass("validate[required]");
+                }
+            }else{
+                $("#id_tipoproyecto").attr('disabled', true);
+                $("#id_proyectointerno").attr('disabled', true);
+                $("#id_proyectoexterno").attr('disabled', true);
+                $("#id_tipoproyecto").val(0).trigger('change');
+                $("#fieldset_tipoproyecto, #fieldset_proyectointerno").hide();
+            }
+
+            agregarValidacionDetalleParticipantes = function (){
+                $(".tipo").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+
+                $(".filiacion").each(function(){
+                    $(this).addClass("validate[required]");
+                });
+            };
+
+            $("#id_pertenecegrupoinv").change(function () {
+                $("#id_grupoinvestigacion").val('').trigger('change');
+                if ($(this).is(':checked')) {
+                    $("#id_grupoinvestigacion").addClass("validate[required]");
+                    $("#fieldset_grupoinvestigacion").show();
+                } else {
+                    $("#id_grupoinvestigacion").removeClass("validate[required]");
+                    $("#fieldset_grupoinvestigacion").hide();
+                }
+            });
+
+            if($('#id_pertenecegrupoinv').attr('checked')){
+                $("#id_grupoinvestigacion").addClass("validate[required]");
+                $("#fieldset_grupoinvestigacion").show();
+            }else{
+                $("#id_grupoinvestigacion").removeClass("validate[required]");
+                $("#fieldset_grupoinvestigacion").hide();
+            }
+
+            {% if solicitudpublicacion.estadopublicacion == 1 %}
+                habilitarCamposPublicado();
+                deshabilitarCamposAceptadoPublicacion();
+            {% else %}
+                habilitarCamposAceptadoPublicacion();
+                deshabilitarCamposPublicado();
+            {% endif %}
+
+            agregarValidacionDetalleParticipantes();
+            $(".eliminarparticipante").unbind("click.eliminarparticipante");
+            $(".eliminarparticipante").bind("click.eliminarparticipante", eliminarParticipante);
+        });
+    </script>
+{% endblock %}
+{% block atras %}/pro_produccioncientifica?action=solicitudespublicacion{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formaction %}/pro_produccioncientifica?action=solicitudespublicacion{% endblock %}
+{% block formdestinationswal %}/pro_produccioncientifica?action=solicitudespublicacion{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='editarticulo'/>
+    <input type='hidden' name='id' value='{{ solicitudpublicacion.id|encrypt }}'/>
+{% endblock %}
+{% block formback %}/pro_produccioncientifica?action=solicitudespublicacion{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="row-fluid" id="divparticipante">
+        <div style="width: 100%; height: max-content; display: inline-block">
+            <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;"><span id="separator2title_participante" style="padding:0 10px; background: white;">Participantes de la Publicación</span></h6>
+        </div>
+        <div class="row-fluid">
+            <table class="table table-bordered table-striped table_primary mb-0" id="tbdetalleparticipantes">
+                <thead>
+                    <tr>
+                        <th style="width: 3%;" class="text-center">#</th>
+                        <th style="width: 64%;" class="text-center">Participante</th>
+                        <th style="width: 15%;" class="text-center">Tipo</th>
+                        <th style="width: 15%;" class="text-center">Filiación</th>
+                        <th style="width: 3%"><a href="javascript:;" id="btnagregarparticipante" class="btn btn-success btn-mini agregaparticipante" data-bs-toggle="tooltip" data-bs-placement="top" title="Agregar Participante"><i class="fa fa-plus"></i> </a></th>
+                    </tr>
+                </thead>
+                <tbody id="detalle_participantes">
+                    {% for participante in participantes %}
+                        <tr class="detalleparticipantes" id="filaparticipante_{{ forloop.counter }}" idreg="{{ participante.id }}" idpe="{{ participante.idpersona }}" nombre="{{ participante.nombres }}">
+                            <td class="text-end">{{ forloop.counter }}</td>
+                            <td class="text-justify"><input type="hidden" id="iddetpar[]" name="iddetpar[]" value="{{ participante.id }}"><input type="hidden" id="tipopersona[]" name="tipopersona[]" value="{{ participante.tipopersona }}"><input type="hidden" id="idregtipopersona[]" name="idregtipopersona[]" value="{{ participante.idregtipopersona }}">{{ participante.nombres }}</td>
+                            <td>
+                                <select style="width: 100%;" class="tipo" id="tipo{{ forloop.counter }}" name="tipo[]" >
+                                    <option value="">---------</option>
+                                    {% for tipo in tipos %}
+                                        <option value="{{ tipo.id }}" {% if tipo.id == participante.idtipo %}selected{% endif %}>{{ tipo.descripcion }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                            </td>
+                            <td>
+                                <select style="width: 100%;" class="filiacion" id="filiacion{{ forloop.counter }}" name="filiacion[]" >
+                                    <option value="">---------</option>
+                                    {% for filiacion in filiaciones %}
+                                        <option value="{{ filiacion.id }}" {% if filiacion.id == participante.idfiliacion %}selected{% endif %}>{{ filiacion.descripcion }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+                            </td>
+                            <td style="text-align: center"><a href="javascript:;" class="btn btn-tini btn-danger eliminarparticipante" idreg="{{ participante.id }}" idfila="{{ forloop.counter }}" data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar"><i class="fa fa-remove"></i></a></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <input style="visibility: hidden; width: 0px; height: 0px; " type="text" id="id_participantes_aux" value="">
+            <div class="help-text" style="color: #dc1414;font-size: xx-small; margin-bottom: 0;"></div>
+        </div>
+    </div>
+{% endblock %}
+{% block extraalerts %}
+    <div class="modal fade static"  id="itemspanelpersona" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content border-radius-modal">
+                <div class="modal-header" style="padding-bottom: .7rem !important">
+                    <h4 class="mb-0"><i class="fa fa-plus"></i>&nbsp;<span class="paneltitlepersona">Mostrar Recorrido de la Convocatoria</span></h4>
+                    <button type="button" class="btn-close btn-cerrar-modal fs-5" data-bs-dismiss="modal" aria-label="Close">X</button>
+                </div>
+                <div class="modal-body panelbodypersona">
+
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-orange fs-5 agregar"><i class="fa fa-check-circle" aria-hidden="true"></i> Agregar</button>
+                    <button type="button" class="btn btn-cian-secondary fs-5" data-bs-dismiss="modal"><i class="fa fa-close" aria-hidden="true"></i> Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

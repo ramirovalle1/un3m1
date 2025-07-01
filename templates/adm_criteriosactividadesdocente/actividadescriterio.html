@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        table.table_primary tr:hover td {
+            background-color: inherit !important;
+        }
+    </style>
+    <script>
+        $(function() {
+            $('.activar_actividad').click(function(){
+                var id = $(this).attr('eid');
+                var valor;
+                if ($(this).is(':checked')){
+                    valor = 'y';
+                } else {
+                    valor = 'n';
+                }
+
+                let obj = this;
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_criteriosactividadesdocente",
+                    data: {'action': 'activacion_actividad', 'id': id, 'val': valor},
+                    success: function(data) {
+                        if (data.result === 'ok') {
+                            $.unblockUI();
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            mensajeDanger(data.mensaje);
+                            document.getElementById("activar_actividad_"+id).checked = !$(obj).is(':checked');
+                        }
+                    },
+                    error: function() {
+                        $.unblockUI();
+                        mensajeDanger("Error al enviar los datos.");
+                        document.getElementById("activar_actividad_"+id).checked = !$(obj).is(':checked');
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    if (data.result === 'ok') {
+                        $.unblockUI();
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('#itemspanel .panelbody').html(data.html);
+                        $('#itemspanel .paneltitle').html(text);
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        if (data.mensaje) {
+                            $.unblockUI();
+                            mensajeDanger(data.mensaje);
+                        }
+                    }
+
+                    data.reload && location.reload();
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+    </script>
+{% endblock %}
+{% block atras %}/adm_criteriosactividadesdocente?action=criterios&id={{ detalle.distributivo.profesor.id }}&iddistri={{ detalle.distributivo.id }}&t={{ detalle.tipo }}{% endblock %}
+{% block canvas %}
+    <div class="container">
+        <div class='row'>
+            <div class='row'>
+                <div class='col-sm-12 ps-1'>
+                    <div class="headtitle ps-0">
+                        <h3 class="my-0 py-0">{{ title }}</h3>
+                        <h6>Criterio: {{ detalle.nombre|lower|capfirst }}</h6>
+                        <h6>Profesor: {{ detalle.distributivo.profesor|lower|title }}</h6>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% if bloqueado %}
+        <div class="alert alert-primary d-flex align-items-center p-2" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-info-circle-fill me-2" viewBox="0 0 16 16">
+                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"></path>
+            </svg>
+            <div class="lh-15">
+                Estimad{% if not persona.es_mujer %}o{% else %}a{% endif %} {{ persona.nombre_completo_inverso }}, <b>NO</b> se podrá realizar acciones de <b>agregar</b> o <b>editar</b> cuando el distributivo se encuentre <b>bloqueado</b>.
+            </div>
+        </div>
+        {% else %}
+        {% if not periodo.cerradodistributivo %}
+            {% if not detalle.distributivo.periodo.finalizo %}
+{#                {% if not detalle.es_actividadmacro or not detalle.actividades %}#}
+                    <div class='row-fluid'>
+                        <div class='span12'>
+                            <a class="btn btn-success py-2" href="?action=addactividad&id={{ detalle.id }}"><i class="bi bi-plus-lg"></i> Adicionar</a>
+                        </div>
+                    </div>
+{#                {% endif %}#}
+            {% endif %}
+        {% endif %}
+        {% endif %}
+        <div class='row'>
+            <div class='col-sm-12'>
+                <table class="table table_primary table_striped">
+                    <thead>
+                    <tr>
+                        <th>Actividades</th>
+{#                        {% if not detalle.es_actividadmacro %}#}
+                        <th style="width:80px; text-align: center">Inicio</th>
+                        <th style="width:80px; text-align: center">Fin</th>
+                        <th style="width:80px; text-align: center" >Vigencia</th>
+                        <th style="width:80px; text-align: center" >Horas</th>
+{#                        {% endif %}#}
+                        <th style="width:100px;" ></th>
+                    </tr>
+                    </thead>
+                    <tbody id="contenido">
+                    {% for actividad in detalle.actividades %}
+                        <tr>
+                            <td>{{ actividad.nombre }}</td>
+{#                            {% if not detalle.es_actividadmacro %}#}
+                            <td style="text-align: center;">{{ actividad.desde|date:"d-m-Y" }}</td>
+                            <td style="text-align: center">{{ actividad.hasta|date:"d-m-Y" }}</td>
+                            <td style="text-align: center "><input class='activar_actividad tu'  id="activar_actividad_{{ actividad.id }}"  eid='{{ actividad.id }}' type='checkbox' {% if actividad.vigente %}{% if actualiza_horario %}title="Al desactivar la vigencia de esta actividad, se elimina (en caso de existir) los registros del horario del docente."{% endif %} checked='checked'{% endif %}{% if bloqueado %}disabled="disabled"{% endif %}/></td>
+                            <td style="text-align: center ">{{ actividad.horas|floatformat:0 }}</td>
+{#                            {% endif %}#}
+                            <td style="text-align: center ">
+                                <div class="btn-group">
+                                    {% if not periodo.cerradodistributivo %}
+                                        {#                            {% if not detalle.distributivo.periodo.finalizo %}#}
+                                        <a href="?action=addhorascarrera&id={{ actividad.id }}" {% if bloqueado %}hidden="hidden"{% endif %} class="btn btn-info tu me-1 rounded-2" title="Adicionar Carreras"><i class="fa fa-table"></i></a>
+                                        <a href="?action=editactividad&id={{ actividad.id }}" {% if bloqueado %}hidden="hidden"{% endif %} class="btn btn-info tu me-1 rounded-2" title="Editar"><i class="fa fa-edit"></i></a>
+                                        {% if perms.sga.puede_eliminar_criteriosdocentes %}
+                                            {% if not actividad.criterio.puede_eliminardetalleactividades and not subactividades %}
+                                                <a href="javascript:;" nhref="/adm_criteriosactividadesdocente?action=delactividad&id={{ actividad.id }}" {% if bloqueado %}hidden="hidden"{% endif %} class="btn btn-danger eliminacionmodal me-1 rounded-2 tu" title="Eliminar"><i class="fa fa-remove"></i></a>
+                                            {% endif %}
+                                        {% endif %}
+                                        {#                            {% endif %}#}
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5">NO EXISTEN ACTIVIDADES DEFINIDAS</td>
+                        </tr>
+                    {% endfor %}
+                    {% if detalle.actividades and not detalle.es_actividadmacro %}
+                        <tr>
+                            <td colspan="4"></td>
+                            <td style="text-align: center"><b>{{ detalle.total_horas|floatformat:0 }}</b></td>
+                            <td></td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if detalle.es_actividadmacro %}
+                <div class='row'>
+                    <div class='col-sm-12 d-flex justify-content-between'>
+                        <div class="headtitle ms-0">
+                            <h3 class="py-0">Actividades y subactividades asociadas</h3>
+                        </div>
+                        <div class="btn-group">
+                            {% if not periodo.cerradodistributivo %}
+                                {% if perms.sga.puede_modificar_criteriosdocentes %}
+                                    <a onclick="formModal('{{ actividadvigente.pk }}', 'Adicionar subactividad', 'add-subactividad')" href="javascript:;" class="btn btn-success py-2 rounded-2"><i class="bi bi-plus-lg"></i>Adicionar</a>
+                                    {% if actividades %}
+                                        <a onclick="formModal('{{ actividadvigente.pk }}', 'Replicar fechas en sub-actividades', 'replicar-fecha-actividad')" href="javascript:;" class="btn btn-cian-secondary ms-1 rounded-2" style="border-radius: 0.25rem !important;padding-top: 0.5rem !important;padding-bottom: 0.5rem !important;"><i class="bi bi-copy"></i> Replicar fechas</a>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-12">
+                        <div class="accordion" id="accordionExample">
+                            {% for actividad in actividades %}
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="heading{{ actividad.pk }}">
+                                        <button style="border-left:5px solid #1c3247!important;" class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ actividad.pk }}" aria-expanded="true" aria-controls="collapse{{ actividad.pk }}">
+                                            {{ actividad|lower|capfirst }}
+                                        </button>
+                                    </h2>
+                                    <div id="collapse{{ actividad.pk }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="heading{{ actividad.pk }}" data-bs-parent="#accordionExample">
+                                        <div class="accordion-body">
+                                            <div class="container">
+                                                <table class="" border="0" width="100%">
+                                                    <tbody>
+                                                        <tr>
+                                                            <th style="width: 60%;">Subactividad</th>
+                                                            <th style="width: 15%;text-align:center">Fecha inicio</th>
+                                                            <th style="width: 15%;text-align:center">Fecha fín</th>
+                                                            <th style="width: 10%;text-align:center">Acciones</th>
+                                                        </tr>
+                                                        {% for sb in subactividades %}
+                                                            {% if sb.subactividaddocenteperiodo.actividad == actividad %}
+                                                                <tr style="background-color: inherit!important;">
+                                                                    <td>{{ sb.subactividaddocenteperiodo }}  <br></td>
+                                                                    <td style="text-align:center;">{{ sb.fechainicio|date:"d/m/Y" }}</td>
+                                                                    <td style="text-align:center;">{{ sb.fechafin|date:"d/m/Y" }}</td>
+                                                                    <td style="text-align:center;">
+                                                                        <div class="btn-group">
+                                                                            <a href="javascript:;" class="btn btn-warning me-1 rounded-2" onclick="formModal('{{ sb.pk }}', '{{ sb.subactividaddocenteperiodo }}', 'edit-subactividad')"><i class="bi bi-pencil-square"></i></a>
+{#                                                                            <a href="javascript:;" class="btn btn-danger rounded-2" onclick="eliminarajax('{{ sb.pk }}', '<br>{{ sb.subactividaddocenteperiodo }}', 'del-subactividaddistributivo')"><i class="bi bi-trash"></i></a>#}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <hr class="py-0 my-0" style="border-color: #f0f0f0">
+                                {% empty %}
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <p>No existen registros. Por favor configure las actividades y subactividades asociadas</p>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+        {% endif %}
+        <div class="modal fade static" id="itemspanel" style="display: none;">
+            <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+                <div class="modal-content">
+                    <div class="modal-header border-0" style="padding: 12px 13px">
+                        <div class="headtitle ps-1 ms-1">
+                            <h3 class="texto-blue pt-0 paneltitle">Formulario Modal</h3>
+                            <h6 class="panelsubtitle">Visualización</h6>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form class="form-horizontal form-modal" autocomplete="off" method="post" enctype="multipart/form-data" action="{{ request.path }}">
+                            {% csrf_token %}
+                            <div class="row panelbody"></div>
+                        </form>
+                    </div>
+                    <div class="modal-footer" id="footermodal">
+                        <button type="button" class="btn btn-default" data-bs-dismiss="modal"><i class="fa fa-times"></i>Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,562 @@
+{% extends 'base.html' %}
+{% load sga_extras %}
+{% block heading %}
+    {#    css propio#}
+    <link rel="stylesheet" href="/static/css/bloques.css">
+
+    {#    Envio de datos por ajax#}
+    <script src="/static/adicionalesjs/formquestionb4.js?0.24"></script>
+
+    <script type="text/javascript" src='/static/js/select2.js?v=1.0.0'></script>
+    <link type='text/css' rel='stylesheet' href="/static/css/select2.css?v=1.0.0"/>
+
+    <script type="text/javascript">
+        $(function (){
+            MenuFijo();
+        });
+        //Modales
+        function formModal(idp, id, text, action, dimension, footer = true, a_extra) {
+            bloqueointerface()
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': idp,
+                    'a_extra': a_extra,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension) {
+                        $('#wmodal').removeClass('modal-lg').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalGet(info, action) {
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        $('.panelbody1').html(data.data);
+                        $('#itemspanel1 .paneltitle1').html(text);
+                        $("#itemspanel1").modal({backdrop: 'static', width: '700'}).modal('show');
+                    } else {
+                        smoke.alert(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    smoke.alert("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        //Actualizar estados de checks
+        function ActualizarFecha(id, action, info) {
+            bloqueointerface();
+            //console.log(id+'-'+action+'-'+check+'-'+idex)
+            $.ajax({
+                type: "POST",
+                url: "{{ request.path }}",
+                data: {'action': action, 'id': id, 'val': `${info.event.start.toLocaleDateString()}`},
+                success: function (data) {
+                    if (data.result === true) {
+                        $.unblockUI();
+                        alertaSuccess(data.mensaje)
+                    } else {
+                        $.unblockUI();
+                        EventError(info)
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    EventError(info)
+                    alertaInfo("Error al enviar los datos.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function EventError(info) {
+            info.revert();
+        }
+
+        function Constatar(titulo, mensaje, id, action, idp, fecha, fecha_enviar) {
+            let url = `{{request.path}}?action=constatacionesat&id=${id}`
+            if (fecha == '') {
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    allowEnterKey: false,
+                    type: 'question',
+                    title: titulo,
+                    text: mensaje,
+                    confirmButtonText: 'Iniciar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: url,
+                            data: {
+                                action: action,
+                                csrfmiddlewaretoken: '{{ csrf_token }}',
+                                id: id,
+                                fecha: fecha_enviar,
+                            },
+                            success: function (data) {
+                                if (data.result === true) {
+                                    location.href = url;
+                                } else {
+                                    $.unblockUI();
+                                    mensajeDanger(data.mensaje)
+                                }
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                mensajeErrorSwal("No se puede procesar", "Error al enviar los datos");
+                            },
+                            dataType: "json"
+                        });
+                    }
+                })
+            } else {
+                location.href = url;
+            }
+        }
+
+        function MostrarInfo(info, events) {
+            $('.informacion').empty().append(`<h5><i class="fa fa-calendar-check"></i> ${info.dateStr}</h5>`)
+            $('.informacion').append(`<h5><i class="fa fa-clock"></i> Eventos Creados</h5>`)
+            if (events.length == 0) {
+                $('.informacion').append(`<h6 class="text-muted"><i class="fa fa-circle"></i> Ningún evento creado</h6>`)
+            }
+            events.forEach(function (event) {
+                var hora = event.start.toLocaleTimeString()
+                var fecha = event.start.toLocaleDateString()
+                $('.informacion').append(`<div class="row">
+                                            <div class="col-9">
+                                                <p><i class="fa fa-circle" style="color:${event.extendedProps.eventColor}"></i> ${hora} ${event.title} </p>
+                                            </div>
+                                            <div class="col-3" id="event_${event.id}">
+                                                <a href="javascript:void(0);" onclick="Constatar('Inicar constatación','${event.title} | ${fecha} | ${hora}','${event.id}','inicioconstatacion', '{{ idp|encrypt }}','${event.extendedProps.fecha_c}', '${fecha}')" class=" ms-1 fs-6 text-secondary" title="Constatar">
+                                                <i class="fas fa-search-plus"></i></a>
+                                            </div>
+                                            </div>
+                                   `)
+                   if(event.extendedProps.id_estado<=2){
+                       $(`#event_${event.id}`).append(` <a href="javascript:void(0);" onclick="formModal('', '${event.id}', 'Editar Evento', 'editevento', 'modal-md')" class="ms-1 fs-6 text-primary" title="Editar">
+                                                <i class="fa fa-edit"></i></a>`)
+                   }
+                   if(event.extendedProps.puede_eliminar){
+                       $(`#event_${event.id}`).append(`<a href="javascript:void(0);" onclick="eliminarajax('${event.id}','${hora}-${event.title}','delevento')" class="ms-1 fs-6 text-danger" title="Eliminar">
+                                                        <i class="fa fa-trash"></i></a>`)
+                   }
+            });
+        }
+
+        function MostrarInfoEvent(calEvent) {
+            let hora = calEvent.event.start.toLocaleTimeString()
+            let fecha = calEvent.event.start.toLocaleDateString()
+            $('.informacion').empty().append(`<h5><i class="fa fa-calendar"></i> ${fecha} | <i class="fa fa-clock"></i> ${hora}</h5>
+                                                <h5><i class="fa fa-traffic-light"></i> <span class="${calEvent.event.extendedProps.color_estado}">${calEvent.event.extendedProps.estado}</span></h5>
+                                                <h5><i class="fa fa-user"></i> ${calEvent.event.title}</h5>
+                                                <h5><i class="fa fa-comment"></i> ${calEvent.event.extendedProps.description}</h5>
+                                                <div id='evento' class='text-center'>
+                                                    <a href="javascript:void(0);" onclick="Constatar('Inicar constatación','${calEvent.event.title} | ${fecha} | ${hora}','${calEvent.event.id}','inicioconstatacion', '{{ idp|encrypt }}','${calEvent.event.extendedProps.fecha_c}', '${fecha}')" class="btn-mini btn btn-secondary" title="Constatar"><i class="fas fa-search-plus"></i> Constatar</a>
+                                                </div>`)
+            if (calEvent.event.extendedProps.id_estado <= 2){
+             $('#evento').append(`
+                                <a href="javascript:void(0)" onclick="formModal('', '${calEvent.event.id}', 'Editar Evento', 'editevento', 'modal-md')" class="btn btn-info btn-mini"> <i class="fa fa-edit"></i> Editar</a>
+                                    `)
+            }
+            if(calEvent.event.extendedProps.puede_eliminar){
+                $('#evento').append(`<a href="javascript:void(0);" onclick="eliminarajax('${calEvent.event.id}','${fecha} | ${hora}-${calEvent.event.title}','delevento')"  class="btn btn-danger btn-mini"> <i class="fa fa-trash"></i> Eliminar</a>
+                `)
+            }
+        }
+        function bloqueointerface(){
+            $.blockUI(
+                { message: $('#throbber'),
+                    css: {
+                        backgroundColor: 'transparent',
+                        border: '0',
+                        zIndex: 9999999
+                    },
+                    overlayCSS: {
+                        backgroundColor: '#fff',
+                        opacity: 0.8,
+                        zIndex: 9999990
+                    }}
+            );
+        }
+        function cargarEventos(calendar, finicio,ffin, value=''){
+            bloqueointerface();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'cargareventos',
+                    'value': value,
+                    'finicio': finicio,
+                    'ffin': ffin,
+                    'id':`{{ idp|encrypt }}`
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    calendar.removeAllEvents();
+                    calendar.addEventSource(data.eventos);
+                    if (value){
+                        calendar.setOption('datesSet', null);
+                        calendar.gotoDate(data.fecha_e, true);
+                        if(data.eventos.length == 0){
+                            mensajeWarning(`No existen coincidencias con ${value}`)
+                        }
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        //FullCalendar implementación
+        document.addEventListener('DOMContentLoaded', function () {
+            var calendarEl = document.getElementById('calendar');
+            var defaultDate = (localStorage.getItem("fcDefaultDate") !== null ? localStorage.getItem("fcDefaultDate") : "{{ hoy_str }}");
+            var defaultFecha = new Date(defaultDate);
+            let event_anterior=0;
+            let ecolor_anterior=0;
+            let finicio='';
+            let ffin='';
+            {#var dias = 8;#}
+            {#defaultFecha.setDate(defaultFecha.getDate() + dias);#}
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                locales: 'es',
+                initialDate: defaultFecha,
+                editable: true,
+                selectable: true,
+                businessHours: true,
+                dayMaxEvents: true, // allow "more" link when too many events
+                //Calendario Personalizado
+                buttonText: {
+                    today: 'Hoy',
+                    year: 'Año',
+                    month: 'Mes',
+                    week: 'Semana',
+                    day: 'Día',
+                    list: 'Lista',
+                },//Cambiar nombres de botones
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'timeGridDay,dayGridWeek,dayGridMonth'
+                },//Posicioón a aparicion de botones
+                events: '',//Eventos en fecha
+                eventClick: function (calEvent) {
+                    // Marcar el evento seleccionado
+                    if (event_anterior!=0){
+                        event_anterior.setProp('backgroundColor', ecolor_anterior);
+                    }
+                    calEvent.event.setProp('backgroundColor', '#ffc107'); // Establecer color de fondo azul
+                    event_anterior=calEvent.event
+                    ecolor_anterior=calEvent.event.extendedProps.eventColor
+                    {#formModal('', `${calEvent.event.id}`, 'Editar Evento', 'editevento', 'modal-md')#}
+                    MostrarInfoEvent(calEvent)
+                },
+                dateClick: function (info) {
+                    // Obtener un listado de eventos cuando se hace clic en una fecha
+                    var events = calendar.getEvents();
+                    var eventsOnDate = events.filter(function (event) {
+                        return event.start.toDateString() === info.date.toDateString();
+                    });
+
+                    // Mostrar el listado de eventos en la consola
+                    //console.log(eventsOnDate);
+                    if (eventsOnDate.length == 0) {
+                        formModal('{{ idp|encrypt }}', '', 'Adicionar Evento', 'addevento', 'modal-md', true, `${info.dateStr}`)
+                    } else {
+                        MostrarInfo(info, eventsOnDate)
+                    }
+                },
+                eventDrop: function (info) {
+                    if (info.event.extendedProps.id_estado==1){
+                        ActualizarFecha(`${info.event.id}`, 'editfecha', info)
+                    }else{
+                        alertaDanger("Cronograma ya fue iniciado por lo que no puede ser cambiado de fecha");
+                        EventError(info)
+                    }
+                },
+                eventDidMount: function (info) {
+                    info.el.style.backgroundColor = info.event.extendedProps.eventColor;
+                    info.el.style.color = 'white';
+                    {#if (info.event.start.toDateString() === new Date().toDateString()) {#}
+                        {#info.el.style.backgroundColor = 'rgba(38,185,211,0.82)';#}
+                        {#info.el.style.color = 'white';#}
+                    {# }#}
+                },
+                datesSet: function(info) {
+                    finicio = info.start.toLocaleDateString();
+                    ffin = info.end.toLocaleDateString();
+                    cargarEventos(calendar,finicio,ffin);
+                   }
+                });
+            var dataOption = calendar.getOption('datesSet');
+            calendar.render();
+           $("#buscar").click(function(){
+               let value = $("#searchinput").val()
+               $("#allresults").removeAttr('hidden')
+               $("#buscar").css({'border-top-right-radius':'0px', 'border-bottom-right-radius': '0px'})
+                cargarEventos(calendar,finicio,ffin, value)
+                if (!value){
+                    location.reload()
+                }
+           })
+           $("#allresults").click(function (){
+                location.reload()
+               {#$("#searchinput").val('')#}
+               {# calendar.setOption('datesSet', dataOption);#}
+               {# cargarEventos(calendar,finicio,ffin)#}
+           })
+        });
+    </script>
+    <style>
+        .fc .fc-daygrid-day.fc-day-today {
+            background-color: rgba(40, 255, 248, 0.15);
+        }
+
+        .fc-daygrid-day-number {
+            font-size: 18px;
+            font-family: Arial;
+            font-weight: 600;
+            color: rgba(28, 50, 71, 0.78);
+        }
+
+        .sidenav.navbar .navbar-nav {
+            padding: 0.8rem;
+            width: 100%;
+        }
+
+        #calendar {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .fc th {
+            background: transparent;
+            background-color: white;
+            text-align: center;
+        }
+
+        .fc-col-header-cell-cushion {
+            text-transform: capitalize;
+        }
+
+        #fc-dom-1::first-letter {
+            text-transform: uppercase;
+        }
+
+        .fc .fc-toolbar.fc-header-toolbar {
+            margin-bottom: 0em;
+            padding: 0rem;
+            padding-bottom: 0.5rem;
+        }
+
+        .fc-col-header thead {
+            background-color: black;
+        }
+
+        .accordion-item {
+            background-color: #fff;
+            border: 1px solid rgba(155, 155, 155, 0.42);
+        }
+
+        .accordion-button {
+            background-color: #fff;
+        }
+    </style>
+    {% block extraheading %}{% endblock %}
+{% endblock %}
+{% block atras %}{{ request.path }}{% endblock %}
+{% block canvas %}
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal">
+                    <button type="button" class="btn btn-default" data-bs-dismiss="modal" id="cerrar"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel1" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle1">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <a href="" class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</a>
+                    <form class="form-horizontal form-modal" autocomplete="off" method="GET"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        <div class="row panelbody1">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6><i class="fa fa-record-vinyl"></i> Periodo: {{ periodo.nombre }} </h6>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-8 col-xl-9">
+                <div class="x_content">
+                    <div class="row">
+                        <div class="col-md-12 col-xs-12">
+                            <div class="card-content table-responsive">
+                                <div id="calendar" class="calendario"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-xl-3">
+                <div class="caja-menu">
+                    <div class="row my-1">
+                        <div class="col-12 col-md-6">
+                            <a href="javascript:void(0)"
+                               onclick="formModal('{{ idp|encrypt }}','','Crear Evento','addevento','modal-md')"
+                               class="btn btn-cian-secondary w-100 fs-5"><i class="fa fa-plus"></i> Crear</a>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <a href="/inventario_activofijo?action=detalleconstataciones&idp={{ idp|encrypt }}"
+                               class="btn btn-cian-secondary w-100 fs-5"><i class="fas fa-table"></i> Eventos</a>
+                        </div>
+                    </div>
+                    <div class="row my-1">
+                        <div class="col-12">
+                            <form action="a">
+                                <div class="input-group">
+                                    <input type="text" name="search" class="form-control" id='searchinput'
+                                            style="width: 20%;padding: 3px 15px; float: right;border-top-left-radius: 50px;border-bottom-left-radius: 50px;margin-top: 0px; background-color: transparent"
+                                            placeholder="Buscar por nombres, apellidos o cédula.." value="{{ search }}">
+
+                                    <div class="input-group-append">
+
+                                        <button class="btn btn-cian-secondary py-1 p-3" style="border-top-right-radius: 50px;border-bottom-right-radius: 50px;" type="submit" id="buscar"><i class="fa fa-search" aria-hidden="true"></i></button>
+
+                                    </div>
+                                      <div class="input-group-append">
+                                               <a  href="javascript:void(0);" id='allresults' hidden
+                                            class='btn btn-cian-secondary py-1 p-3'><i class="fa fa-refresh "></i>
+                                        </a>
+                                     </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="accordion accordion-flush" id="detalles_">
+                        <div class="accordion-item">
+                                <h4 class="accordion-header">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#acordeon-2" aria-expanded="true">
+                                        <h4 class="mb-0"><i class="fa fa-info-circle"></i> Información</h4>
+                                    </button>
+                                </h4>
+                                <div id="acordeon-2" class="accordion-collapse show">
+                                    <div class="accordion-body p-3 py-2">
+                                        <div class="informacion ">
+                                            <h6 class="texto-blue text-center" style="color:#999999">Este casillero se
+                                                llenara una
+                                                vez seleccione una fecha o evento</h6>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <div class="accordion-item">
+                            <h4 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#acordeon-1" aria-expanded="true">
+                                    <h4 class="mb-0"><i class="fa fa-traffic-light"></i> Estados</h4>
+                                </button>
+                            </h4>
+                            <div id="acordeon-1" class="accordion-collapse show">
+                                <div class="accordion-body p-3 py-2">
+                                    <div class="row">
+                                        <div class="col-12 col-sm-12">
+                                            <h5><i class="fa fa-info-circle"></i> Eventos</h5>
+                                            <span class="badge bg-primary"> Planificado</span>
+                                            <span class="badge bg-secondary"> En proceso</span>
+                                            <span class="badge bg-success"> Finalizado</span>
+                                            <span class="badge bg-dark"> Cerrado</span>
+                                        </div>
+                                        <div class="col-6 col-sm-12 ">
+                                            <h5><i class="fa fa-check-circle"></i> Selección de eventos</h5>
+{#                                            <span><i class="fa fa-circle text-primary"></i> Sin seleccionar</span>#}
+                                            <span><i class="fa fa-circle text-warning"></i> Seleccionado</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

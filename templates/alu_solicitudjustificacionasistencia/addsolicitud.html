@@ -1,0 +1,160 @@
+{% extends "ajaxformbs.html" %}
+{% load sga_extras %}
+{% block extraheading %}
+    <script type="text/javascript">
+        var lista_items1 = [];
+        $(function() {
+
+            $("#id_fechainicio, #id_fechafin").datepicker({format:"dd-mm-yyyy"}).on('changeDate', function(ev){ $(this).datepicker('hide'); cargar_horario();});
+
+            $("#id_casojustificacion,#id_justificativo,#id_archivo, #id_matricula_select2").addClass("validate[required]");
+
+            actualizar_lista_asignatura_horario = function () {
+                lista_items1 = [];
+                $(".elementosasig").each(function () {
+                    var item = {
+                        idasig: $(this).find(".idasig").html(),
+                        idlecc: $(this).find(".idlecc").html(),
+                        asig: $(this).find(".asig").html(),
+                        lecc: $(this).find(".lecc").html()
+                    };
+                    lista_items1.push(item);
+                });
+            };
+
+            $("#id_casojustificacion").change(function () {
+                if ($(this).val()>0) {
+                    request = $.post("/adm_justificacion_asis_dr", {'action': 'mensajeevidencia', 'id': $(this).val()},
+                        function (data) {
+                            if (data.result) {
+                                document.getElementById("mensajeevidencia").innerText = data.mensajeevidencia;
+                                $("#mensajeevidencia").show();
+                            }
+                        }, 'json');
+                }
+                else {
+                    document.getElementById("mensajeevidencia").style.display = "none";
+                }
+            });
+
+            ItemsDisplay = function (item) {
+                if (item.name){
+                    return $('<span>' + item.name+ '</span>');
+                }else{
+                    return '---------';
+                }
+            };
+
+            $("#id_matricula_select2").select2({
+                placeholder: "---------",
+                allowClear: true,
+                ajax: {
+                    url: function (params) {
+                        return "/adm_justificacion_asis_dr?action=buscarmatriculados&q=" + params.term;
+                    },
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term,
+                            page: params.page
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.results,
+                            pagination: {
+                                more: (params.page * 30) < data.total_count
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+                minimumInputLength: 1,
+                templateResult: ItemsDisplay, // omitted for brevity, see the source of this page
+                templateSelection: ItemsDisplay // omitted for brevity, see the source of this page
+            }).on("select2:select", function (evt) {
+                $("#id_matricula").attr({"value":(evt.params.data.id)});
+            });
+
+            $('#id_matricula_select2').change(function () {
+                cargar_horario();
+            });
+
+            cargar_horario = function () {
+                $('#contenidoproducto').empty();
+                lista_items1 = [];
+                var fechainicio = $("#id_fechainicio").val();
+                var fechafin = $("#id_fechafin").val();
+                var nDi0 = parseInt(fechainicio.substr(0, 2), 10);
+                var nMe0 = parseInt(fechainicio.substr(3, 2), 10)-1;
+                var nAn0 = parseInt(fechainicio.substr(6, 4), 10);
+                var nDi1 = parseInt(fechafin.substr(0, 2), 10);
+                var nMe1 = parseInt(fechafin.substr(3, 2), 10)-1;
+                var nAn1 = parseInt(fechafin.substr(6, 4), 10);
+                var fec1 = new Date(nAn0,nMe0,nDi0);
+                var fec2 = new Date(nAn1,nMe1,nDi1);
+                var matricula =  parseInt($("#id_matricula_select2").val());
+                if(matricula>0 && fec1<fec2) {
+                    bloqueointerface();
+                    request = $.post("/adm_justificacion_asis_dr", {'action': 'extraerasignaturashorarios', 'mat':matricula, 'fi':$('#id_fechainicio').val(), 'ff':$('#id_fechafin').val()},
+                        function (data) {
+                            $.unblockUI();
+                            if (data.result) {
+                                for (elemento in data.lista) {
+                                    $("#contenidoproducto").append('<tr class="elementosasig">' +
+                                    '<td style="text-align: center ; display:none" class="idasig">' + data.lista[elemento][0]  + '</td>' +
+                                    '<td style="text-align: center ; display:none" class="idlecc">' + data.lista[elemento][2]  + '</td>' +
+                                    '<td style="text-align: left;" class="asig">' + data.lista[elemento][1] + '</td>' +
+                                    '<td style="text-align: center;" class="lecc">' + data.lista[elemento][3]  + '</td>' +
+                                    '</tr>');
+                                }
+                                actualizar_lista_asignatura_horario();
+                            }
+                            else{
+                                smoke.alert("Error al obtener los datos.")
+                            }
+                        }, 'json');
+                }
+            }
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_justificacion_asis_dr{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formdestination %}/adm_justificacion_asis_dr{% endblock %}
+{% block formaction %}/adm_justificacion_asis_dr{% endblock %}
+{% block formwidth %}form-l{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='addsolicitud'/>
+{% endblock %}
+{% block formback %}/alu_justificacion_asis{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <div class="alert alert-info" id="mensajeevidencia" style="margin-left: 11%;width: 86%;display: none;text-align: justify;font-size: 10px"></div>
+    <div style="overflow:scroll; height:200px;">
+        <table class="table table-striped table-bordered"  style="margin-left: 11%; width: 87%">
+            <thead>
+            <tr>
+                <th colspan="3" style="text-align: center;">Asignaturas y horarios</th>
+            </tr>
+            <tr>
+                <th style="width: 600px;">Asignatura</th>
+                <th style="width: 200px;text-align: center">Horarios</th>
+            </tr>
+            </thead>
+            <tbody id="contenidoproducto" >
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
+{% block validaciones %}
+        if(lista_items1.length==0)
+        {
+            $.unblockUI();
+            smoke.alert("El estudiante no tiene horario sin asistencia en el rango de fechas." + $("#id_matricula").val())
+            valid= false;
+        }
+{% endblock %}

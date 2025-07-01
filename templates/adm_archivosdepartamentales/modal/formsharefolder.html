@@ -1,0 +1,225 @@
+{% load sga_extras %}
+
+<style>
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        background-color: #dff5ff;
+    !important;
+        border: 1px solid #03a9f4;
+    !important;
+    }
+
+    @media (min-width: 992px) {
+        .col-lg-4 {
+            flex: 0 0 auto;
+            width: 33.33333333%;
+        }
+    }
+</style>
+
+<input type="hidden" name="id" value="{{ id|encrypt }}">
+<input type="hidden" name="action" value="{{ action }}"/>
+
+<div class="row">
+    <h3><i class="fa fa-folder"></i> Carpeta: <b>{{ filtro.nombre }}</b></h3>
+
+    {% for field in form %}
+        {% if field.field.widget.attrs.separator %}
+            {% if field.field.widget.attrs.blanklinebefore %}
+            {% endif %}
+            <div style="width: 100%; height: max-content">
+                <h6 style="width:100%; text-align:left; border-bottom: 1px solid #98a3ab; line-height:0.1em; margin:10px 0 20px;">
+                    <span style="padding:0 10px; background: #f5f5f5;">
+                        {% if field.field.widget.attrs.separatortitle %}
+                            {{ field.field.widget.attrs.separatortitle }}
+                        {% endif %}
+                     </span>
+                </h6>
+            </div>
+        {% endif %}
+        <div id="fieldset_{{ field.name }}" class="col-lg-{{ field.field.widget.attrs.col }}" style="float: left; padding-right: 10px;">
+            <label class="control-label pr-2" for="id_{{ field.name }}"><b>{{ field.label }}&nbsp;:</b></label>
+            {{ field }}
+            <p class="help-text">{{ field.help_text }} </p>
+        </div>
+    {% endfor %}
+
+</div>
+<div class="row">
+    <div class="col-lg-12">
+        <table class="table table-bordered table-responsive tabla_paginada" width="100%">
+            <thead class="table-light">
+            <tr>
+                <th style="text-align: left">&nbsp;<b><i class="fa fa-users"></i> Personas con acceso
+                    (<b>{{ listcompartidos|length }}</b>)</b></th>
+                <th style="text-align: center; width: 250px"><i class="fa fa-edit"></i> Rol</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for cl in listcompartidos %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar avatar-lg">
+                                <img src="{{ cl.persona.get_foto }}" class="rounded-circle">
+                            </div>
+                            <div class="ms-3">
+                                <h4 class="mb-0"><a href="#" class="text-inherit">{{ cl.persona }}</a></h4>
+                                <p class="mb-0 text-muted">{{ cl.persona.departamentopersona }}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="text-align: left">
+                        {% if cl.rol == 1 %}
+                            <center>Propietario</center>
+                        {% else %}
+                            <select class="rolcompartido" data-id="{{ cl.id }}">
+                                {% for rl in listroles %}
+                                    <option value="{{ rl.0 }}"
+                                            {% if rl.0 == cl.rol %}selected{% endif %}>{{ rl.1 }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <h6 class="text-danger">*<i class="fa fa-info-circle"></i> Usted es responsable de su propia información.*</h6>
+    </div>
+</div>
+
+
+<div class="row">
+    <div style="text-align: right; float: left; width: 100%">
+        <button type="submit" id="submit" class="btn btn-success"><i class="fa fa-save"></i> Guardar</button>
+        <a href="javascript:void(0);" class="btn btn-danger" data-bs-dismiss="modal"><i class="fa fa-window-close"></i>
+            Cancelar
+        </a>
+    </div>
+</div>
+<input type="hidden" id="idcompartidos"
+       value="{% for cl in listcompartidos %}{{ cl.persona.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
+<script>
+    $(function () {
+        $('.rolcompartido').on('change', function () {
+            var cbrol = $(this)
+            Swal.fire({
+                title: `¿Está seguro de modificar el rol de este usuario?`,
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    var idcompartido_ = $(this).attr('data-id');
+                    var value_ = $(this).val();
+                    bloqueointerface();
+                    $.post("{{ request.path }}", {
+                        'action': 'changerolcompartido',
+                        'id': idcompartido_,
+                        'value': value_
+                    }, function (data) {
+                        $.unblockUI();
+                        if (data.result === 'ok') {
+                            alertaSuccess('Rol cambiado con exito')
+                        } else {
+                            alertaDanger(data.mensaje)
+                            cbrol.val(false)
+                        }
+                    });
+                    $.unblockUI();
+                }
+            })
+
+
+        })
+
+        $('select').select2({width: '100%',});
+
+        $.fn.select2.defaults.set('language', 'es');
+
+        const cbPersona = $('#id_personas');
+
+        function formatRepo(repo) {
+            if (repo.loading) {
+                return 'Buscando..'
+            }
+            var option = '';
+            if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                option = $(`<b>${repo.text}</b>`);
+            } else {
+                option = $(`<div class="wrapper container"><div class="row"><div class="col-lg-2 text-center"><img src="${repo.foto}" width="50px" height="50px" class="w-25px rounded-circle me-2"></div><div class="col-lg-10 text-left"><b>Documento:</b> ${repo.documento}<br><b>Nombres:</b> ${repo.text}<br><span>${repo.departamento}</span></div></div></div>`);
+            }
+            return option;
+        }
+
+        ItemsDisplayPersonas = function (item) {
+            if (item.text && item.documento) {
+                return $(`<img src="${item.foto}" width="25px" height="25px" class="w-25px rounded-circle me-2"><span>${item.text}</span>`);
+            } else if (item) {
+                return item.text;
+            } else {
+                return 'Consultar Personas';
+            }
+        };
+
+        cbPersona.select2({
+            width: '100%',
+            placeholder: "Consultar Personas",
+            allowClear: true,
+            ajax: {
+                url: function (params) {
+                    return `{{ reques.path }}?action=buscarpersonas&q=${params.term}&idscompartidos=${$('#idcompartidos').val()}&idsexcluir=${$('#id_personas').val()}`;
+                },
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term,
+                        page: params.page
+                    };
+                },
+                processResults: function (data, params) {
+                    params.page = params.page || 1;
+                    return {
+                        results: data.results,
+                        pagination: {
+                            more: (params.page * 30) < data.total_count
+                        }
+                    };
+                },
+                cache: true
+            },
+            escapeMarkup: function (markup) {
+                return markup;
+            }, // let our custom formatter work
+            minimumInputLength: 1,
+            templateResult: formatRepo, // omitted for brevity, see the source of this page
+            templateSelection: ItemsDisplayPersonas // omitted for brevity, see the source of this page
+        });
+
+    })
+
+    $(document).ready(function () {
+        const tabla_paginada = $('.tabla_paginada').DataTable({
+            responsive: false,
+            scrollX: true,
+            ordering: false,
+            paging: true,
+            searching: false,
+            pageLength: 5,
+            bInfo: false,
+            dom: 'Bfrtip',
+            language: {
+                "url": '/static/js/i18n/Spanish.json'
+            },
+            buttons: []
+        });
+        $('.tabla_paginada tbody').on('click', 'tr', function () {
+            var data = tabla_paginada.row(this).data();
+        });
+    });
+</script>

@@ -1,0 +1,135 @@
+{% extends "ajaxformbs.html" %}
+{% block extraheading %}
+    <script type="text/javascript">
+        $(function() {
+            $("#id_nombre").focus();
+
+            actualizar_lista = function(){
+                var lista = [];
+                $('.cantidadproducto').each(function(){
+                    lista.push([$(this).attr('idp')+':'+$(this).val()]);
+                });
+                $('#lista').val(lista);
+                if (lista.length > 0){
+                    $('#listavacia').hide();
+                    $('#formbutton').show();
+                } else {
+                    $('#listavacia').show();
+                    $('#formbutton').hide();
+                }
+            };
+
+            validar_producto = function(){
+                $(this).blur(function(){
+                    numerico($(this), 1, parseInt($(this).attr('disp')), 0);
+                    actualizar_lista();
+                });
+            };
+
+            eliminar_productos = function(){
+                var id = $(this).attr('idp');
+                $("#prod_"+id).remove();
+                actualizar_lista();
+            };
+
+            buscar_producto = function(query, process) {
+                $.get("/reportes", {'action':'data', 'model': 'InventarioMedicoLote:cantidad__gt=0','p': 1, 'q': query, 's': 10}, function(data) {
+                    var dato;
+                    if (data.results) {
+                        $("#id_nombre").get(0).results = data.results;
+                        listing = [];
+                        for (var i in data.results) {
+                            dato = data.results[i];
+                            listing.push(dato.name);
+                        }
+                        process(listing);
+                    }
+                }, 'json');
+            };
+
+            $('#id_nombre').typeahead({source: buscar_producto, updater: function(item) {
+                var datos;
+                var results = $("#id_nombre").get(0).results;
+                for (var i in results) {
+                    datos = results[i];
+                    if (item==datos.name) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "/box_inventario",
+                            data: {'action': 'datoproducto', 'id': datos.id},
+                            success: function(data) {
+                                $.unblockUI();
+                                if (data.result == 'ok') {
+                                    if ($("#prod_"+data.id).length == 0){
+                                        $("#contenido").append('<tr id="prod_'+data.id+'">' +
+                                                '<td style="vertical-align: middle;">'+data.codigo+'</td>' +
+                                                '<td style="vertical-align: middle;">'+data.descripcion+' ('+data.tipo+')'+'</td>' +
+                                                '<td style="text-align: center; vertical-align: middle;">'+data.cantidad+'</td>' +
+                                                '<td style="text-align: center; vertical-align: middle;"><input type="text" disp="'+data.cantidad+'" idp="'+data.id+'" class="input-mini cantidadproducto textatcenter" value="1"></td>' +
+                                                '<td style="text-align: center; vertical-align: middle;"><a class="btn btn-tini btn-danger tu borrarproducto" title="Eliminar" idp="'+data.id+'"><i class="fa fa-remove"></i></a></td></tr>');
+                                        tooltips();
+                                        $(".borrarproducto").unbind('click.eliminar_productos');
+                                        $(".borrarproducto").bind('click.eliminar_productos', eliminar_productos);
+                                        $(".cantidadproducto").unbind('click.validar_producto');
+                                        $(".cantidadproducto").bind('click.validar_producto', validar_producto);
+                                    } else {
+                                        smoke.alert("Ya existe el elemento en la lista.");
+                                    }
+                                    actualizar_lista();
+                                } else {
+                                    smoke.alert(data.mensaje);
+                                    return null;
+                                }
+                            },
+                            error: function() {
+                                $.unblockUI();
+                                smoke.alert("Error al obtener los datos.");
+                                return null;
+                            },
+                            dataType: "json"
+                        });
+                    }
+                }
+                return item;
+            }
+            }).change(function(){ $("#id_nombre").val(''); });
+
+            actualizar_lista();
+        });
+    </script>
+{% endblock %}
+{% block titulo %}{{ title }}{% endblock %}
+{% block formwidth %}form-xl{% endblock %}
+{% block atras %}{% if idcm %}/box_medical?action=consultamedicaprevias{% elif idco %}/box_odontologica?action=consultaodontologicaprevias{% else %}/box_psicologica?action=consultapsicologicaprevias{% endif %}&id={{ dup.id }}{% endblock %}
+{% block formaction %}/box_inventario{% endblock %}
+{% block formdestination %}{% if idcm %}/box_medical?action=consultamedicaprevias{% elif idco %}/box_odontologica?action=consultaodontologicaprevias{% else %}/box_psicologica?action=consultapsicologicaprevias{% endif %}&id={{ dup.id }}{% endblock %}
+{% block formextra %}
+    <input type='hidden' name='action' value='productosusados'/>
+    {% if idcm %}
+        <input type='hidden' name='idcm' value='{{ idcm }}'/>
+    {% elif idco %}
+        <input type='hidden' name='idco' value='{{ idco }}'/>
+    {% else %}
+        <input type='hidden' name='idcp' value='{{ idcp }}'/>
+    {% endif %}
+    <input type='hidden' name='lista' id='lista' value=''/>
+{% endblock %}
+{% block formback %}{% if idcm %}/box_medical?action=consultamedicaprevias{% elif idco %}/box_odontologica?action=consultaodontologicaprevias{% else %}/box_psicologica?action=consultapsicologicaprevias{% endif %}&id={{ dup.id }}{% endblock %}
+{% block buttonname %}Guardar{% endblock %}
+{% block formsuffix %}
+    <table class="table table-bordered">
+        <thead>
+        <tr>
+            <th style="width: 100px">C&oacute;digo</th>
+            <th>Descripci&oacute;n</th>
+            <th style="width: 50px; text-align: center">Disp.</th>
+            <th style="width: 50px; text-align: center">Cant.</th>
+            <th style="width: 30px"></th>
+        </tr>
+        </thead>
+        <tbody id="contenido">
+        <tr id="listavacia"><td colspan="10">NO EXISTEN PRODUCTOS REGISTRADOS</td></tr>
+        </tbody>
+    </table>
+{% endblock %}

@@ -1,0 +1,1125 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript">
+        busqueda = function () {
+            //debugger;
+            var term = $("#searchinput").val().trim().toUpperCase();
+            var ids = $("#id_servicio").val();
+            var idc = $("#id_carrera").val();
+            var ide = $("#id_estado").val();
+            var id = "{{ id }}"
+
+            if (term.length > 0) {
+                bloqueointerface();
+                location.href = "/adm_secretaria?action=versolicitudes&id=" + id + "&ids=" + ids + "&idc=" + idc + "&ide=" + ide + "&s=" + term
+            } else {
+                location.href = "/adm_secretaria?action=versolicitudes&id=" + id + "&ids=" + ids + "&idc=" + idc + "&ide=" + ide
+            }
+
+            return false;
+        };
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminar(pk, nombre, accion) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar este registro:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        } else {
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+
+        function atender(pk, nombre, accion, nombresecre) {
+            Swal.fire({
+                title: `<h4>Estás por atender la solicitud de elaboración de certificado físico del maestrante:\n ${nombre}</h4>`,
+                text: "Al confirmar, usted " + nombresecre + " quedará registrada en el sistema como la persona encargada de la elaboración, firma, legalización y entrega del certificado solicitado.",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Atendiendo...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        } else {
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+
+        function procesarCertificado(pk) {
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "{{ reques.path }}",
+                data: {'action': 'procesarCertificado', 'id': pk},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        alertaSuccess('Se proceso correctamente');
+                        location.reload();
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    alertaDanger('Ocurrio un error inesperado');
+                },
+                dataType: "json"
+            });
+
+
+        }
+
+        function limpirhojasCertificado(pk) {
+            bloqueointerface();
+            $.ajax({
+                type: "POST",
+                url: "{{ reques.path }}",
+                data: {'action': 'limpiarhojascertificado', 'id': pk},
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        alertaSuccess('Se proceso correctamente');
+                        location.reload();
+                    } else {
+                        alertaDanger(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    alertaDanger('Ocurrio un error inesperado');
+                },
+                dataType: "json"
+            });
+
+
+        }
+
+        $(function (e) {
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+            $("#id_servicio").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+            $("#id_carrera").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+            $("#id_estado").select2().on("select2:select", function (e) {
+                busqueda();
+            });
+
+            if ('{{ ids }}'.length) {
+                $('#id_servicio').val('{{ ids }}').trigger('change');
+            }
+
+            if ('{{ idc }}'.length) {
+                $('#id_carrera').val('{{ idc }}').trigger('change');
+            }
+
+            if ('{{ ide }}'.length) {
+                $('#id_estado').val('{{ ide }}').trigger('change');
+            }
+
+            $('.refreshbutton').click(function (e) {
+                bloqueointerface();
+                //let producto = $('#id_servicio').val();
+                //let href = parseInt(producto) ? '?p=' + producto : '';
+                location.href = "/adm_secretaria?action=versolicitudes&id={{ id }}";
+            });
+
+        });
+
+        function infoobservacion(id) {
+            bloqueointerface()
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': 'infoobservacion',
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI()
+                    if (data.result == 'ok') {
+                        $('.panelbody1').html(data.data);
+                        $('#titlemodal1').html(data.title);
+                        $("#itemspanel1").modal({backdrop: 'static', width: '900px', height: '600px'}).modal('show');
+                    } else {
+                        mensajeWarning(data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI()
+                    alertaDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function formModalHistorial(idp, id, text, action, dimension, footer = true, idex) {
+            bloqueointerface()
+            $('#footermodalhistory').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idp': idp,
+                    'idex': idex,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (dimension) {
+                        $('#wmodal').removeClass('modal-lg modal-sm modal-xl modal-md modal-fullscreen').addClass(dimension)
+                    }
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodalhistory').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanelhistory .paneltitle').html(text.toUpperCase());
+                        $("#itemspanelhistory").modal({backdrop: 'static'}).modal('show');
+                    } else {
+                        mensajeDanger(data.message);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        $(function () {
+            $("select").select2({minimumResultsForSearch: 1});
+
+            $('.reporte_seguimiento').click(function () {
+                $('#itemspanelreport').modal({backdrop: 'static', width: '450px'}).modal('show');
+
+                $('#id_carrera2').empty().append('<option value="0">Todas las carreras con solicitudes</option>').val(0).trigger("change");
+
+                $('#id_estado1').empty().append('<option value="0">Todas los estados</option>').val(0).trigger("change");
+
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_secretaria",
+                    data: {'action': 'carga_carreras', 'id':'{{ id }}'},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            for (elemento in data.lista) {
+                                $('#id_carrera2').append('<option value="' + data.lista[elemento].id + '">' + data.lista[elemento].id + ' - ' + data.lista[elemento].nombre + '</option>');
+                            }
+                        } else {
+                            mensajeErrorSwal(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        mensajeErrorSwal("Error de conexion.");
+                    },
+                    dataType: "json"
+                });
+
+                $.ajax({
+                    type: "GET",
+                    url: "/adm_secretaria",
+                    data: {'action': 'carga_estados', 'id':'{{ id }}'},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            for (elemento in data.lista) {
+                                $('#id_estado1').append('<option value="' + data.lista[elemento].id + '">' + data.lista[elemento].id + ' - ' + data.lista[elemento].nombre + '</option>');
+                            }
+                        } else {
+                            mensajeErrorSwal(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        mensajeErrorSwal("Error de conexion.");
+                    },
+                    dataType: "json"
+                });
+            });
+
+            $('#descargar_reporte_seguimiento').click(function () {
+                var carrera = $('#id_carrera2').val();
+                var estado = $('#id_estado1').val();
+                var fdesde = $('#id_fecha_desde').val();
+                var fhasta = $('#id_fecha_hasta').val();
+
+                openwindow('GET', '/adm_secretaria', {
+                    action: 'reporteseguimientoceritificado',
+                    'id': '{{ id }}',
+                    'carrera': carrera,
+                    'estado': estado,
+                    'desde': fdesde,
+                    'hasta': fhasta
+                }, '_blank');
+
+                $('#itemspanelreport').modal('hide');
+            });
+        });
+    </script>
+{% endblock %}
+{% block atras %}/adm_secretaria{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }}</h3>
+                <h6>Administración de servicios de secretaría</h6>
+            </div>
+        </div>
+    </div>
+
+        <div class="container-fluid">
+
+            {% if not es_director and not es_director %}
+                <div class="card mb-4">
+                    <div class="card-header border-bottom-0">
+                        <div class="col-lg-12 col-md-12 col-12">
+                            <div class="d-md-flex align-items-center">
+                                <a class="btn btn-warning me-2 reporte_seguimiento" href="javascript:;"><i
+                                        class="fa fa-download"></i> Reporte de seguimiento</a>
+                                {% if id == 1 or id == 4 or id == 5 %}
+                                    <a href="{{ request.path }}?action=verformatoscertificados&id={{ id }}"
+                                       class="btn btn-info me-2"><i
+                                            class="fa fa-gear"></i> Gestionar formatos</a>
+                                {% elif id == 6 %}
+                                    <a href="{{ request.path }}?action=cronogramatitulacion" target="_blank"
+                                       class="btn btn-warning"><i class="fa fa-gear"></i> Actividades de Cronograma</a>
+                                    </div>
+                                {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+
+    <form method="GET">
+        <div class="row">
+
+            <div class="col-lg-6 col-md-3 col-sm-12">
+                <i class="fa fa-cog tu" title="Servicios"></i> Servicio:
+                <div class="input-group mb-2">
+                    <select name="m" id="id_servicio" style="width: 100%">
+                        <option value="0" {% if not ids %}selected{% endif %}>----Todos----</option>
+                        {% for eServicio in eServicios %}
+                            <option value="{{ eServicio.0 }}">{{ eServicio.1 }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="col-lg-6 col-md-3 col-sm-12">
+                <i class="fa fa-university tu" title="Carreras"></i> Carrera:
+                <div class="input-group mb-2">
+                    <select name="ca" id="id_carrera" style="width: 100%">
+                        <option value="0" {% if not idc %}selected{% endif %}>----Todos----</option>
+                        {% for eCarrera in eCarreras %}
+                            <option value="{{ eCarrera.id }}">{{ eCarrera.nombre|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="col-lg-6 col-md-3 col-sm-12">
+                <i class="fa fa-check tu" title="Estados"></i> Estado:
+                <div class="input-group mb-2">
+                    <select name="es" id="id_estado" style="width: 100%">
+                        {% if cate.id != 6 %}
+                            <option value="0" {% if not ide %}selected{% endif %}>----Todos----</option>
+                            <option value="1" {% if ide == 1 %} selected {% endif %}>Solicitado</option>
+                            <option value="2" {% if ide == 2 %} selected {% endif %}>Entregado</option>
+                            {% if persona.coordinacion_pertenece != 7 %}
+                                <option value="3" {% if ide == 3 %} selected {% endif %}>Pendiente</option>
+                                <option value="4" {% if ide == 4 %} selected {% endif %}>Pagado</option>
+                                <option value="5" {% if ide == 5 %} selected {% endif %}>Reasignado</option>
+                                <option value="6" {% if ide == 6 %} selected {% endif %}>Asignado</option>
+                                <option value="7" {% if ide == 7 %} selected {% endif %}>Rechazado</option>
+                            {% endif %}
+                            <option value="7" {% if ide == 7 %} selected {% endif %}>Rechazado</option>
+                            <option value="8" {% if ide == 8 %} selected {% endif %}>Eliminado</option>
+                            <option value="9" {% if ide == 9 %} selected {% endif %}>Vencido</option>
+                            <option value="22" {% if ide == 22 %} selected {% endif %}>Pendientes de firmar</option>
+                        {% else %}
+                            <option value="0" {% if not ide %}selected{% endif %}>----Todos----</option>
+                            <option value="1" {% if ide == 1 %} selected {% endif %}>Solicitado</option>
+                            <option value="10" {% if ide == 10 %} selected {% endif %}>Informe en proceso</option>
+                            <option value="11" {% if ide == 11 %} selected {% endif %}>Informe elaborado</option>
+                            <option value="17" {% if ide == 17 %} selected {% endif %}>Informe revisado</option>
+                            <option value="12" {% if ide == 12 %} selected {% endif %}>Informe aprobado</option>
+                            <option value="13" {% if ide == 13 %} selected {% endif %}>Informe rechazado</option>
+                            <option value="14" {% if ide == 14 %} selected {% endif %}>Informe aceptado</option>
+                            <option value="15" {% if ide == 15 %} selected {% endif %}>Cronograma en proceso</option>
+                            <option value="16" {% if ide == 16 %} selected {% endif %}>Cronograma entregado</option>
+                            <option value="18" {% if ide == 18 %} selected {% endif %}>Cronograma revisado</option>
+                            <option value="19" {% if ide == 19 %} selected {% endif %}>Cronograma elaborado</option>
+                            <option value="20" {% if ide == 20 %} selected {% endif %}>Cronograma aprobado</option>
+                            <option value="21" {% if ide == 21 %} selected {% endif %}>Cronograma rechazado</option>
+                            <option value="8" {% if ide == 8 %} selected {% endif %}>Eliminado</option>
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="col-lg-6 col-md-3 col-sm-12">
+                <i class="fa fa-search tu" title="Nombres"></i> Busqueda:
+                <div class="input-group mb-2">
+                    <input class='form-control' type='text' id='searchinput' name="s" value='{{ s }}' autocomplete="off"
+                           placeholder="Buscar solicitud por cedula o pasaporte o apellidos..."/>
+                    <div class="input-group-append">
+                        <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()" id="button-addon2"><i
+                                class="fa fa-search"></i></a>
+                        {% if url_vars %}
+                            <a title="Ver todo" href="javascript:;" class="btn btn-default tr refreshbutton">
+                                <i class="fas fa-sync-alt"></i>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col" style="text-align: right">
+                Solicitados: <span class="badge bg-info">{{ eSolicitados }}</span>
+                Entregados: <span class="badge bg-success">{{ eEntregados }}</span>
+                {% if persona.coordinacion_pertenece != 7 %}
+                    Pendientes: <span class="badge bg-primary">{{ ePendientes }}</span>
+                    Pagados: <span class="badge bg-secondary">{{ ePagados }}</span>
+                    Reasignados: <span class="badge bg-warning">{{ eReasignados }}</span>
+                    Asignados: <span class="badge bg-success">{{ eAsignados }}</span>
+                    Rechazados: <span class="badge bg-danger">{{ eRechazados }}</span>
+                {% endif %}
+                Vencidos: <span class="badge bg-warning">{{ eVencidos }}</span>
+                Eliminados: <span class="badge bg-danger">{{ eEliminados }}</span>
+                Total: <span class="badge bg-black">{{ eTotal }}</span>
+            </div>
+        </div>
+
+    </form>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card mb-4">
+                <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                    <table class='tabla_responsive table table-bordered table-striped'>
+                        <thead>
+                        <tr>
+                            <th style="text-align: center; vertical-align: middle; width: 5%;">#</th>
+                            <th style="text-align: center; vertical-align: middle; width: 25%;">Solicitante</th>
+                            <th style="text-align: center; vertical-align: middle; width: 20%;">Detalle de solicitud</th>
+                            <th style="text-align: center; vertical-align: middle; width: 20%;">Maestría/Cohorte</th>
+                            <th style="text-align: center; vertical-align: middle; width: 6%;">Total a pagar</th>
+                            <th style="text-align: center; vertical-align: middle; width: 5%;">Archivo</th>
+                            <th style="text-align: center; vertical-align: middle; width: 10%;">Estado de la solicitud</th>
+                            <th style="text-align: center; vertical-align: middle; width: 20%;">Estado del rubro</th>
+                            <th style="text-align: center; vertical-align: middle; width: 6%;">Acciones</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for eSolicitud in eSolicitudes %}
+                            <tr>
+                                <td style="text-align: center; vertical-align: middle">{{ forloop.counter }}</td>
+                                <td style="text-align: left; vertical-align: middle">
+                                    <div class="mb-3" style="max-width: 540px;">
+                                        <div class="row g-0">
+                                            <div class="col-md-3 text-center">
+                                                <img src="{{ eSolicitud.perfil.persona.get_foto }}" alt=""
+                                                     class="img-fluid rounded-circle" width="40px">
+                                            </div>
+                                            <div class="col-md-9">
+                                                <div class="">
+                                                    <small class="card-text"><i
+                                                            class="fa fa-user tu"
+                                                            title="Nombre completo"></i> {{ eSolicitud.perfil.persona.nombre_completo_minus }}
+                                                    </small><br>
+                                                    <small class="card-text"><i
+                                                            class="fa fa-address-card tu"
+                                                            title="Cédula"></i> {{ eSolicitud.perfil.persona.cedula }}
+                                                    </small><br>
+                                                    <small class="card-text">
+                                                        {% if eSolicitud.perfil.persona.telefono %}
+                                                            <i class="fa fa-phone tu" title="Teléfono"></i>
+                                                            {{ eSolicitud.perfil.persona.telefono }}
+                                                            <a href='https://web.whatsapp.com/send?l=en&phone=+593{{ eSolicitud.perfil.persona.telefono }}&text=Hola {{ eSolicitud.perfil.persona }}'
+                                                               target="_blank" class="btn btn-mini btn-success tu"
+                                                               title="Enviar mensaje por whatsapp">
+                                                                <i class="fa fa-whatsapp"></i>
+                                                            </a>
+                                                        {% endif %}
+                                                    </small><br>
+                                                    <small class="card-text">
+                                                        <i class="fa fa-envelope tu" title="Correo"></i>
+                                                        {% if eSolicitud.perfil.persona.emailinst %}
+                                                            {{ eSolicitud.perfil.persona.emailinst }}
+                                                        {% else %}
+                                                            {{ eSolicitud.perfil.persona.email }}
+                                                        {% endif %}
+                                                    </small><br>
+                                                    {% if eSolicitud.perfil.inscripcion.graduado %}
+                                                        <small class="card-text">
+                                                            <span style="color: #198754!important; font-weight: bold; font-size:12px">Graduado</span>
+                                                        </small>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="text-align: left; vertical-align: middle; padding: 10px">
+                                    <b>Código: </b>{{ eSolicitud.codigo }}<br>
+                                    <b>Fecha/Hora:</b> {{ eSolicitud.fecha|date:"d-m-Y" }} {{ eSolicitud.hora|date:"h:i A" }}<br>
+                                    <b>Servicio:</b> {{ eSolicitud.servicio.nombre }}<br>
+                                    {% if cate.id == 1 or cate.id == 4 or cate.id == 5 %}
+                                        <b>Certificado: </b> {{ eSolicitud.certificado_solicitado.certificacion }}
+                                    {% endif %}
+                                    {% if eSolicitud.servicio.proceso == 8 and eSolicitud.tiene_rubro_pagado %}
+                                        <br>
+                                        {% if eSolicitud.esta_siendo_atendido %}
+                                            <b>Atendido por: </b>
+                                            <span style="color: #198754!important; font-weight: bold; font-size:12px">{{ eSolicitud.secretaria_encargada|title }}</span>
+                                        {% else %}
+                                            <b>Atendido por: </b>
+                                            <span style="color: #dc3545!important; font-weight: bold; font-size:12px">No ha sido atendido</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle; padding: 10px">
+                                    {% if eSolicitud.perfil.es_estudiante %}
+                                        {{ eSolicitud.perfil.inscripcion.carrera.nombre|title }}<br>
+                                        {{ eSolicitud.perfil.inscripcion.matricula_posgrado|title }}
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center; vertical-align: middle">
+                                    {% if eSolicitud.origen_object_id == 58 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                        0.00
+                                    {% elif eSolicitud.origen_object_id == 59 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                        0.00
+                                    {% else %}
+                                        {{ eSolicitud.total|floatformat:2|intcomma }}
+                                    {% endif %}
+                                </td>
+                                {% if cate.id == 6 %}
+                                    <td style="text-align: center; vertical-align: middle">
+                                        {% if eSolicitud.archivo_respuesta %}
+                                            <a class="btn btn-warning btn-mini tu"
+                                               title="Descargar informe técnico de pertinencia"
+                                               target="_blank"
+                                               href="https://sga.unemi.edu.ec/media/{{ eSolicitud.archivo_respuesta }}">
+                                                <i class="fa fa-download"></i></a>
+                                        {% else %}
+                                            <span style="font-size: 12px">N/A</span> |
+                                        {% endif %}
+                                        {% if eSolicitud.archivo_solicitud %}
+                                            <a class="btn btn-info btn-mini tu"
+                                               title="Descargar cronograma de titulación"
+                                               target="_blank"
+                                               href="https://sga.unemi.edu.ec/media/{{ eSolicitud.archivo_solicitud }}">
+                                                <i class="fa fa-download"></i></a>
+                                        {% else %}
+                                            <span style="font-size: 12px">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                {% else %}
+                                    <td style="text-align: center; vertical-align: middle">
+                                        {% if eSolicitud.archivo_respuesta %}
+                                            <a class="btn btn-warning btn-mini tu"
+                                               title="Descargar certificado entregado"
+                                               target="_blank"
+                                               href="https://sga.unemi.edu.ec/media/{{ eSolicitud.archivo_respuesta }}">
+                                                <i class="fa fa-download"></i></a>
+                                        {% else %}
+                                            <span style="font-size: 12px">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                {% endif %}
+                                <td style="text-align: center; vertical-align: middle">
+                                    <span style="{{ eSolicitud.color_estado_display }}">{{ eSolicitud.get_estado_display }}</span>
+                                </td>
+                                <td style="text-align: center; vertical-align: middle">
+                                    {% if cate.id == 6 %}
+                                        {% if eSolicitud.tiene_rubro_ingreso %}
+                                            {% if eSolicitud.tiene_2do_rubro_pagado %}
+                                                <span style="color: #198754!important; font-weight: bold; font-size:12px">Cancelado (2do rubro)</span>
+                                            {% else %}
+                                                <span style="color: #FE9900!important; font-weight: bold; font-size:12px">Pendiente (2do Rubro)</span>
+                                            {% endif %}
+                                        {% elif eSolicitud.tiene_rubro_informe %}
+                                            {% if eSolicitud.tiene_rubro_pagado %}
+                                                <span style="color: #198754!important; font-weight: bold; font-size:12px">Cancelado</span>
+                                            {% else %}
+                                                <span style="color: #FE9900!important; font-weight: bold; font-size:12px">Pendiente de pago</span>
+                                            {% endif %}
+                                        {% elif eSolicitud.estado == 8 %}
+                                            <span style="color: #dc3545!important; font-weight: bold; font-size:12px">Rubro Eliminado</span>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if eSolicitud.tiene_rubro_pagado %}
+                                            <span style="color: #198754!important; font-weight: bold; font-size:12px">Cancelado</span>
+                                        {% elif eSolicitud.estado == 8 %}
+                                            <span style="color: #dc3545!important; font-weight: bold; font-size:12px">Rubro Eliminado</span>
+                                        {% elif eSolicitud.origen_object_id == 58 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                            <span style="color: #3a87ad!important; font-weight: bold; font-size:12px">Estudiante regular</span>
+                                        {% elif eSolicitud.origen_object_id == 59 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                            <span style="color: #3a87ad!important; font-weight: bold; font-size:12px">Estudiante regular</span>
+                                        {% elif eSolicitud.tiene_rubro_pagado %}
+                                            <span style="color: #198754!important; font-weight: bold; font-size:12px">Cancelado</span>
+                                        {% else %}
+                                            <span style="color: #FE9900!important; font-weight: bold; font-size:12px">Pendiente de pago</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                                {% if cate.id == 1 or cate.id == 4 or cate.id == 5 %}
+                                    <td style="text-align: center; vertical-align: middle">
+                                        <div class="dropbottom">
+                                            <a href="javascript:void(0);"
+                                               class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                               data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                               aria-expanded="false">
+                                                <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                            </a>
+                                            <ul class="dropdown-menu" x-placement="right-start">
+                                                <span class="dropdown-header">ACCIONES</span>
+                                                {% if eSolicitud.puede_eliminar %}
+                                                    {% if not eSolicitud.tiene_rubro_pagado and eSolicitud.estado != 2 %}
+                                                        <li class="dropdown-item"><a href='javascript:;'
+                                                                                     onclick="eliminar('{{ eSolicitud.id|encrypt }}', '{{ eSolicitud|upper }}', 'delete')"><span
+                                                                class="fa fa-trash"></span> Eliminar</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if eSolicitud.servicio.proceso != 8 %}
+                                                    {% if perms.secretaria.puede_procesar_certificados %}
+                                                        {% if eSolicitud.tiene_rubro_pagado %}
+                                                            <li class="dropdown-item">
+                                                                <a href="javascript:;"
+                                                                   onclick="procesarCertificado('{{ eSolicitud.id|encrypt }}')"><i
+                                                                        class="fa fa-gear"></i> Procesar</a>
+                                                            </li>
+                                                            {% if eSolicitud.estado == 7 %}
+                                                                <li class="dropdown-item">
+                                                                    <a href="javascript:;"
+                                                                       onclick="limpirhojasCertificado('{{ eSolicitud.id|encrypt }}')"><i
+                                                                            class="fa fa-paint-brush"></i> Limpiar</a>
+                                                                </li>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if eSolicitud.servicio.proceso == 8 and eSolicitud.servicio.categoria.roles == '3' %}
+                                                    <li class="dropdown-item"><a
+                                                            href="https://sga.unemi.edu.ec/media/{{ eSolicitud.archivo_solicitud_fisica }}"
+                                                            target="_blank"><i class="fa fa-download"></i> Descargar
+                                                        Solicitud</a></li>
+                                                {% endif %}
+                                                {% if eSolicitud.servicio.proceso == 8 %}
+                                                    {% if eSolicitud.tiene_rubro_pagado %}
+                                                        <li class="dropdown-item">
+                                                            <a href='javascript:;'
+                                                               onclick="atender('{{ eSolicitud.id|encrypt }}', '{{ eSolicitud.perfil.persona|upper }}', 'marcaratendido', '{{ persona }}')"><span
+                                                                    class="fa fa-pencil"></span> Marcar como
+                                                                atendido</a></li>
+                                                        {% if eSolicitud.estado != 2  and eSolicitud.origen_object_id == 51 %}
+                                                            <li class="dropdown-item">
+                                                                <a href="javascript:;"
+                                                                   onclick="formModal('{{ eSolicitud.id }}','Marcar como entregado','addentrega', false)"><i
+                                                                        class="fa fa-calendar"></i> Marcar como
+                                                                    entregado</a></li>
+                                                        {% endif %}
+                                                        {% if eSolicitud.origen_object_id == 51 or eSolicitud.origen_object_id == 55 or eSolicitud.origen_object_id == 58 or eSolicitud.origen_object_id == 59 %}
+                                                            <li class="dropdown-item">
+                                                                <a href="javascript:;"
+                                                                   onclick="formModal('{{ eSolicitud.id }}','Subir certificado personalizado','subircertificado', false)"><i
+                                                                        class="fa fa-file"></i> Subir
+                                                                    certificado</a></li>
+                                                        {% endif %}
+                                                        {% if eSolicitud.archivo_respuesta %}
+                                                            <li class="dropdown-item">
+                                                                <a href="/media/{{ eSolicitud.archivo_respuesta }}"
+                                                                   target="_blank">
+                                                                    <i class="fa fa-eye"></i> Visualizar certificado</a>
+                                                            </li>
+                                                        {% endif %}
+                                                    {% elif eSolicitud.origen_object_id == 58 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Subir certificado personalizado','subircertificado', false)"><i
+                                                                    class="fa fa-file"></i> Subir
+                                                                certificado</a></li>
+                                                        <li class="dropdown-item">
+                                                            <a href='javascript:;'
+                                                               onclick="atender('{{ eSolicitud.id|encrypt }}', '{{ eSolicitud.perfil.persona|upper }}', 'marcaratendido', '{{ persona }}')"><span
+                                                                    class="fa fa-pencil"></span> Marcar como
+                                                                atendido</a></li>
+                                                    {% elif eSolicitud.origen_object_id == 59 and not eSolicitud.perfil.inscripcion.graduado and not eSolicitud.perfil.inscripcion.egresado and eSolicitud.perfil.inscripcion.estado_gratuidad != 3 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Subir certificado personalizado','subircertificado', false)"><i
+                                                                    class="fa fa-file"></i> Subir
+                                                                certificado</a></li>
+                                                        <li class="dropdown-item">
+                                                            <a href='javascript:;'
+                                                               onclick="atender('{{ eSolicitud.id|encrypt }}', '{{ eSolicitud.perfil.persona|upper }}', 'marcaratendido', '{{ persona }}')"><span
+                                                                    class="fa fa-pencil"></span> Marcar como
+                                                                atendido</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                <li>
+                                                    <a class="dropdown-item" href="javascript:void(0)"
+                                                       onclick="formModalHistorial('','{{ eSolicitud.id|encrypt }}','Proceso de {{ eSolicitud.perfil.inscripcion.persona }}','infoobservacion','modal-lg',false)"><i
+                                                            class="fa fa-comments dropdown-item-icon"></i>Historial
+                                                        de revisión</a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                {% elif cate.id == 6 %}
+                                    <td style="text-align: center; vertical-align: middle">
+                                        <div class="dropbottom">
+                                            <a href="javascript:void(0);"
+                                               class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                               data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                               aria-expanded="false">
+                                                <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                            </a>
+                                            <ul class="dropdown-menu" x-placement="right-start">
+                                                <span class="dropdown-header">ACCIONES</span>
+                                                {% if eSolicitud.puede_eliminar %}
+                                                    <li class="dropdown-item"><a href='javascript:;'
+                                                                                 onclick="eliminar('{{ eSolicitud.id|encrypt }}', '{{ eSolicitud|upper }}', 'delete')"><span
+                                                            class="fa fa-trash"></span> Eliminar</a></li>
+                                                {% endif %}
+                                                {#                                                    <li class="dropdown-item">#}
+                                                {#                                                        <a href='javascript:;'#}
+                                                {#                                                           onclick="infoobservacion('{{ eSolicitud.id }}')">#}
+                                                {#                                                            <i class="fa fa-list"></i> Ver Historial de solicitud#}
+                                                {#                                                        </a>#}
+                                                {#                                                    </li>#}
+                                                <li>
+                                                    <a class="dropdown-item" href="javascript:void(0)"
+                                                       onclick="formModalHistorial('','{{ eSolicitud.id|encrypt }}','Proceso de {{ eSolicitud.perfil.inscripcion.persona }}','infoobservacion','modal-lg',false)"><i
+                                                            class="fa fa-comments dropdown-item-icon"></i>Historial
+                                                        de revisión</a>
+                                                </li>
+                                                {% if es_secretaria %}
+                                                    {% if eSolicitud.tiene_2do_rubro_pagado %}
+                                                        <li class="dropdown-item">
+                                                            <a href="{{ request.path }}?action=vercronogramatitulacion&id={{ eSolicitud.id }}"
+                                                               target="_blank"><i class="fa fa-eye"></i>
+                                                                Ver cronograma de titulación
+                                                            </a>
+                                                        </li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if eSolicitud.tiene_rubro_pagado %}
+                                                    {% if es_coordinador or es_secretaria %}
+                                                        {% if eSolicitud.estado == 10 or eSolicitud.estado == 11 or eSolicitud.estado == 13 or eSolicitud.estado == 17 %}
+                                                            <li class="dropdown-item">
+                                                                <a href="javascript:;"
+                                                                   onclick="formModal('{{ eSolicitud.id }}','Subir informe técnico de pertinencia de {{ eSolicitud.perfil.inscripcion.persona|title }}','subirinformetecnico', false)"><i
+                                                                        class="fa fa-file"></i> Subir informe técnico</a></li>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if es_secretaria %}
+                                                    {% if eSolicitud.estado == 15 or eSolicitud.estado == 18 or eSolicitud.estado == 19 or eSolicitud.estado == 21 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Subir cronograma de titulación de {{ eSolicitud.perfil.inscripcion.persona|title }}','subircronograma', false)"><i
+                                                                    class="fa fa-calendar"></i> Subir cronograma</a></li>
+                                                    {% endif %}
+                                                    {% if eSolicitud.estado == 20 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Notificar cronograma de titulación extraordinaria de {{ eSolicitud.perfil.inscripcion.persona|title }}','notificarcronograma', false)"><i
+                                                                    class="fa fa-calendar"></i> Notificar cronograma</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if es_director %}
+                                                    {% if eSolicitud.estado == 17 or eSolicitud.estado == 12 or eSolicitud.estado == 13 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Aprobar/Rechazar informe técnico de pertinencia','aprobarrechazar', false)"><i
+                                                                    class="fa fa-file"></i> Aprobar/Rechazar informe</a></li>
+                                                    {% endif %}
+                                                    {% if eSolicitud.estado == 18 or eSolicitud.estado == 20 or eSolicitud.estado == 21 %}
+                                                        <li class="dropdown-item">
+                                                            <a href="javascript:;"
+                                                               onclick="formModal('{{ eSolicitud.id }}','Aprobar/Rechazar cronograma de titulación ex.','aprobarrechazarcronograma', false)"><i
+                                                                    class="fa fa-check"></i> Aprobar/Rechazar cronograma</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {% if es_experta %}
+                                                    {% if eSolicitud.estado == 11 or eSolicitud.estado == 12 or eSolicitud.estado == 13 or eSolicitud.estado == 14 or eSolicitud.estado == 17 %}
+                                                    <li class="dropdown-item">
+                                                        <a href="javascript:;"
+                                                           onclick="formModal('{{ eSolicitud.id }}','Aprobar/Rechazar informe técnico de pertinencia','revisarinforme', false)"><i
+                                                                class="fa fa-check"></i> Revisar Informe</a></li>
+                                                    {% endif %}
+                                                    {% if eSolicitud.estado == 19 or eSolicitud.estado == 20 or eSolicitud.estado == 21 or eSolicitud.estado == 18 %}
+                                                    <li class="dropdown-item">
+                                                        <a href="javascript:;"
+                                                           onclick="formModal('{{ eSolicitud.id }}','Aprobar/Rechazar cronograma de titulación ex.','revisarcronograma', false)"><i
+                                                                class="fa fa-check"></i> Revisar Cronograma</a></li>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="11" style="text-align: center"><b>NO EXISTE REGISTROS DE SOLICITUDES</b></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="text-muted fs-6">
+                        {% widthratio eSolicitudes|length 1 page.number as value %}
+                        <caption> Mostrando
+                            {% if not paging.num_pages == page.number %}{{ value }}{% else %}{% if paging.num_pages == 1 %}
+                                {{ eSolicitudes|length }}{% else %}{% with len=eSolicitudes|length %}
+                                    {% widthratio 10 1 page.number|add:"-1" as val %}{{ val|add:len }}{% endwith %}
+                            {% endif %}{% endif %} de {{ eTotal }}</caption>
+
+                    </div>
+                </div>
+                <div class="card-footer border-top-0">
+                    {% include 'paginacionb4.html' %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel1" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> DETALLES DE OBSERVACIÓN DE SOLICITUD FÍSICA<b id="titlemodal1"></b>
+                    </h4>
+                </div>
+                <div class="modal-body">
+                    <div class="row-fluid panelbody1">
+
+                    </div>
+                </div>
+                <div class="modal-footer" id="footermodalhistorial">
+                    <a href="javascript:;" class="btn btn-warning uk-width-1-4 transition-3d-hover"
+                       data-bs-dismiss="modal">
+                        <i class="fa fa-window-close"></i> Cerrar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelhistory" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" id="wmodal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close cerrar" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5%;">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodalhistory">
+                    <button type="button" class="btn btn-default cerrar" data-bs-dismiss="modal"><i
+                            class="fa fa-times"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanelreport" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">Reporte de seguimiento</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                            <fieldset id="fieldset_id_carrera2" class="col-lg-12">
+                                <label class="control-label" for="id_carrera2"><b>Carreras:<span
+                                        class="text-danger">*</span>:</b></label>
+                                <select name="carrera2" class="form-control select2-hidden-accessible"
+                                        id="id_carrera2" multiple="" tabindex="-1" aria-hidden="true"
+                                        style="width: 100%">
+                                </select>
+                            </fieldset>
+                            <fieldset id="fieldset_id_fecha_desde" class="col-lg-6">
+                                <label class="control-label" for="id_fecha_desde"><b>Fecha desde:</b></label>
+                                <input id="id_fecha_desde" type="date" value="" class="form-control">
+                                <p class="help-text"></p>
+                            </fieldset>
+                            <fieldset id="fieldset_id_fecha_hasta" class="col-lg-6">
+                                <label class="control-label" for="id_fecha_hasta"><b>Fecha hasta:</b></label>
+                                <input id="id_fecha_hasta" type="date" value="" class="form-control">
+                                <p class="help-text"></p>
+                            </fieldset>
+                            <fieldset id="fieldset_id_estado1" class="col-lg-12">
+                                <label class="control-label" for="id_estado1"><b>Estados:<span
+                                        class="text-danger">*</span>:</b></label>
+                                <select name="estado1" class="form-control select2-hidden-accessible"
+                                        id="id_estado1" style="width: 100%">
+                                </select>
+                            </fieldset>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <div class="row-fluid mt-3">
+                        <div style="text-align: right; float: left; width: 100%">
+                            <a href="javascript:void(0)" class="btn btn-success "
+                               id="descargar_reporte_seguimiento"><i class="fa fa-plus"></i> Descargar</a>
+                            <a href="javascript:;" class="btn btn-danger" data-bs-dismiss="modal"><i
+                                    class="fa fa-times-circle"></i> Cancelar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+ 
+{% endblock %}

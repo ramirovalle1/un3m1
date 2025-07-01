@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        .dataTables_wrapper .dataTables_filter {
+            display: none;
+        }
+        table.table thead th, table.table thead td {
+            vertical-align: middle;
+            text-transform: uppercase;
+            text-align: center;
+            padding:2px;
+        }
+
+        table.table tbody th, table.table tbody td {
+            vertical-align: middle;
+            padding:2px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function () {
+
+            $(".fancybox").fancybox();
+
+            $(".esobligatorio").click(function () {
+                actualizaCheckboxes('changeesobligatorio', $(this));
+                return false;
+            });
+            actualizaCheckboxes = function (accion, obj) {
+                var idreq = obj.attr('idreq');
+                $.blockUI({message: null});
+                $.post("/adm_postulacion", {'action': accion, 'idreq': idreq}, function (data) {
+                    $.unblockUI();
+                    if (data.result == 'ok') {
+                        if (data.valor) {
+                            obj.html('<i class="fa fa-check" style="color: green"></i>');
+                        } else {
+                            obj.html('<i class="fa fa-remove" style="color: red"></i>');
+                        }
+                    }
+                }, "json");
+                valores_check = null;
+            };
+            $("#itemspanel .btn-cerrar").click(function () {
+                $("#itemspanel").modal("hide");
+                location.reload();
+                return false;
+            });
+            $(".adicionar").click(function () {
+                var idc = $(this).attr('idc');
+                $.post("/adm_postulacion", {"action": "listarequisitoconvocatoria", "id": idc}, function (data) {
+                    if (data.result == "ok") {
+                        $(".paneltitle").html(data.title);
+                        $(".panelbody").html(data.data);
+                        $("#itemspanel").modal({backdrop: 'static', width: '1200px'}).modal('show');
+                    } else {
+                        $.unblockUI();
+                        smoke.alert(data.mensaje);
+                    }
+                }, "json");
+            })
+            $("#cancel_importarcioncancela").click(function () {
+                $('#modalnotoficacionimportar').modal('hide');
+            });
+            $("#boton_notoficacionimportar").click(function () {
+                var idconvo = {{ convocatoria.id }};
+                var lista = "";
+                $(".recorreparticipantes").each(function (index) {
+                    if ($(this).is(":checked")) {
+                        var seleccion = $(this).attr('idpar');
+                        lista += seleccion + ",";
+                    }
+                });
+                if (lista.length == 0) {
+                    smoke.alert('Favor seleccione requisitos');
+                    return false;
+                }
+                lista = lista.substring(0, lista.length - 1);
+                var id = idconvo;
+                bloqueointerface();
+                $.ajax({
+                    type: "POST",
+                    url: "/adm_postulacion",
+                    data: {'action': 'importarrequisitosconvocatoria', 'lista': lista, 'idconvocatoria': id},
+                    success: function (data) {
+                        if (data.result == 'ok') {
+                            $('#modalnotoficacionimportar').modal('hide');
+                            location.reload();
+                        } else {
+                            $.unblockUI();
+                            smoke.alert(data.mensaje);
+                        }
+                    },
+                    error: function () {
+                        $.unblockUI();
+                        smoke.alert("Error al obtener los datos");
+                    },
+                    dataType: "json"
+                });
+            });
+        });
+
+        function verlistadorequisitosconvocatoria(idconvocatoria) {
+            bloqueointerface();
+            $.get("/adm_postulacion", {
+                'action': 'verlistadorequisitosconvocatoria',
+                'idconvocatoria': idconvocatoria
+            }, function (data) {
+                if (data.results) {
+                    $("#modalnotoficacionimportar").modal({backdrop: 'static', width: '950px'}).modal('show');
+                    debugger;
+                    for (elemento in data.listarequisitoconvocatoria) {
+                        $("#contenidoparticipantes").append('<tr>' +
+                            '<td style="text-align: center;" class="idtema" width="5%"><input type="checkbox" class="recorreparticipantes" idpar="' + data.listarequisitoconvocatoria[elemento][0] + '"> </td>' +
+                            '<td style="text-align:left;" width="95%">' + data.listarequisitoconvocatoria[elemento][1] + '<br><span class="label label-info">' + data.listarequisitoconvocatoria[elemento][2] + '</span></td></tr>');
+                    }
+                    $.unblockUI();
+                    $("#example").dataTable().fnDestroy();
+                    $(document).ready(function () {
+                        var h = $(window).height() - 332;
+                        var tabla_paginada2 = $('#example').DataTable({
+                            sPaginationType: "full_numbers",
+                            responsive: false,
+                            ordering: false,
+                            paging: false,
+                            searching: true,
+                            language: {
+                                "url": "/static/bootstrap5/libs/datatables.net-bs5/js/es-ES.json"
+                            },
+                            bInfo: false,
+                            dom: 'Bfrtip',
+                            buttons: ['excel'],
+                            columnDefs:[
+                                {
+                                    targets: 0,
+                                    width:'20%',
+                                    className:'text-center',
+                                },
+                                {
+                                    targets: 1,
+                                    width:'80%',
+                                    className:'text-left ps-4',
+                                }
+                            ],
+                            scrollY: h,
+                            drawCallback: function (settings) {
+                                var api = this.api();
+                                var rows = api.rows({page: 'current'}).nodes();
+                                var last = null;
+                            }
+                        });
+
+                        $("#search-modal").keyup(function () {
+                           tabla_paginada2.search($(this).val().trim()).draw();
+                       });
+                    });
+                }
+            }, 'json');
+        }
+
+        function formModal(id, text, action, footer = false) {
+            bloqueointerface();
+            footer && $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true || data.result === 'ok') {
+                        if (data.data) {
+                            $('#itemspanel .panelbody').html(data.data);
+                            $('#itemspanel .paneltitle').html(text.toUpperCase());
+                            $("#itemspanel").modal({
+                                backdrop: 'static',
+                                width: '90%'
+                            }).modal('show').on('hidden.bs.modal', function (e) {
+                                $(".panelbody").empty();
+                            });
+                        } else {
+                            location.reload();
+                        }
+                    } else {
+                        mensajeDanger(data.message + ' ' + data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    mensajeDanger("Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+    </script>
+{% endblock %}
+{% block atras %}/adm_postulacion?action=listadoconvocatorias&idm={{ idmalla|encrypt }}&idc={{ convocatoria.carrera.id|encrypt }}&idp={{ convocatoria.periodo.id|encrypt }}{% endblock %}
+{% block canvas %}
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fa fa-list"></i> <b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="close btn-icon btn btn-ghost btn-sm rounded-circle"
+                            data-bs-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="formulariomodal" class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody"></div>
+                    </form>
+                </div>
+                <div class="modal-footer" id="footermodal" style="display:none;">
+                    <div style="float: right">
+                        <button type="button" class="btn btn-default" data-dismiss="modal"><i
+                                class="fa fa-window-close"></i> Cerrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class='row'>
+        <div class='col-lg-12 ps-2'>
+            <div class="headtitle border-4 font-monospace">
+                <h3 class="texto-blue pt-0">{{ title|lower|capfirst }}</h3>
+                <h6 style="color:black;padding-bottom: 3px;">
+                    CONVOCATORIA: {{ convocatoria.nombre|default:"" }}<br>
+                    ASIGNATURA: {{ convocatoria.asignaturamalla.asignatura.nombre|default:"" }}
+                </h6>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-12 col-md-12 col-12">
+        <div class="d-md-flex align-items-center">
+            <a href='#' class='btn btn-success' onclick="verlistadorequisitosconvocatoria('{{ convocatoria.id|encrypt }}')"><span class="fa fa-list"></span>&nbsp;Importar requisitos</a>
+        </div>
+    </div>
+    <form method="GET">
+        <div class="row mt-3">
+            <div class="col-md-12 col-sm-12">
+                <div class="input-group">
+                    <input type="hidden" value="{{ action }}" name="action">
+                    <input type="hidden" value="{{ convocatoria.id|encrypt }}" name="id">
+                    <input type="hidden" value="{{ idmalla|encrypt }}" name="idmalla">
+                    <input type="text" class="form-control" placeholder="Buscar por nombre del requisito..." aria-label="Buscar" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                    <div class="input-group-append">
+                        <button class="btn btn-primary" type="submit" id="button-addon2"><i class="fa fa-search"></i></button>
+                        {% if s %}
+                            <a title="Ver todo" href="/adm_postulacion?action=listarequisitosconvocatoria&id={{ convocatoria.id|encrypt }}&idmalla={{ idmalla|encrypt }}" class="btn btn-default tr cleartext"><i class="fas fa-sync-alt"></i></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    <div id="no-more-tables">
+        <div class='row'>
+            <div class='col-12'>
+                <div class="card mb-4">
+                    <div class="card-body border-top border-4 rounded-3 border-dark-info">
+                        <table class='table table-sm thead-light table-bordered fw-lighter'>
+                            <thead>
+                                <tr>
+                                    <th style="width: 400px;">Requisito</th>
+                                    <th style="width: 400px;">Observación</th>
+                                    <th style="width: 50px;">Archivo</th>
+                                    <th style="width: 50px;">Activo</th>
+                                    <th style="width: 50px;">Obligatorio</th>
+                                    <th style="width: 50px;">Acciones</th>
+                                </tr>
+                            </thead>
+                        <tbody>
+                        {% for requisitoconvocatoria in listarequisitosconvocatoria %}
+                            <tr>
+                                <td>{{ requisitoconvocatoria.requisito.nombre|default_if_none:"" }}</td>
+                                <td data-title='Observación'>{{ requisitoconvocatoria.requisito.observacion|default_if_none:""|safe }}</td>
+                                <td style="text-align: center;" data-title='Archivo'>
+                                    {% if requisitoconvocatoria.requisito.archivo %}
+                                        <a data-fancybox-type="iframe" href="https://sga.unemi.edu.ec{{ requisitoconvocatoria.requisito.archivo.url }}" class="btn-icon btn btn-ghost btn-sm rounded-circle fancybox">
+                                            <i class="fa fa-download fs-6"></i>
+                                        </a>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: center;" data-title='Activo'>
+                                    <i class="fa{% if requisitoconvocatoria.requisito.activo %} fa-check text-success{% else %} fa-close{% endif %}"></i>
+                                </td>
+                                <td style="text-align: center;" data-title='Obligatorio'>
+                                    <a href="javascript:;"
+                                       {% if perms.sga.puede_permisos_admisionposgrado %}{% if cohorte.procesoabierto %}class="esobligatorio"{% endif %}{% endif %} idreq="{{ requisitoconvocatoria.id }}">
+                                        {% if not requisitoconvocatoria.opcional %}
+                                            <i class="fa fa-check" style="color: green"></i>
+                                        {% else %}
+                                            <i class="fa fa-remove" style="color: red"></i>
+                                        {% endif %}
+                                    </a>
+                                </td>
+                                <td style="text-align: center">
+                                    <div class="dropdown">
+                                        <a href="javascript:void(0);" class="btn-icon btn btn-ghost btn-sm rounded-circle" data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true" aria-expanded="false">
+                                            <i class="fa fa-ellipsis-v fs-6"></i>
+                                        </a>
+                                        <ul class="dropdown-menu" x-placement="right-start">
+                                            <li><a class="dropdown-item" href="javascript:;" onclick="eliminarajax('{{ requisitoconvocatoria.id }}', '{{ forloop.counter }} {{ requisitoconvocatoria.requisito.nombre }}', 'eliminarequisitoconvocatoria')"><i class="fa fa-minus"></i>&nbsp;Eliminar</a></li>
+                                            <li><a class="dropdown-item" href="javascript:;" onclick="formModal('{{ requisitoconvocatoria.id|encrypt }}', '{{ forloop.counter }} {{ requisitoconvocatoria.requisito.nombre }}', 'editopcional')"><i class="fa fa-edit"></i>&nbsp; Actualizar opcional</a></li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td style="text-align: center;font-size: 11px" colspan="12">NO EXISTEN DATOS</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    <div class="card-footer border-top-0">
+                        {% include 'paginacionb4.html' %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal fade static" id="itemspanel" style="display: none;">
+            <div class="modal-body panelbody">
+                <div class="modal-header">
+                    <h3 class="paneltitle"></h3>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <table class="pull-right">
+                    <tr>
+                        <td><a href="javascript:;" class="btn btn-cerrar btn-info">Cerrar</a></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="modal fade static" id="modalnotoficacionimportar" style="display: none;">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 id="paneltitle">Listado de requisitos</h4>
+                </div>
+                <div class="modal-body" style="overflow-y: scroll;">
+                    <form method="GET">
+                        <div class="row mt-3">
+                            <div class="col-md-12 col-sm-12">
+                                <div class="input-group mb-2">
+                                    <input id="search-modal" type="text" class="form-control" placeholder="Buscar..." aria-label="Buscar" aria-describedby="button-addon2" name="s" value="{{ s }}">
+                                    <div class="input-group-append">
+                                        <button class="btn btn-primary" type="submit" id="button-addon2"><i class="fa fa-search"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    <table class='table table-bordered' id="example">
+                        <thead>
+                        <tr>
+                            <th style="text-align: left">
+                                Requisitos
+                            </th>
+                            <th style="text-align: left">
+                                {{ convocatoria.asignaturamalla.asignatura.nombre }}
+                            </th>
+                        </tr>
+                        </thead>
+                        <tbody id="contenidoparticipantes">
+                        </tbody>
+                    </table>
+                    <input type="hidden" id="idgrupoexa" name="idgrupoexa">
+                </div>
+                <div class="modal-footer">
+                    <p style="text-align: right; margin-bottom: 0">
+                        <a href="javascript:;" id="boton_notoficacionimportar" class='btn btn-success'> Importar</a>
+                        <a href="javascript:;" id="cancel_importarcioncancela" class='btn btn-danger'> Cancelar</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+{% endblock %}
+
+
+
+

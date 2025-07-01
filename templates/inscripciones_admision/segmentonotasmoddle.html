@@ -1,0 +1,269 @@
+{% load sga_extras %}
+<script type="text/javascript">
+    $(document).ready(function() {
+
+        $(".cerrarmateria").on('click', function () {
+                var id = $(this).attr('mid');
+                Swal.fire({
+                    title: 'Esta seguro!',
+                    text: "¿Esta seguro que desea cerrar esta materia?",
+                    width: '30%',
+                    type: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#d33',
+                    confirmButtonText: 'Si, estoy seguro!',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.value) {
+                        bloqueointerface();
+                        $.ajax({
+                            type: "POST",
+                            url: "{{ request.path }}",
+                            data: {
+                                'action': 'cerrarmateria',
+                                "id": id
+                            },
+                            error: function () {
+                                $.unblockUI();
+                                smoke.alert("Error al enviar los datos.");
+                            },
+                            success: function (data) {
+                                $.unblockUI();
+                                console.log(data);
+                                if (data.result === "ok") {
+                                    NotificationJG.success('Materia cerrada correctamente  <i class="fa fa-check-circle"></i>');
+                                    setTimeout(function () {
+                                        window.location.replace('/inscripciones_admision?action=notasmoodle')
+                                    }, 2000);
+                                } else {
+                                    smoke.alert(data.mensaje);
+                                }
+                            }
+                        });
+                    }
+                })
+
+            });
+        $('.reportegenerico').click(function () {
+            bloqueointerface();
+            let data_report = $(this).data('reporte');
+            $.get(data_report.url,data_report).done(function (data) {
+                if(data.result==='ok'){
+                    window.open(data.reportfile, '_blank');
+                    $.unblockUI()
+                }else{
+                    NotificationJG.error(data.mensaje)
+                    $.unblockUI()
+                }
+            }).fail(function (error) {
+                NotificationJG.error(error)
+                $.unblockUI()
+            })
+        });
+    });
+</script>
+<tr>
+    <td>
+        {% if materia.cerrado %}
+            <div class="alert alert-error">
+                ASIGNATURA CERRADA EL {{ materia.fechacierre|date:'d-m-Y' }}
+            </div>
+        {% endif %}
+    {% if materia.asignados_a_esta_materia.exists %}
+        <table class='table table-bordered table-striped'>
+            <tr>
+                <td>
+                    {% if materia.cerrado %}
+                        {% if reporte_0 %}
+                            <a href="javascript:;"
+                               data-reporte='{"url":"{{ request.path }}","tipos":"{{ reporte_0.tiporeporte }}","action":"reporte_acta_calificacionesnotas","reporte":{{ reporte_0.pk }},"materia":{{ materia.id }}}'
+                               class="btn reportegenerico btn-warning"><i class="fa fa-print"></i> Acta de Notas</a>
+                        {% endif %}
+                    {% else %}
+                        {% if reporte_2 %}
+                            <a href="javascript:;"
+                               data-reporte='{"url":"{{ request.path }}","tipos":"{{ reporte_2.tiporeporte }}","action":"reporte_acta_calificacionesnotas","reporte":{{ reporte_2.pk }},"materia":{{ materia.id }}}'
+                               class="btn reportegenerico btn-warning"><i class="fa fa-print"></i> Acta de Notas Parcial</a>
+
+                        {% endif %}
+                        {% if reporte_1 %}
+                            <a href="javascript:;" tipos="{{ reporte_1.tiporeporte }}"
+                               nhref="/reportes?action=run&n={{ reporte_1.nombre }}&materia={{ materia.id }}"
+                               class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Modelo Acta de
+                                Notas</a>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if periodo.periodo_academia %}
+                        {% if periodo.periodo_academia.cierra_materia %}
+                            <a href="javascript:;" mid='{{ materia.id|encrypt }}' class="btn btn-danger cerrarmateria"><i class="fa fa-power-off"></i> Cerrar Materia</a>
+                        {% else %}
+                            <label class="label label-info" style="font-size: 12px;">No se permite cerrar materia en este periodo.</label>
+                        {% endif %}
+                    {% elif not materia.cerrado %}
+                        <a href="javascript:;" mid='{{ materia.id|encrypt }}' class="btn btn-danger cerrarmateria"><i class="fa fa-power-off"></i> Cerrar Materia</a>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    {% endif %}
+        {% if not materia.cerrado %}
+{#            <a href="javascript:;" mid='{{ materia.id|encrypt }}' class="btn btn-danger" onclick="actualizar_lista();"><i#}
+{#                    class="fa fa-power-off"></i> Cerrar Materia</a><br><br>#}
+            <table class='table table-bordered table-striped'>
+                <thead>
+                <tr>
+                    <th>Estudiantes</th>
+                    <th style="text-align: center;">Foto</th>
+{#                    <th style="text-align: center;width: 50px;">Auditoria</th>#}
+
+                    <!-- GENERICO -->
+                    {% include "calificaciones/generico/encabezado.html" %}
+
+                    <th style="text-align: center; width: 50px;">Nota Final</th>
+                    <th style="text-align: center; width: 50px;">Asist.</th>
+                    <th style="text-align: center; width: 100px;">Estado</th>
+                </tr>
+
+                </thead>
+                <tbody>
+                    {% for asignadomateria in materia.asignados_a_esta_materia %}
+                        <tr id='materiaasignadarow{{ asignadomateria.id }}'>
+                            <td>
+                                {{ asignadomateria.matricula.inscripcion }}<br/>
+                                {% if asignadomateria.valida_pararecord %}
+                                    <span class='label label-info tu' title="Pasa al record">VALIDA</span>
+                                {% else %}
+                                    <span class='label label-important tu' title="No pasa al record">NO VALIDA</span>
+                                {% endif %}
+                                {% if asignadomateria.matricula.inscripcion.persona.tiene_deuda_vencida %}
+                                    <span class='label label-important'>DEUDA: ${{ asignadomateria.matricula.inscripcion.adeuda_a_la_fecha|floatformat:2 }}</span>
+                                {% endif %}
+                                {% if asignadomateria.homologada or asignadomateria.convalidada %}
+                                    <span class='label label-warning'>HOMOLOGADA</span>
+                                {% endif %}
+                                {% if asignadomateria.retirado %}
+                                    <span class='label label-important'>RETIRADO</span>
+                                {% endif %}
+                                {% if asignadomateria.matriculas == 3 %}
+                                    <span class='label label-warning'>TERCERA MATRICULA</span>
+                                {% endif %}
+                                {% if asignadomateria.matriculas == 4 %}
+                                    <span class='label label-warning'>CUARTA MATRICULA</span>
+                                {% endif %}
+
+                                {% if asignadomateria.matricula.inscripcion.persona.ppl %}
+                                    <br><a class="btn btn-warning btn-mini verdetalleppl" idmat="{{ asignadomateria.matricula.id|encrypt }}" href="javascript:;">
+                                    <i class="fa fa-user"></i> PPL
+                                </a>
+                                {% endif %}
+
+                            </td>
+
+                            <td style="text-align: center;">
+                                {% if asignadomateria.matricula.inscripcion.persona.tiene_foto %}
+                                    <a title="{{ asignadomateria.matricula.inscripcion.persona.nombre_completo }}"
+                                       href='{{ asignadomateria.matricula.inscripcion.persona.foto.foto.url }}'
+                                       class="fancybox" rel="group"><img
+                                            src="{{ asignadomateria.matricula.inscripcion.persona.foto.foto.url }}"
+                                            width="30px"></a>
+                                    {#                          <a href="{{ asignadomateria.matricula.inscripcion.persona.foto.foto.url }}" class="fancybox"><i class="fa fa-camera"></i></a>#}
+                                {% endif %}
+                            </td>
+
+                            {#                        <td style="text-align: center"><a mid="{{ asignadomateria.id|encrypt }}" class="tl viewhtml"#}
+                            {#                                                          title="Auditoria de calificación"><img width="16"#}
+                            {#                                                                                                 src="/static/images/16/log.png"></a>#}
+                            {#                        </td>#}
+
+                            <!-- GENERICA -->
+                            {#                        {% load sga_extras %}#}
+                            {% with adeuda=asignadomateria.matricula.inscripcion.persona.tiene_deuda %}
+                                {% for campo in materia.modeloevaluativo.campos %}
+                                    {% with valor=asignadomateria|args:campo.nombre|call:"valor_nombre_campo" permite=campo|args:asignadomateria|args:cronograma|call:'permite_ingreso_nota' %}
+                                        {% if campo.dependiente %}
+                                            <td style="text-align: center;vertical-align: middle;font-size: 11px;" id="materiaasignada{{ asignadomateria.id }}{{ campo.htmlid }}">{{ valor|floatformat:campo.decimales }}</td>
+                                        {% else %}
+                                            <td style="text-align: center; vertical-align: middle; padding: 8px 1px;">
+                                                {#                    <input style="font-size: 11px; margin: 0; width: 39px; padding: 4px 0;" {% if campo.nombre.0 == 'N' and bandera %} disabled="disabled" {% endif %} {% if not auditor %}{% if not permite %} disabled="disabled" {% endif %}{% if not asignadomateria.valida_pararecord or asignadomateria.homologada or asignadomateria.convalidada %} disabled="disabled" {% endif %}{% if asignadomateria.cerrado  %} disabled="disabled" {% endif %}{% endif %} type="text" class="nota input-mini {% if permite %}campoactivo{% endif %}" value="{{ valor }}" maid='{{ asignadomateria.id }}' name='{{ asignadomateria.id }}' sel='{% if permite or auditor %}{{ campo.nombre }}{% else %}campo{% endif %}'/>#}
+                                                {#                                            <input decimales="{{ campo.decimales }}" notaminima="{{ campo.notaminima }}" notamaxima="{{ campo.notamaxima }}" style="font-size: 11px; margin: 0; width: 39px; padding: 4px 0;"#}
+                                                {#                                                   disabled="disabled" type="text" class="nota input-mini" value="#}
+                                                {{ valor }}
+                                                {#                                            " maid='{{ asignadomateria.id }}'#}
+                                                {#                                                   {% if campo.nombre == "MEJO" or campo.nombre == "SUSP" %}id="{{ campo.nombre }}{{ asignadomateria.id }}"{% endif %} name='{{ asignadomateria.id }}' sel2="{{ campo.nombre }}" sel='{% if permite or auditor %}{{ campo.nombre }}{% else %}campo{% endif %}' {% if campo.nombre|extraer:2 == 'RE' or campo.nombre|extraer:3 == 'SUS' %}  {% endif %}/>#}
+                                            </td>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endfor %}
+                            {% endwith %}
+                            <td style="text-align: center; vertical-align: middle;" id="materiaasignada{{ asignadomateria.id }}">{{ asignadomateria.notafinal|floatformat:"0" }}</td>
+
+                            <!-- DATOS ADICIONALES -->
+
+                            <!-- GENERICA -->
+                            <td style="text-align: center;vertical-align: middle;">
+                                {% if not asignadomateria.porciento_requerido %}
+                                    <span style="color: #ff0000;"><b>{{ asignadomateria.asistenciafinal|floatformat:0 }}%</b></span>
+                                {% else %}
+                                    <span style="color:#006400;"><b>{{ asignadomateria.asistenciafinal|floatformat:0 }}%</b></span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center;vertical-align: middle;">
+                                {% if asignadomateria.aprobada %}
+                                    <span id='maestado{{ asignadomateria.id }}' style="color: #006400;"><b>{{ asignadomateria.estado }}</b></span>{% endif %}
+                                {% if asignadomateria.reprobado %}
+                                    <span id='maestado{{ asignadomateria.id }}' style="color: #dc143c;"><b>{{ asignadomateria.estado }} </b></span>
+                                {% endif %}
+                                {% if asignadomateria.encurso %}
+                                    <span id='maestado{{ asignadomateria.id }}'>{{ asignadomateria.estado }}</span>
+                                {% endif %}
+                                {% if asignadomateria.recuperacion %}
+                                    <span id='maestado{{ asignadomateria.id }}' style="color: #daa520;"><b>{{ asignadomateria.estado }} </b></span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    {% if not materia.cerrado and materia.asignados_a_esta_materia.exists %}
+        <table class='table table-bordered table-striped'>
+            <tr>
+                <td>
+                    {% if materia.cerrado %}
+                        {% if reporte_0 %}
+                            <a href="javascript:;"
+                               data-reporte='{"url":"{{ request.path }}","tipos":"{{ reporte_0.tiporeporte }}","action":"reporte_acta_calificacionesnotas","reporte":{{ reporte_0.pk }},"materia":{{ materia.id }}}'
+                               class="btn reportegenerico btn-warning"><i class="fa fa-print"></i> Acta de Notas</a>
+                        {% endif %}
+                    {% else %}
+                        {% if reporte_2 %}
+                            <a href="javascript:;"
+                               data-reporte='{"url":"{{ request.path }}","tipos":"{{ reporte_2.tiporeporte }}","action":"reporte_acta_calificacionesnotas","reporte":{{ reporte_2.pk }},"materia":{{ materia.id }}}'
+                               class="btn reportegenerico btn-warning"><i class="fa fa-print"></i> Acta de Notas Parcial</a>
+
+                        {% endif %}
+                        {% if reporte_1 %}
+                            <a href="javascript:;" tipos="{{ reporte_1.tiporeporte }}"
+                               nhref="/reportes?action=run&n={{ reporte_1.nombre }}&materia={{ materia.id }}"
+                               class="btn reportedirecto btn-warning"><i class="fa fa-print"></i> Modelo Acta de
+                                Notas</a>
+                        {% endif %}
+                    {% endif %}
+
+                                {%  if periodo.periodo_academia %}
+                                    {% if periodo.periodo_academia.cierra_materia  %}
+                                        <a href="javascript:;" mid='{{ materia.id|encrypt }}' class="btn btn-danger cerrarmateria"><i class="fa fa-power-off"></i> Cerrar Materia</a>
+                                    {% else %}
+                                        <label class="label label-info" style="font-size: 12px;">No se permite cerrar materia en este periodo.</label>
+                                    {% endif %}
+                                {% elif not materia.cerrado %}
+                                    <a href="javascript:;" mid='{{ materia.id|encrypt }}' class="btn btn-danger cerrarmateria"><i class="fa fa-power-off"></i> Cerrar Materia</a>
+                                {% endif %}
+                </td>
+            </tr>
+        </table>
+    {% endif %}
+    </td>
+</tr>

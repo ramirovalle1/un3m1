@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load sga_extras %}
+{% block heading %}
+    <link href="/static/css/table-responsive.css?1.0.0" type="text/css" rel="stylesheet"/>
+    <script type="text/javascript" src="/static/js/jquery.fancybox.pack.js?v=1.0.0"></script>
+    <link rel="stylesheet" href="/static/css/jquery.fancybox.css?v=1.0.0" type="text/css" media="screen"/>
+    <style>
+        table.table thead th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        table.table thead td {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        table.table tbody td {
+            padding: 4px;
+            background-color: #fff;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        table.table tbody th {
+            padding: 4px;
+            border-bottom: 0;
+            background-color: #fff;
+            vertical-align: middle;
+        }
+
+        table.table tbody tr {
+            cursor: pointer;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+        }
+
+        .select2-selection__rendered {
+            font-size: 11px;
+        }
+
+    </style>
+    <script src="/static/adicionalesjs/formquestion.js?0.24"></script>
+    <script type="text/javascript">
+        busqueda = function () {
+            //debugger;
+            var term = $("#searchinput").val().trim().toUpperCase();
+            if (term.length > 0) {
+                bloqueointerface();
+                location.href = "/comercial?action=configurarfinanciamientocohorte&idinscripcioncohorte={{ inscripcion.id }}" + "&idcohorte={{ cohorte.id }}"+ "&idcontrato={{ contratop.id }}" + "&s=" + term
+            } else {
+                location.href = "/comercial?action=configurarfinanciamientocohorte&idinscripcioncohorte={{ inscripcion.id }}" + "&idcohorte={{ cohorte.id }}"+ "&idcontrato={{ contratop.id }}"
+            }
+            return false;
+        };
+
+        function formModal(id, text, action, footer = true) {
+            bloqueointerface();
+            $('#itemspanel .paneltitle').html('');
+            $('.panelbody').html('');
+            $('#footermodal').show();
+            $.ajax({
+                type: "GET",
+                url: `{{ request.path }}`,
+                data: {
+                    'action': action,
+                    'id': id,
+                    'idc': '{{ inscripcion.cohortes.id }}'
+                },
+                success: function (data) {
+                    $.unblockUI();
+                    if (data.result === true) {
+                        if (footer === true) {
+                            $('#footermodal').hide();
+                        }
+                        $('.panelbody').html(data.data);
+                        $('#itemspanel .paneltitle').html(text.toUpperCase());
+                        $("#itemspanel").modal({backdrop: 'static', width: '900px'}).modal('show');
+                    } else {
+                        //mensajeDanger(data.message);
+                        mensajeErrorSwal("", data.mensaje);
+                    }
+                },
+                error: function () {
+                    $.unblockUI();
+                    //mensajeDanger("Error de conexión.");
+                    mensajeErrorSwal("", "Error de conexión.");
+                },
+                dataType: "json"
+            });
+        }
+
+        function eliminar(pk, nombre, accion) {
+            Swal.fire({
+                title: `<h4>Estás por eliminar este registro:\n ${nombre}</h4>`,
+                text: "Esta acción es irreversible",
+                type: 'warning',
+                showCancelButton: true,
+                allowOutsideClick: false,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Si, deseo hacerlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.value) {
+                    bloqueointerface();
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ reques.path }}',
+                        async: false,
+                        data: {
+                            csrfmiddlewaretoken: '{{ csrf_token }}',
+                            action: accion,
+                            id: pk,
+                        },
+                        dataType: "json",
+                        beforeSend: function () {
+                            bloqueointerface();
+                        }
+                    }).done(function (data) {
+                        setTimeout($.unblockUI, 1);
+                        if (data.result == 'ok') {
+
+                            let timerInterval
+                            Swal.fire({
+                                title: '',
+                                html: '<b>Eliminando...</b>',
+                                timer: 2000,
+                                timerProgressBar: true,
+                                didOpen: () => {
+                                    Swal.showLoading()
+                                    const b = Swal.getHtmlContainer().querySelector('b')
+                                    timerInterval = setInterval(() => {
+                                        b.textContent = Swal.getTimerLeft()
+                                    }, 100)
+                                },
+                                willClose: () => {
+                                    clearInterval(timerInterval)
+                                }
+                            }).then((result) => {
+                                /* Read more about handling dismissals below */
+                                if (result.dismiss === Swal.DismissReason.timer) {
+                                    console.log('I was closed by the timer')
+                                }
+                            })
+                            location.reload();
+                        }else{
+                            alertaDanger(data.mensaje, 10000);
+                        }
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        setTimeout($.unblockUI, 1);
+                        alertaDanger('Error en el servidor', 'Advertencia!', 10000);
+                    }).always(function () {
+                    });
+                } else {
+                }
+            });
+        }
+
+        $(function (e) {
+            $("#search").click(function () {
+                busqueda();
+            });
+
+            $('#searchinput').keyup(function (e) {
+                if (e.keyCode == 13) {
+                    busqueda();
+                }
+            });
+
+
+            $('.refreshbutton').click(function (e) {
+                bloqueointerface();
+                //let producto = $('#id_servicio').val();
+                //let href = parseInt(producto) ? '?p=' + producto : '';
+                location.href = "/adm_secretaria?action=verformatoscertificados&id=" + '{{ id }}';
+            });
+        });
+
+    </script>
+{% endblock %}
+{% block atras %}/comercial?action=existerubroajutar&idinscripcioncohote={{ inscripcion.id }}&idcontrato={{ contratop.id }}{% endblock %}
+{% block canvas %}
+    <div class='row'>
+        <div class='col-lg-12'>
+            <div class="headtitle">
+                <h3 class="texto-blue">{{ title }} </h3>
+                <h6>{{ cohorte|title }}</h6>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+
+        <div class="card mb-4">
+            <div class="card-header border-bottom-0">
+                <div class="col-lg-12 col-md-12 col-12">
+                    <div class="d-md-flex align-items-center">
+                        <a href="javascript:;" class="btn btn-success"
+                           onclick="formModal('0','Adicionar tipo de Financiamiento','addfinanciamientocohorte', false)"><i
+                                class="fa fa-plus"></i> Adicionar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form method="GET">
+            <div class="row">
+                <div class="col-lg-6 col-md-3 col-sm-12">
+                    <i class="fa fa-search tu" title="Nombres"></i> Busqueda:
+                    <div class="input-group mb-2">
+                        <input class='form-control' type='text' id='searchinput' name="s" value='{{ s }}'
+                               autocomplete="off" placeholder="Buscar nombre de tipo de financiamiento..."/>
+                        <div class="input-group-append">
+                            <a class="btn btn-primary" href="javascript:void(0);" onclick="busqueda()"
+                               id="button-addon2"><i
+                                    class="fa fa-search"></i></a>
+                            {% if url_vars %}
+                                <a title="Ver todo" href="javascript:;" class="btn btn-default tr refreshbutton">
+                                    <i class="fas fa-sync-alt"></i>
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </form>
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card mb-4">
+                    <div class="card-body border-top border-6 rounded-3 border-dark-info">
+                        <table class='tabla_responsive table table-bordered table-striped'>
+                            <thead>
+                            <tr>
+                                <th style="text-align: center; vertical-align: middle;">#</th>
+                                <th style="text-align: center; vertical-align: middle;">Descripción</th>
+                                <th style="text-align: center; vertical-align: middle;">Porcentaje min pago matrícula</th>
+                                <th style="text-align: center; vertical-align: middle;">Valor de la matrícula</th>
+                                <th style="text-align: center; vertical-align: middle;">Valor arancel</th>
+                                <th style="text-align: center; vertical-align: middle;">Valor total del programa</th>
+                                <th style="text-align: center; vertical-align: middle;">Fecha de corte</th>
+                                <th style="text-align: center; vertical-align: middle;">Máx. cuotas</th>
+                                <th style="text-align: center; vertical-align: middle;">Acciones</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for eFinanciamiento in eFinanciamientos %}
+                                <tr>
+                                    <td style="text-align: center; vertical-align: middle" class="w-5">{{ forloop.counter }}</td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-20">
+                                        {{ eFinanciamiento.descripcion|lower|capfirst }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-20">
+                                        {{ eFinanciamiento.porcentajeminpagomatricula }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-15">
+                                        {{ eFinanciamiento.valormatricula }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-15">
+                                        {{ eFinanciamiento.valorarancel }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-15">
+                                        {{ eFinanciamiento.valortotalprograma }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-15">
+                                        {{ eFinanciamiento.fecha|date:"Y-m-d" }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-15">
+                                        {{ eFinanciamiento.maxnumcuota }}
+                                    </td>
+                                    <td style="text-align: center; vertical-align: middle" class="w-10">
+                                        <div class="dropbottom">
+                                            <a href="javascript:void(0);"
+                                               class="btn-icon btn btn-ghost btn-sm rounded-circle"
+                                               data-bs-toggle="dropdown" data-offset="-140" aria-haspopup="true"
+                                               aria-expanded="false">
+                                                <i class="fa fa-ellipsis-v text-black-50 fs-6"></i>
+                                            </a>
+                                            <ul class="dropdown-menu" x-placement="right-start">
+                                                <span class="dropdown-header">ACCIONES</span>
+                                                <li class="dropdown-item"><a href='javascript:;'
+                                                                             onclick="eliminar('{{ eFinanciamiento.id }}', '{{ eFinanciamiento|upper }}', 'delfinanciamientocohorte')"><span
+                                                        class="fa fa-trash"></span> Eliminar</a></li>
+                                                <li class="dropdown-item">
+                                                    <a href='javascript:;'
+                                                       onclick="formModal('{{ eFinanciamiento.id }}','Editar tipo de financiamiento','editfinanciamientocohorte', false)">
+                                                        <i class="fa fa-pencil"></i> Editar
+                                                    </a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="11" style="text-align: center"><b>No existen formatos registrados</b>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <div class="text-muted fs-6">
+                            {% widthratio eFinanciamientos|length 1 page.number as value %}
+                            <caption> Mostrando {% if not paging.num_pages == page.number %}{{ value }}{% else %}
+                                {% if paging.num_pages == 1 %}{{ eFinanciamientos|length }}{% else %}
+                                    {% with len=eFinanciamientos|length %}{% widthratio 10 1 page.number|add:"-1" as val %}
+                                        {{ val|add:len }}{% endwith %}{% endif %}{% endif %} de {{ count }}</caption>
+
+                        </div>
+                    </div>
+                    <div class="card-footer border-top-0">
+                        {% include 'paginacionb4.html' %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade static" id="itemspanel" style="display: none;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><b class="paneltitle">FORMULARIO MODAL</b></h4>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal form-modal" autocomplete="off" method="post"
+                          enctype="multipart/form-data" action="{{ request.path }}">
+                        {% csrf_token %}
+                        <div class="row panelbody">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
